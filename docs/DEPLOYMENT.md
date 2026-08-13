@@ -9,7 +9,7 @@
 1. 打开 https://supabase.com 注册并创建一个 Project（Region 建议选 Singapore，接近国内用户）。
 2. 左侧进入 **Authentication → Sign In / Up**，打开 **Anonymous sign-ins**。当前 MVP 保留原有“创建昵称/头像”注册方式，使用 Supabase 匿名账号作为真实用户身份；不需要邮箱密码。
 3. 进入 **SQL Editor**，把 `supabase/migrations/0001_init.sql` 全部内容粘贴执行。
-   - 创建 `games / profiles / user_games / match_requests / applications / rooms / room_members / sessions / friendships / feedback`
+   - 创建 `games / profiles / user_games / match_requests / matches / applications / rooms / room_members / messages / sessions / friendships / feedback`
    - 种子 6 个真实游戏：我的世界、星露谷物语、PUBG、无畏契约、王者荣耀、英雄联盟
    - 启用 RLS、索引、Realtime 发布
 4. 进入 **Project Settings → API**，记录：
@@ -18,7 +18,7 @@
    - `service_role` → `SUPABASE_SERVICE_ROLE_KEY`（只放服务端）
 
 Realtime 表已由 migration 加入 `supabase_realtime` publication。若在 Dashboard 检查：Database → Replication，确认这些表被选中：
-`profiles, match_requests, applications, rooms, room_members, sessions, friendships`
+`profiles, match_requests, matches, applications, rooms, room_members, messages, sessions, friendships`
 
 ## 2. Resend
 

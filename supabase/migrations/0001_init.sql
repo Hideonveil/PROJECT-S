@@ -84,6 +84,20 @@ create table if not exists public.match_requests (
 create index if not exists match_requests_status_idx on public.match_requests (status);
 create index if not exists match_requests_game_idx on public.match_requests (game_id);
 create index if not exists match_requests_user_idx on public.match_requests (user_id);
+-- ---------------------------------------------------------------------------
+-- matches
+-- ---------------------------------------------------------------------------
+create table if not exists public.matches (
+  id uuid primary key default gen_random_uuid(),
+  request_a uuid not null references public.match_requests(id) on delete cascade,
+  request_b uuid not null references public.match_requests(id) on delete cascade,
+  status text not null default 'pending' check (status in ('pending', 'accepted', 'declined', 'completed', 'cancelled')),
+  created_at timestamptz not null default now()
+);
+
+create index if not exists matches_request_a_idx on public.matches (request_a);
+create index if not exists matches_request_b_idx on public.matches (request_b);
+create index if not exists matches_status_idx on public.matches (status);
 
 -- ---------------------------------------------------------------------------
 -- applications
@@ -125,6 +139,18 @@ create table if not exists public.room_members (
 );
 
 create index if not exists room_members_user_idx on public.room_members (user_id);
+-- ---------------------------------------------------------------------------
+-- messages
+-- ---------------------------------------------------------------------------
+create table if not exists public.messages (
+  id uuid primary key default gen_random_uuid(),
+  room_id uuid not null references public.rooms(id) on delete cascade,
+  sender_id uuid not null references public.profiles(id) on delete cascade,
+  content text not null check (char_length(content) between 1 and 2000),
+  created_at timestamptz not null default now()
+);
+
+create index if not exists messages_room_id_created_at_idx on public.messages (room_id, created_at);
 
 -- ---------------------------------------------------------------------------
 -- sessions
@@ -236,6 +262,14 @@ create policy "match_requests_delete_own" on public.match_requests for delete to
 create policy "applications_select_involved" on public.applications for select to authenticated using (from_user_id = public.current_profile_id() or to_user_id = public.current_profile_id());
 create policy "applications_insert_own" on public.applications for insert to authenticated with check (from_user_id = public.current_profile_id());
 create policy "applications_update_involved" on public.applications for update to authenticated using (from_user_id = public.current_profile_id() or to_user_id = public.current_profile_id()) with check (from_user_id = public.current_profile_id() or to_user_id = public.current_profile_id());
+-- matches: participants can see the match record
+create policy "matches_select_involved" on public.matches for select to authenticated using (
+  exists (
+    select 1 from public.match_requests mr
+    where mr.id in (public.matches.request_a, public.matches.request_b)
+      and mr.user_id = public.current_profile_id()
+  )
+);
 
 -- rooms: only members can see the room
 create policy "rooms_select_member" on public.rooms for select to authenticated using (exists (
@@ -247,6 +281,20 @@ create policy "room_members_select_own" on public.room_members for select to aut
   user_id = public.current_profile_id()
   or room_id in (
     select room_id from public.room_members where user_id = public.current_profile_id()
+  )
+);
+-- messages: room members can read and send messages
+create policy "messages_select_member" on public.messages for select to authenticated using (
+  exists (
+    select 1 from public.room_members rm
+    where rm.room_id = public.messages.room_id and rm.user_id = public.current_profile_id()
+  )
+);
+create policy "messages_insert_member" on public.messages for insert to authenticated with check (
+  sender_id = public.current_profile_id()
+  and exists (
+    select 1 from public.room_members rm
+    where rm.room_id = public.messages.room_id and rm.user_id = public.current_profile_id()
   )
 );
 
@@ -311,5 +359,16 @@ end $$;
 do $$
 begin
   alter publication supabase_realtime add table public.friendships;
+exception when duplicate_object then null;
+end $$;
+do $$
+begin
+  alter publication supabase_realtime add table public.matches;
+exception when duplicate_object then null;
+end $$;
+
+do $$
+begin
+  alter publication supabase_realtime add table public.messages;
 exception when duplicate_object then null;
 end $$;
