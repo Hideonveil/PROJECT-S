@@ -59,6 +59,7 @@ export async function publicNeeds(): Promise<Array<{ user: PublicProfile; need: 
     .from("match_requests")
     .select("*")
     .eq("status", "matching")
+    .gt("expires_at", new Date().toISOString())
     .order("created_at", { ascending: false });
   const rows = (data || []) as MatchRequest[];
   const profiles = await publicProfilesFor(rows.map((r) => r.user_id));
@@ -73,6 +74,7 @@ export async function candidatesFor(myProfile: Profile, myNeed: NeedInput) {
     .from("match_requests")
     .select("*")
     .eq("status", "matching")
+    .gt("expires_at", new Date().toISOString())
     .neq("user_id", myProfile.id)
     .order("created_at", { ascending: false });
   const rows = (data || []) as MatchRequest[];
