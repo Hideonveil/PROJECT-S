@@ -1,0 +1,49 @@
+import { NextResponse } from "next/server";
+import { authUserFromToken, profileByAuthId } from "@/lib/auth";
+import { saveFeedback, sendFeedbackEmail, updateEmailStatus } from "@/lib/feedback";
+
+export async function POST(request: Request) {
+  try {
+    const body = await request.json();
+    const token = String(body.token || "");
+    const authUser = await authUserFromToken(token);
+    if (!authUser) return NextResponse.json({ error: "请先登录后再提交反馈" }, { status: 401 });
+
+    const profile = await profileByAuthId(authUser.id);
+
+    const payload = {
+      feedbackType: String(body.category || body.feedbackType || "other"),
+      content: String(body.message || body.content || ""),
+      contactEmail: String(body.contact || body.contactEmail || "").trim() || null,
+      currentPage: String(body.currentPage || "").trim() || null,
+      currentGame: String(body.currentGame || "").trim() || null,
+      currentMatchRequestId: String(body.currentMatchRequestId || "").trim() || null,
+      requestId: String(body.requestId || "").trim() || null,
+      userAgent: request.headers.get("user-agent"),
+    };
+
+    let saved;
+    try {
+      saved = await saveFeedback(profile, payload);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "提交失败，请稍后重试";
+      return NextResponse.json({ error: message }, { status: 400 });
+    }
+
+    if (saved.duplicate) {
+      return NextResponse.json({ ok: true, duplicate: true });
+    }
+
+    try {
+      await sendFeedbackEmail(saved.row);
+      await updateEmailStatus(saved.row.id, "sent", null);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "email failed";
+      await updateEmailStatus(saved.row.id, "failed", message);
+    }
+
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : "提交失败，请稍后重试" }, { status: 500 });
+  }
+}

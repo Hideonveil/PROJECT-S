@@ -1,0 +1,24 @@
+import { NextResponse } from "next/server";
+import { authUserFromToken } from "@/lib/auth";
+import { profileWithGames } from "@/lib/api";
+import { supabaseAdmin } from "@/lib/supabase";
+
+export async function POST(request: Request) {
+  try {
+    const body = await request.json();
+    const token = String(body.token || "");
+    const authUser = await authUserFromToken(token);
+    if (!authUser) return NextResponse.json({ error: "未登录" }, { status: 401 });
+
+    const admin = supabaseAdmin();
+    const { data: me } = await admin.from("profiles").select("id").eq("auth_user_id", authUser.id).maybeSingle();
+    if (!me) return NextResponse.json({ error: "未登录" }, { status: 401 });
+
+    const code = String(body.code || "").trim().toUpperCase();
+    const { data: target } = await admin.from("profiles").select("*").eq("friend_code", code).maybeSingle();
+    if (!target || target.id === me.id) return NextResponse.json({ error: "没有找到这个代码" }, { status: 404 });
+    return NextResponse.json({ user: await profileWithGames(target) });
+  } catch (error) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : "搜索失败" }, { status: 500 });
+  }
+}
