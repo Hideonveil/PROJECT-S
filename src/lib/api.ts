@@ -34,7 +34,7 @@ export function generateRoomCode(): string {
 export async function poolCounts(): Promise<{ online: number; matching: number; users: number }> {
   const recentCutoff = new Date(Date.now() - 2 * 60 * 1000).toISOString();
   const [{ count: matching }, { count: online }, { count: users }] = await Promise.all([
-    supabaseAdmin().from("match_requests").select("id", { count: "exact", head: true }).eq("status", "matching"),
+    supabaseAdmin().from("match_requests").select("id", { count: "exact", head: true }).eq("status", "matching").gt("expires_at", new Date().toISOString()),
     supabaseAdmin().from("profiles").select("id", { count: "exact", head: true }).eq("online", true).gte("last_seen", recentCutoff),
     supabaseAdmin().from("profiles").select("id", { count: "exact", head: true }),
   ]);
