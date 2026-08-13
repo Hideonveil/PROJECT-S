@@ -37,21 +37,50 @@ async function getSupabase() {
   return supabase;
 }
 
-export async function ensureAuth() {
+export async function getSession() {
   const sb = await getSupabase();
-  const { data: { session } } = await sb.auth.getSession();
-  if (session?.access_token) {
-    authToken = session.access_token;
-    return authToken;
-  }
-  const { data, error } = await sb.auth.signInAnonymously();
-  if (error) throw error;
-  authToken = data.session.access_token;
+  const { data } = await sb.auth.getSession();
+  return data.session;
+}
+
+export async function currentToken() {
+  const session = await getSession();
+  if (!session?.access_token) throw new Error("请先登录");
+  authToken = session.access_token;
   return authToken;
 }
 
+export async function signUp(email, password) {
+  const sb = await getSupabase();
+  const { data, error } = await sb.auth.signUp({
+    email,
+    password,
+    options: { emailRedirectTo: `${window.location.origin}/#/auth` },
+  });
+  if (error) throw error;
+  return data;
+}
+
+export async function signIn(email, password) {
+  const sb = await getSupabase();
+  const { data, error } = await sb.auth.signInWithPassword({ email, password });
+  if (error) throw error;
+  return data;
+}
+
+export async function signOut() {
+  try {
+    const sb = await getSupabase();
+    await sb.auth.signOut();
+  } catch {
+    // session may already be gone
+  }
+}
+
+export const sessionStatus = (token) => request(`/api/session?token=${encodeURIComponent(token)}`);
+
 export const register = async (profile) => {
-  const token = await ensureAuth();
+  const token = await currentToken();
   return request("/api/register", { ...profile, token });
 };
 

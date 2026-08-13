@@ -13,6 +13,7 @@ export interface Profile {
   nickname: string;
   avatar_key: string;
   device: string;
+  gender: string;
   play_style: string;
   voice: boolean;
   online: boolean;
@@ -27,6 +28,7 @@ export interface PublicProfile {
   handle: string;
   avatarKey: string;
   device: string;
+  gender: string;
   playStyle: string;
   voice: boolean;
   online: boolean;

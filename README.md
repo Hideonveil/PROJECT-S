@@ -5,13 +5,13 @@
 ## 技术栈
 
 - Next.js + React + TypeScript（App Router，仅提供 API 与静态托管）
-- Supabase：PostgreSQL、Auth（匿名登录）、Realtime、RLS
+- Supabase：PostgreSQL、Auth（邮箱登录）、Realtime、RLS
 - Resend：反馈邮件
 - Vercel：部署与临时域名
 
 ## 当前产品流程
 
-注册/创建游戏身份 → 首页 → 填写当前需求 → 实时匹配池 → 匹配结果 → 玩家主页 → 申请一起玩 → 临时房间 → 游戏结束 → 双向再连接 → 好友/搭子 → 反馈邮件。
+邮箱注册/登录 → 创建游戏身份 → 首页 → 填写当前需求 → 实时匹配池 → 匹配结果 → 玩家主页 → 申请一起玩 → 临时房间 → 游戏结束 → 双向再连接 → 好友/搭子 → 反馈邮件。
 
 ## 项目结构
 
@@ -19,7 +19,7 @@
 web-mvp/
 ├─ public/                  # 现有 MVP 前端（页面、JS、样式、Supabase UMD）
 │  ├─ index.html
-│  ├─ js/api.js             # API 客户端 + Supabase 匿名登录
+│  ├─ js/api.js             # API 客户端 + Supabase 邮箱登录
 │  ├─ js/realtime.js        # Supabase Realtime 订阅
 │  └─ styles/
 ├─ src/

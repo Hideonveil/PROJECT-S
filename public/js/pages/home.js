@@ -1,13 +1,14 @@
 import { icon } from "../icons.js";
 import { avatarWrap } from "../avatar.js";
 import { button, esc, needSummary, shell, statusPill } from "../ui.js";
-import { CANDIDATES, GAME_BY_ID } from "../data.js";
+import { GAME_BY_ID } from "../data.js";
 
 export function homePage(state) {
   const need = state.need;
   const game = GAME_BY_ID[need.game] || { name: need.game };
   const pool = Math.max(0, state.match.pool ?? 0);
   const history = state.history || [];
+  const live = state.friends || [];
 
   return shell(
     state,
@@ -54,9 +55,9 @@ export function homePage(state) {
         <div class="card" style="display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap">
           <div class="live-strip">
             <div class="live-avatars">
-              ${CANDIDATES.slice(0, 4)
-                .map((c) => avatarWrap(c.avatarKey, 42, c.online))
-                .join("")}
+              ${live.length
+                ? live.slice(0, 4).map((f) => avatarWrap(f.avatarKey, 42, f.online)).join("")
+                : `<span class="live-avatars-empty">${icon("radio", 20)}</span>`}
             </div>
             <span class="live-count">${pool} 人在匹配池 · ${game.name}</span>
           </div>

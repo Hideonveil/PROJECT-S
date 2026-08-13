@@ -46,10 +46,7 @@ export async function openRealtime(token, handlers) {
   }
 
   const { data: { session } } = await sb.auth.getSession();
-  if (!session) {
-    const { error } = await sb.auth.signInAnonymously();
-    if (error) throw error;
-  }
+  if (!session) return () => {};
 
   const channel = sb.channel("node-events");
   const schedule = () => debounceRefresh(token, handlers);

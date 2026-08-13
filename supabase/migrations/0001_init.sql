@@ -35,6 +35,7 @@ create table if not exists public.profiles (
   nickname text not null,
   avatar_key text not null default 'me-1',
   device text not null default 'PC',
+  gender text not null default '保密',
   play_style text not null default '',
   voice boolean not null default true,
   online boolean not null default false,
@@ -44,6 +45,9 @@ create table if not exists public.profiles (
 );
 
 create index if not exists profiles_online_idx on public.profiles (online);
+
+-- keep the column present even if an earlier revision already created the table
+alter table public.profiles add column if not exists gender text not null default '保密';
 
 -- ---------------------------------------------------------------------------
 -- user_games

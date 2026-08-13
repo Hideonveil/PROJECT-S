@@ -25,6 +25,7 @@ export async function POST(request: Request) {
         nickname: nickname || existing.nickname,
         avatar_key: String(body.avatarKey || existing.avatar_key),
         device: String(body.device || existing.device),
+        gender: String(body.gender || existing.gender),
         play_style: String(body.playStyle ?? existing.play_style),
         voice: body.voice !== undefined ? body.voice : existing.voice,
         online: true,

@@ -7,7 +7,7 @@
 ## 1. Supabase
 
 1. 打开 https://supabase.com 注册并创建一个 Project（Region 建议选 Singapore，接近国内用户）。
-2. 左侧进入 **Authentication → Sign In / Up**，打开 **Anonymous sign-ins**。当前 MVP 保留原有“创建昵称/头像”注册方式，使用 Supabase 匿名账号作为真实用户身份；不需要邮箱密码。
+2. 左侧进入 **Authentication → Providers**，打开 **Email**。可选开启 **Confirm email**（推荐开启，注册后需到邮箱验证才能登录）。当前 MVP 使用邮箱 + 密码注册/登录，不再使用匿名账号。
 3. 进入 **SQL Editor**，把 `supabase/migrations/0001_init.sql` 全部内容粘贴执行。
    - 创建 `games / profiles / user_games / match_requests / matches / applications / rooms / room_members / messages / sessions / friendships / feedback`
    - 种子 6 个真实游戏：我的世界、星露谷物语、PUBG、无畏契约、王者荣耀、英雄联盟

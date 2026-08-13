@@ -28,7 +28,8 @@ const ALLOWED_TYPES = new Set([
 
 export async function saveFeedback(
   profile: Profile | null,
-  payload: FeedbackPayload
+  payload: FeedbackPayload,
+  userEmail?: string | null
 ): Promise<{ row: FeedbackRow; duplicate: boolean }> {
   const content = String(payload.content || "").trim();
   const feedbackType = String(payload.feedbackType || "other").trim();
@@ -42,7 +43,7 @@ export async function saveFeedback(
   const row = {
     user_id: profile?.id || null,
     username: profile?.nickname || null,
-    user_email: null,
+    user_email: userEmail || null,
     feedback_type: feedbackType,
     content,
     contact_email: payload.contactEmail || null,

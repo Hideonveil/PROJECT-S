@@ -3,28 +3,33 @@ import { avatar } from "../avatar.js";
 import { brand, button, esc, statusPill } from "../ui.js";
 import { DEVICES, GAMES } from "../data.js";
 
+export function welcomeHero(state) {
+  return `<section class="welcome-left">
+    <div class="node-field-wrap"><canvas data-node-field></canvas></div>
+    <div class="welcome-copy">
+      ${brand(46)}
+      <div>
+        <h1 class="welcome-title">此刻想怎么玩，<br /><span class="accent">就此刻找到人。</span></h1>
+        <p class="welcome-sub">NODE 不做大厅，只做一件事：把此刻正在找游戏伙伴的玩家和队伍连在一起。</p>
+      </div>
+      <div class="welcome-proof">
+        <span class="reason-tag reason-tag--neutral">${icon("zap", 13)} 实时匹配池</span>
+        <span class="reason-tag reason-tag--neutral">${icon("users", 13)} 玩家与队伍</span>
+        <span class="reason-tag reason-tag--neutral">${icon("link2", 13)} 一局后再决定连接</span>
+      </div>
+    </div>
+    <div class="live-strip">
+      ${statusPill("LIVE")}
+      <span class="live-count">${Math.max(0, state.match.pool ?? 0)} 个节点正在寻找</span>
+    </div>
+  </section>`;
+}
+
 export function welcomePage(state, draft) {
   const selectedGames = draft.games || [];
+  const genderOptions = ["男", "女", "保密"];
   return `<div class="welcome">
-    <section class="welcome-left">
-      <div class="node-field-wrap"><canvas data-node-field></canvas></div>
-      <div class="welcome-copy">
-        ${brand(46)}
-        <div>
-          <h1 class="welcome-title">此刻想怎么玩，<br /><span class="accent">就此刻找到人。</span></h1>
-          <p class="welcome-sub">NODE 不做大厅，只做一件事：把此刻正在找游戏伙伴的玩家和队伍连在一起。</p>
-        </div>
-        <div class="welcome-proof">
-          <span class="reason-tag reason-tag--neutral">${icon("zap", 13)} 实时匹配池</span>
-          <span class="reason-tag reason-tag--neutral">${icon("users", 13)} 玩家与队伍</span>
-          <span class="reason-tag reason-tag--neutral">${icon("link2", 13)} 一局后再决定连接</span>
-        </div>
-      </div>
-      <div class="live-strip">
-        ${statusPill("LIVE")}
-        <span class="live-count">248 个节点此刻在线</span>
-      </div>
-    </section>
+    ${welcomeHero(state)}
     <section class="welcome-right">
       <form class="welcome-form" data-form="onboard">
         <div class="card card--pad-lg" style="display:flex;flex-direction:column;gap:16px">
@@ -60,6 +65,17 @@ export function welcomePage(state, draft) {
             <select class="select" id="device" name="device" data-binding="device">
               ${DEVICES.map((d) => `<option ${draft.device === d ? "selected" : ""}>${d}</option>`).join("")}
             </select>
+          </div>
+          <div class="field">
+            <span class="label">性别 <span class="label-note">可选</span></span>
+            <div class="chip-group" data-chip-group="gender">
+              ${genderOptions
+                .map(
+                  (g) =>
+                    `<button type="button" class="chip ${draft.gender === g ? "chip--on" : ""}" data-action="pick-gender" data-value="${g}">${g}</button>`
+                )
+                .join("")}
+            </div>
           </div>
           <div class="field">
             <span class="label">常玩游戏 <span class="label-note">至少选一个</span></span>

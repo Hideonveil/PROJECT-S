@@ -3,8 +3,9 @@ import { avatar, avatarWrap, paintAvatars } from "./avatar.js";
 import { initNodeField } from "./field.js";
 import { button, esc, needSummary, shell, toast } from "./ui.js";
 import { state, update, resetState } from "./store.js";
-import { CANDIDATES, DEVICES, GAME_BY_ID, GAMES } from "./data.js";
+import { DEVICES, GAME_BY_ID, GAMES } from "./data.js";
 import * as api from "./api.js";
+import { authPage } from "./pages/auth.js";
 import { welcomePage } from "./pages/welcome.js";
 import { homePage } from "./pages/home.js";
 import { needPage } from "./pages/need.js";
@@ -22,6 +23,7 @@ const DRAFT = {
   nickname: state.user.nickname,
   avatarKey: state.user.avatarKey,
   device: state.user.device,
+  gender: state.user.gender || "保密",
   games: (state.user.games || []).map((g) => g.gameId),
   playStyle: state.user.playStyle,
   game: state.need.game,
@@ -74,13 +76,17 @@ function render() {
   clearTimers();
   destroyField();
   const route = parseRoute();
-  if (route.name !== "need") DRAFT.dirty = false;
+  if (route.name !== "need" && route.name !== "welcome") DRAFT.dirty = false;
 
-  if (!state.onboarded && route.name !== "welcome") {
+  if (!state.authenticated && route.name !== "auth") {
+    location.hash = "#/auth";
+    return;
+  }
+  if (state.authenticated && !state.onboarded && route.name !== "welcome") {
     location.hash = "#/welcome";
     return;
   }
-  if (state.onboarded && route.name === "welcome") {
+  if (state.authenticated && state.onboarded && (route.name === "auth" || route.name === "welcome")) {
     location.hash = "#/home";
     return;
   }
@@ -89,7 +95,11 @@ function render() {
   let immersive = false;
 
   switch (route.name) {
+    case "auth":
+      html = authPage(state);
+      break;
     case "welcome":
+      if (!DRAFT.dirty) prepareOnboardDraft();
       html = welcomePage(state, DRAFT);
       break;
     case "home":
@@ -171,6 +181,15 @@ function render() {
   if (route.name === "room" && state.room?.status === "playing") startRoomTimer();
 }
 
+function prepareOnboardDraft() {
+  DRAFT.nickname = state.user.nickname || "";
+  DRAFT.avatarKey = state.user.avatarKey || "me-1";
+  DRAFT.device = state.user.device || "PC";
+  DRAFT.gender = state.user.gender || "保密";
+  DRAFT.games = (state.user.games || []).map((g) => g.gameId);
+  DRAFT.playStyle = state.user.playStyle || "";
+}
+
 function prepareNeedDraft() {
   DRAFT.game = state.need.game;
   DRAFT.mode = state.need.mode;
@@ -185,7 +204,7 @@ function prepareNeedDraft() {
 }
 
 function findCandidate(id) {
-  return state.match.candidates?.find((c) => c.id === id) || CANDIDATES.find((c) => c.id === id) || null;
+  return state.match.candidates?.find((c) => c.id === id) || null;
 }
 
 function readImageAsDataUrl(file) {
@@ -277,6 +296,7 @@ function applyServerSnapshot(data) {
     match: { ...state.match, pool: data.matching ?? data.online ?? state.match.pool },
     matchRequestId: data.matchRequestId || null,
   };
+  if (data.user) patch.user = data.user;
   if (Array.isArray(data.friends)) {
     patch.friends = data.friends.map((f) => ({
       id: f.id,
@@ -466,6 +486,7 @@ async function completeOnboard() {
     nickname: DRAFT.nickname,
     avatarKey: DRAFT.avatarKey,
     device: DRAFT.device,
+    gender: DRAFT.gender || "保密",
     playStyle: DRAFT.playStyle,
     games: DRAFT.games.map((gameId) => {
       const existing = state.user.games.find((g) => g.gameId === gameId);
@@ -481,37 +502,34 @@ async function completeOnboard() {
       );
     }),
   };
-  if (ONLINE) {
-    try {
-      const result = await api.register({
-        nickname: user.nickname,
-        avatarKey: user.avatarKey,
-        device: user.device,
-        games: user.games,
-        playStyle: user.playStyle,
-        voice: user.voice,
-      });
-      update({
-        onboarded: true,
-        user: result.user,
-        token: result.token,
-        match: { ...state.match, pool: 0 },
-      });
-      connectEvents();
-      navigate("#/home");
-      toast(`欢迎，${result.user.nickname}`);
-    } catch (err) {
-      toast(err.message);
-    }
+  if (!ONLINE) {
+    toast("服务暂不可用，请稍后重试");
     return;
   }
-  update({
-    onboarded: true,
-    user,
-    match: { ...state.match, pool: 248 },
-  });
-  navigate("#/home");
-  toast(`欢迎，${user.nickname}`);
+  try {
+    const result = await api.register({
+      nickname: user.nickname,
+      avatarKey: user.avatarKey,
+      device: user.device,
+      gender: user.gender,
+      games: user.games,
+      playStyle: user.playStyle,
+      voice: user.voice,
+    });
+    update({
+      authenticated: true,
+      onboarded: true,
+      user: result.user,
+      token: result.token,
+      match: { ...state.match, pool: 0 },
+    });
+    DRAFT.dirty = false;
+    connectEvents();
+    navigate("#/home");
+    toast(`欢迎，${result.user.nickname}`);
+  } catch (err) {
+    toast(err.message);
+  }
 }
 
 async function startMatch() {
@@ -528,43 +546,34 @@ async function startMatch() {
     voice: DRAFT.voice,
     playerType: DRAFT.playerType,
   };
-  if (ONLINE) {
-    update({
-      need,
-      match: {
-        status: "active",
-        pool: state.match.pool ?? 0,
-        candidates: [],
-        pending: null,
-      },
-    });
-    try {
-      const data = await api.postNeed(state.token, need);
-      update({
-        match: {
-          ...state.match,
-          status: "active",
-          pool: data.matching ?? data.online ?? state.match.pool,
-          matchRequestId: data.requestId || null,
-          candidates: normalizeCandidates(data.candidates || []),
-        },
-      });
-      navigate("#/matching");
-    } catch (err) {
-      toast(err.message);
-    }
+  if (!ONLINE) {
+    toast("服务暂不可用，请稍后重试");
     return;
   }
   update({
     need,
     match: {
       status: "active",
-      pool: 208 + Math.floor(Math.random() * 60),
+      pool: state.match.pool ?? 0,
       candidates: [],
       pending: null,
     },
   });
-  navigate("#/matching");
+  try {
+    const data = await api.postNeed(state.token, need);
+    update({
+      match: {
+        ...state.match,
+        status: "active",
+        pool: data.matching ?? data.online ?? state.match.pool,
+        matchRequestId: data.requestId || null,
+        candidates: normalizeCandidates(data.candidates || []),
+      },
+    });
+    navigate("#/matching");
+  } catch (err) {
+    toast(err.message);
+  }
 }
 
 function startMatchingFlow() {
@@ -577,9 +586,7 @@ function startMatchingFlow() {
     const foundEl = document.getElementById("match-found");
     const titleEl = document.getElementById("match-title");
     if (poolEl) {
-      poolEl.textContent = ONLINE
-        ? String(basePool)
-        : String(Math.max(0, Math.round(basePool + Math.sin(elapsed * 2) * 18 + Math.random() * 8)));
+      poolEl.textContent = String(basePool);
     }
     if (timeEl) timeEl.textContent = `${Math.floor(elapsed)}s`;
     if (foundEl) foundEl.textContent = Math.min(3, Math.floor(elapsed / 1.25));
@@ -598,84 +605,52 @@ function startMatchingFlow() {
   timers.push(
     window.setTimeout(() => {
       clearTimers();
-      if (ONLINE) {
-        update({
-          match: {
-            ...state.match,
-            status: "matched",
-            pool: state.match.pool ?? 0,
-          },
-        });
-        if (!state.match.candidates.length) {
-          navigate("#/home");
-          toast("匹配池暂无合适真人，换个需求再试");
-          return;
-        }
-      } else {
-        const pool = 228 + Math.floor(Math.random() * 24);
-        update({
-          match: {
-            status: "matched",
-            pool,
-            candidates: CANDIDATES.map((c) => ({ ...c })),
-            pending: null,
-          },
-        });
+      update({
+        match: {
+          ...state.match,
+          status: "matched",
+          pool: state.match.pool ?? 0,
+        },
+      });
+      if (!state.match.candidates.length) {
+        navigate("#/home");
+        toast("匹配池暂无合适真人，换个需求再试");
+        return;
       }
       navigate("#/results");
     }, 4200)
   );
 }
 
-function createRoom(candidate) {
-  const code = Array.from({ length: 5 }, (_, i) => {
-    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-    return chars[Math.floor(Math.random() * chars.length)];
-  }).join("");
-  return {
-    code,
-    partner: { ...candidate },
-    status: "connecting",
-    startedAt: 0,
-  };
-}
-
 async function applyPartner(id) {
   const candidate = findCandidate(id);
   if (!candidate) return;
-  if (ONLINE) {
-    try {
-      await api.applyTo(state.token, candidate.id);
-      update({ match: { ...state.match, pending: id } });
-      render();
-      toast("申请已发送，等待对方接受");
-    } catch (err) {
-      toast(err.message);
-    }
+  if (!ONLINE) {
+    toast("服务暂不可用，请稍后重试");
     return;
   }
-  update({
-    match: { ...state.match, pending: id },
-    room: createRoom(candidate),
-  });
-  navigate("#/room");
+  try {
+    await api.applyTo(state.token, candidate.id);
+    update({ match: { ...state.match, pending: id } });
+    render();
+    toast("申请已发送，等待对方接受");
+  } catch (err) {
+    toast(err.message);
+  }
 }
 
 async function startGame() {
-  if (ONLINE && state.room?.code) {
-    try {
-      await api.roomAction(state.room.code, "start", state.token);
-      update({ room: { ...state.room, status: "playing", startedAt: Date.now() } });
-      render();
-    } catch (err) {
-      toast(err.message);
-    }
+  if (!state.room?.code || !ONLINE) {
+    toast("服务暂不可用，请稍后重试");
     return;
   }
-  update({
-    room: { ...state.room, status: "playing", startedAt: Date.now() },
-  });
-  render();
+  try {
+    await api.roomAction(state.room.code, "start", state.token);
+    update({ room: { ...state.room, status: "playing", startedAt: Date.now() } });
+    render();
+  } catch (err) {
+    toast(err.message);
+  }
 }
 
 function startRoomTimer() {
@@ -695,39 +670,18 @@ function startRoomTimer() {
 async function finishGame() {
   const partner = state.room?.partner;
   if (!partner) return;
-  if (ONLINE && state.room?.code) {
-    try {
-      await api.roomAction(state.room.code, "finish", state.token);
-    } catch (err) {
-      toast(err.message);
-    }
-    await new Promise((resolve) => window.setTimeout(resolve, 800));
-    if (state.session) return;
-    const now = new Date();
-    const time = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
-    const title = `${GAME_BY_ID[state.need.game]?.name || state.need.game} · ${state.need.mode}`;
-    update({
-      room: null,
-      lastRoomCode: state.room?.code,
-      session: {
-        partner: { ...partner },
-        roomCode: state.room?.code,
-        title,
-        time,
-        outcome: null,
-        mine: null,
-        theirs: null,
-        connected: false,
-      },
-      stats: {
-        ...state.stats,
-        sessions: state.stats.sessions + 1,
-        hours: state.stats.hours + 1,
-      },
-    });
-    navigate("#/gameover");
+  if (!state.room?.code || !ONLINE) {
+    toast("服务暂不可用，请稍后重试");
     return;
   }
+  try {
+    await api.roomAction(state.room.code, "finish", state.token);
+  } catch (err) {
+    toast(err.message);
+    return;
+  }
+  await new Promise((resolve) => window.setTimeout(resolve, 800));
+  if (state.session) return;
   const now = new Date();
   const time = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
   const title = `${GAME_BY_ID[state.need.game]?.name || state.need.game} · ${state.need.mode}`;
@@ -764,79 +718,14 @@ async function chooseRematch(value) {
   update({ session: { ...state.session, mine: value } });
   render();
   const roomCode = state.session.roomCode || state.lastRoomCode;
-  if (ONLINE && roomCode) {
-    try {
-      await api.rematch(roomCode, value, state.token);
-    } catch (err) {
-      toast(err.message);
-    }
+  if (!roomCode || !ONLINE) {
+    toast("服务暂不可用，请稍后重试");
     return;
   }
-  if (value === "yes") {
-    timers.push(
-      window.setTimeout(() => {
-        const theirs = Math.random() < 0.86 ? "yes" : "no";
-        let next = { ...state.session, theirs };
-        let stats = state.stats;
-        if (theirs === "yes") {
-          next.connected = true;
-          stats = { ...state.stats, connected: state.stats.connected + 1 };
-          const friend = {
-            id: next.partner.id,
-            name: next.partner.name,
-            avatarKey: next.partner.avatarKey,
-            online: next.partner.online !== false,
-            lastGame: `${GAME_BY_ID[state.need.game]?.name || state.need.game} · ${state.need.mode}`,
-            lastTime: next.time,
-          };
-          const friends = state.friends.some((f) => f.id === friend.id)
-            ? state.friends
-            : [friend, ...state.friends];
-          const history = [
-            {
-              id: Date.now(),
-              title: next.title,
-              partnerName: next.partner.name,
-              time: next.time,
-              result: next.outcome === "win" ? "胜利 · 已连接" : `${next.outcome === "draw" ? "平局" : "失利"} · 已连接`,
-            },
-            ...(state.history || []),
-          ];
-          update({ session: next, friends, stats, history });
-        } else {
-          const history = [
-            {
-              id: Date.now(),
-              title: next.title,
-              partnerName: next.partner.name,
-              time: next.time,
-              result: `${next.outcome === "win" ? "胜利" : next.outcome === "draw" ? "平局" : "失利"} · 未保留连接`,
-            },
-            ...(state.history || []),
-          ];
-          update({ session: next, stats, history });
-        }
-        render();
-      }, 1100)
-    );
-  } else {
-    timers.push(
-      window.setTimeout(() => {
-        const next = { ...state.session, theirs: "no" };
-        const history = [
-          {
-            id: Date.now(),
-            title: next.title,
-            partnerName: next.partner.name,
-            time: next.time,
-            result: `${next.outcome === "win" ? "胜利" : next.outcome === "draw" ? "平局" : "失利"} · 未保留连接`,
-          },
-          ...(state.history || []),
-        ];
-        update({ session: next, history });
-        render();
-      }, 700)
-    );
+  try {
+    await api.rematch(roomCode, value, state.token);
+  } catch (err) {
+    toast(err.message);
   }
 }
 
@@ -849,55 +738,59 @@ async function rematchFriend(id) {
     game: game.id,
     mode: game.modes[0],
   };
+  if (!ONLINE) {
+    toast("服务暂不可用，请稍后重试");
+    return;
+  }
   update({
     need: {
       ...need,
     },
     match: {
       status: "active",
-      pool: ONLINE ? (state.match.pool ?? 0) : 200 + Math.floor(Math.random() * 70),
+      pool: state.match.pool ?? 0,
       candidates: [],
       pending: null,
     },
   });
-  if (ONLINE) {
-    try {
-      const data = await api.postNeed(state.token, need);
-      update({
-        match: {
-          ...state.match,
-          status: "active",
-          pool: data.matching ?? data.online ?? state.match.pool,
-          matchRequestId: data.requestId || null,
-          candidates: normalizeCandidates(data.candidates || []),
-        },
-      });
-    } catch (err) {
-      toast(err.message);
-    }
+  try {
+    const data = await api.postNeed(state.token, need);
+    update({
+      match: {
+        ...state.match,
+        status: "active",
+        pool: data.matching ?? data.online ?? state.match.pool,
+        matchRequestId: data.requestId || null,
+        candidates: normalizeCandidates(data.candidates || []),
+      },
+    });
+  } catch (err) {
+    toast(err.message);
   }
   navigate("#/matching");
 }
 
 async function rematchNow() {
+  if (!ONLINE) {
+    toast("服务暂不可用，请稍后重试");
+    return;
+  }
   update({
     match: { ...state.match, status: "active", candidates: [], pending: null, pool: state.match.pool ?? 0 },
   });
-  if (ONLINE) {
-    try {
-      const data = await api.postNeed(state.token, state.need);
-      update({
-        match: {
-          ...state.match,
-          status: "active",
-          pool: data.matching ?? data.online ?? state.match.pool,
-          matchRequestId: data.requestId || null,
-          candidates: normalizeCandidates(data.candidates || []),
-        },
-      });
-    } catch (err) {
-      toast(err.message);
-    }
+  try {
+    const data = await api.postNeed(state.token, state.need);
+    update({
+      match: {
+        ...state.match,
+        status: "active",
+        pool: data.matching ?? data.online ?? state.match.pool,
+        matchRequestId: data.requestId || null,
+        candidates: normalizeCandidates(data.candidates || []),
+      },
+    });
+  } catch (err) {
+    toast(err.message);
   }
   navigate("#/matching");
 }
@@ -964,6 +857,12 @@ function openProfileEdit() {
           </select>
         </div>
         <div class="field">
+          <label class="label" for="edit-gender">性别</label>
+          <select class="select" id="edit-gender" name="gender">
+            ${["男", "女", "保密"].map((g) => `<option ${(user.gender || "保密") === g ? "selected" : ""}>${g}</option>`).join("")}
+          </select>
+        </div>
+        <div class="field">
           <span class="label">常玩游戏</span>
           <div class="chip-group" data-chip-group="edit-games">
             ${GAMES.map((g) => `<button type="button" class="chip ${selected.includes(g.id) ? "chip--on" : ""}" data-action="toggle-game" data-value="${g.id}">${esc(g.name)}</button>`).join("")}
@@ -987,6 +886,7 @@ async function saveProfile() {
   const fd = new FormData(form);
   const nickname = String(fd.get("nickname") || "").trim() || state.user.nickname;
   const device = String(fd.get("device") || state.user.device);
+  const gender = String(fd.get("gender") || state.user.gender || "保密");
   const playStyle = String(fd.get("playStyle") || "").trim() || state.user.playStyle;
   const games = DRAFT.games.length
     ? DRAFT.games.map((gameId) => {
@@ -995,24 +895,26 @@ async function saveProfile() {
         return existing || { gameId, role: game?.roles?.[0] || "输出", level: 60, winRate: "50%", note: playStyle };
       })
     : state.user.games;
-  if (ONLINE) {
-    try {
-      const data = await api.updateProfile(state.token, {
-        nickname,
-        device,
-        playStyle,
-        avatarKey: DRAFT.avatarKey,
-        games,
-        voice: state.user.voice,
-      });
-      update({ user: { ...state.user, ...data.user } });
-    } catch (err) {
-      toast(err.message);
-    }
-  } else {
-    update({
-      user: { ...state.user, nickname, device, playStyle, avatarKey: DRAFT.avatarKey, games },
+  if (!ONLINE) {
+    toast("服务暂不可用，请稍后重试");
+    return;
+  }
+  try {
+    const data = await api.updateProfile(state.token, {
+      nickname,
+      device,
+      gender,
+      playStyle,
+      avatarKey: DRAFT.avatarKey,
+      games,
+      voice: state.user.voice,
     });
+    update({ user: { ...state.user, ...data.user } });
+  } catch (err) {
+    toast(err.message);
+    closeSheet();
+    render();
+    return;
   }
   closeSheet();
   render();
@@ -1030,15 +932,16 @@ function mapServerFriends(friends) {
   }));
 }
 
-function logout() {
+async function logout() {
   if (ONLINE && state.token) { api.cancelNeed(state.token).catch(() => {}); api.goOffline(state.token); }
   if (eventSourceClose) {
     eventSourceClose();
     eventSourceClose = null;
   }
+  await api.signOut().catch(() => {});
   resetState();
   DRAFT.dirty = false;
-  navigate("#/welcome");
+  navigate("#/auth");
   toast("已退出登录");
 }
 
@@ -1254,6 +1157,16 @@ document.addEventListener("click", (event) => {
       prepareNeedDraft();
       navigate("#/need");
     },
+    "switch-auth-mode": (value) => {
+      update({ authMode: value === "register" ? "register" : "login", authError: "", authNotice: "" });
+      render();
+    },
+    "auth-submit": () => submitAuth(),
+    "pick-gender": (value) => {
+      DRAFT.gender = value;
+      DRAFT.dirty = true;
+      render();
+    },
     "complete-onboard": completeOnboard,
     "start-match": startMatch,
     "cancel-match": cancelMatch,
@@ -1367,6 +1280,134 @@ async function detectOnline() {
   }
 }
 
+function mapAuthError(err) {
+  const message = String(err?.message || err?.error_description || err || "");
+  if (message.includes("Invalid login credentials")) return "邮箱或密码错误";
+  if (message.includes("Email not confirmed") || message.includes("email_not_confirmed")) return "邮箱还未验证，请先查收验证邮件";
+  if (message.includes("User already registered") || message.includes("email_exists")) return "该邮箱已注册，请直接登录";
+  if (message.includes("Password should be at least")) return "密码至少 6 位";
+  if (message.includes("Failed to fetch") || message.includes("NetworkError") || message.includes("fetch")) return "网络连接失败，请检查网络后重试";
+  if (message.includes("Missing email")) return "请输入邮箱";
+  if (message.includes("Missing password")) return "请输入密码";
+  return message || "操作失败，请稍后重试";
+}
+
+async function handleAuthSuccess() {
+  const session = await api.getSession();
+  if (!session?.access_token) throw new Error("登录状态失效，请重试");
+  const status = await api.sessionStatus(session.access_token);
+  update({
+    authenticated: true,
+    token: session.access_token,
+    authEmail: session.user?.email || status.email || "",
+    onboarded: !!status.profile,
+    authError: "",
+    authNotice: "",
+  });
+  if (status.profile) {
+    update({ user: status.profile });
+    try {
+      const snapshot = await api.getState(session.access_token);
+      update({ user: snapshot.user });
+      applyServerSnapshot(snapshot);
+    } catch {
+      // profile-only state is enough to enter home
+    }
+    connectEvents();
+    navigate("#/home");
+    toast(`欢迎回来，${state.user.nickname}`);
+  } else {
+    update({ user: { ...state.user, nickname: "", avatarKey: "me-1", device: "PC", gender: "保密", games: [], playStyle: "" } });
+    navigate("#/welcome");
+  }
+}
+
+async function restoreSession() {
+  try {
+    const session = await api.getSession();
+    if (!session?.access_token) {
+      resetState();
+      return;
+    }
+    const status = await api.sessionStatus(session.access_token);
+    if (!status.authenticated) {
+      await api.signOut().catch(() => {});
+      resetState();
+      return;
+    }
+    update({
+      authenticated: true,
+      token: session.access_token,
+      authEmail: status.email || session.user?.email || "",
+      onboarded: !!status.profile,
+      authError: "",
+      authNotice: "",
+    });
+    if (status.profile) {
+      update({ user: status.profile });
+      try {
+        const snapshot = await api.getState(session.access_token);
+        update({ user: snapshot.user });
+        applyServerSnapshot(snapshot);
+      } catch {
+        // keep profile-only state
+      }
+    } else {
+      update({ user: { ...state.user, nickname: "", avatarKey: "me-1", device: "PC", gender: "保密", games: [], playStyle: "" } });
+    }
+  } catch {
+    resetState();
+  }
+}
+
+async function submitAuth() {
+  const form = document.querySelector('[data-form="auth"]');
+  if (!form) return;
+  const submitBtn = form.querySelector('[data-action="auth-submit"]');
+  if (submitBtn?.disabled) return;
+  const fd = new FormData(form);
+  const email = String(fd.get("email") || "").trim().toLowerCase();
+  const password = String(fd.get("password") || "");
+  if (!email || !password) {
+    update({ authError: "请输入邮箱和密码" });
+    render();
+    return;
+  }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    update({ authError: "邮箱格式不正确" });
+    render();
+    return;
+  }
+  if (password.length < 6) {
+    update({ authError: "密码至少 6 位" });
+    render();
+    return;
+  }
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.textContent = "提交中…";
+  }
+  update({ authError: "", authNotice: "" });
+  try {
+    if (state.authMode === "register") {
+      const data = await api.signUp(email, password);
+      if (data.session?.access_token) {
+        await handleAuthSuccess();
+      } else {
+        update({ authMode: "login", authEmail: email, authNotice: "注册成功，验证邮件已发送。请前往邮箱点击验证链接，然后回来登录。" });
+        render();
+      }
+    } else {
+      await api.signIn(email, password);
+      await handleAuthSuccess();
+    }
+  } catch (err) {
+    update({ authError: mapAuthError(err) });
+    render();
+  }
+}
+
 ONLINE = await detectOnline();
-if (ONLINE && state.onboarded && state.token) connectEvents();
+await restoreSession();
+if (ONLINE && state.authenticated && state.onboarded && state.token) connectEvents();
 render();

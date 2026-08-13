@@ -8,6 +8,7 @@ export function publicProfile(profile: Profile, games: GameIdentity[] = []): Pub
     handle: `${profile.nickname}#${profile.id.slice(-4).toUpperCase()}`,
     avatarKey: profile.avatar_key,
     device: profile.device,
+    gender: profile.gender,
     playStyle: profile.play_style,
     voice: profile.voice,
     online: profile.online,

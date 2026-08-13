@@ -70,6 +70,7 @@ export const DEFAULT_USER = {
   avatarKey: "me-1",
   friendCode: "NODE-DEMO-0001",
   device: "PC",
+  gender: "保密",
   games: [
     {
       gameId: "valorant",
@@ -83,116 +84,5 @@ export const DEFAULT_USER = {
   voice: true,
   online: true,
 };
-
-export const CANDIDATES = [
-  {
-    id: "alan",
-    kind: "player",
-    name: "阿岚",
-    handle: "AALAN#7712",
-    avatarKey: "alan-1",
-    device: "PC",
-    online: true,
-    games: [
-      {
-        gameId: "valorant",
-        role: "哨兵",
-        level: 58,
-        winRate: "61%",
-        note: "枪法稳定，报点清晰",
-      },
-    ],
-    need: {
-      game: "valorant",
-      mode: "排位赛",
-      goal: "今晚冲钻石，缺两个稳定队友",
-      current: 3,
-      target: 5,
-      time: "21:30",
-      duration: "90",
-      voice: true,
-      playerType: "决斗者或先锋",
-    },
-    reasons: ["同一游戏 · 同目标", "人数互补：3/5 缺 2", "时间窗口一致", "语音需求一致"],
-    compat: [
-      { label: "目标", text: "都在今晚冲段位", score: 92 },
-      { label: "时间", text: "21:30 窗口重叠 90 分钟", score: 88 },
-      { label: "人数", text: "他们 3 人，缺 2 个位置", score: 85 },
-      { label: "语音", text: "双方都开麦且接受指挥", score: 90 },
-    ],
-  },
-  {
-    id: "north",
-    kind: "team",
-    name: "北岸小队",
-    handle: "NORTH-3",
-    avatarKey: "north-1",
-    device: "PC",
-    online: true,
-    games: [
-      {
-        gameId: "pubg",
-        role: "突击 / 狙击",
-        level: 77,
-        winRate: "55%",
-        note: "固定车队，纪律性好",
-      },
-    ],
-    need: {
-      game: "pubg",
-      mode: "四排",
-      goal: "今晚吃鸡，缺一个听指挥的枪手",
-      current: 3,
-      target: 4,
-      time: "21:00",
-      duration: "120",
-      voice: true,
-      playerType: "听指挥，不单飞",
-    },
-    reasons: ["同一游戏 · 同目标", "人数互补：3/4 缺 1", "时间窗口一致", "语音需求一致"],
-    compat: [
-      { label: "职责", text: "车队缺枪手，与你的身份互补", score: 90 },
-      { label: "目标", text: "同样想稳定吃鸡", score: 84 },
-      { label: "时间", text: "21:00 开始，窗口更宽", score: 82 },
-      { label: "语音", text: "队伍开麦，需要听指挥", score: 86 },
-    ],
-  },
-  {
-    id: "nine",
-    kind: "player",
-    name: "九号机",
-    handle: "UNIT9#1090",
-    avatarKey: "nine-1",
-    device: "PC",
-    online: true,
-    games: [
-      {
-        gameId: "minecraft",
-        role: "建筑师",
-        level: 89,
-        winRate: "-",
-        note: "会红石，建筑快",
-      },
-    ],
-    need: {
-      game: "minecraft",
-      mode: "模组生存",
-      goal: "开新档一起发展，缺长期搭子",
-      current: 1,
-      target: 4,
-      time: "22:00",
-      duration: "120",
-      voice: true,
-      playerType: "能长期玩，不随便弃档",
-    },
-    reasons: ["同一模式 · 同一目标", "人数互补：1/4 缺 3", "职责互补：会建筑和红石", "语音需求一致"],
-    compat: [
-      { label: "模式", text: "同样想开模组生存新档", score: 93 },
-      { label: "职责", text: "会建筑和红石，正好互补", score: 89 },
-      { label: "人数", text: "1 人缺 3，可一次补齐", score: 80 },
-      { label: "语音", text: "双方都开麦", score: 87 },
-    ],
-  },
-];
 
 export const GAME_BY_ID = Object.fromEntries(GAMES.map((g) => [g.id, g]));
