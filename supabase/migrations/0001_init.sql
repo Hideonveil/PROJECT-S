@@ -237,6 +237,8 @@ alter table public.room_members enable row level security;
 alter table public.sessions enable row level security;
 alter table public.friendships enable row level security;
 alter table public.feedback enable row level security;
+alter table public.matches enable row level security;
+alter table public.messages enable row level security;
 
 -- games: everyone can read the catalog
 create policy "games_select" on public.games for select to anon, authenticated using (true);
