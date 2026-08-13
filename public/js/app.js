@@ -1031,7 +1031,7 @@ function mapServerFriends(friends) {
 }
 
 function logout() {
-  if (ONLINE && state.token) api.cancelNeed(state.token).catch(() => {});
+  if (ONLINE && state.token) { api.cancelNeed(state.token).catch(() => {}); api.goOffline(state.token); }
   if (eventSourceClose) {
     eventSourceClose();
     eventSourceClose = null;
@@ -1355,6 +1355,7 @@ window.addEventListener("beforeunload", () => {
   clearTimers();
   destroyField();
   if (eventSourceClose) eventSourceClose();
+  if (ONLINE && state.token) api.goOffline(state.token);
 });
 
 async function detectOnline() {

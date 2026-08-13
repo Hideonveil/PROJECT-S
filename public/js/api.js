@@ -58,6 +58,13 @@ export const register = async (profile) => {
 export const updateProfile = (token, profile) => request("/api/profile", { token, ...profile });
 export const postNeed = (token, need) => request("/api/need", { token, need });
 export const cancelNeed = (token) => request("/api/cancel-need", { token });
+export const goOffline = (token) => {
+  try {
+    navigator.sendBeacon("/api/offline", new Blob([JSON.stringify({ token })], { type: "application/json" }));
+  } catch {
+    // best-effort offline signal
+  }
+};
 export const applyTo = (token, toUserId) => request("/api/apply", { token, toUserId });
 export const acceptApplication = (token, applicationId) => request("/api/accept-application", { token, applicationId });
 export const declineApplication = (token, applicationId) => request("/api/decline-application", { token, applicationId });
