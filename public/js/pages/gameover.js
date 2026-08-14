@@ -17,7 +17,7 @@ export function gameoverPage(state) {
     `<div class="gameover-page">
       <div class="gameover-panel">
         <div class="gameover-head">
-          <div class="page-eyebrow">${icon("flag", 13)} 本次游戏结束 路 最近连接</div>
+          <div class="page-eyebrow">${icon("flag", 13)} 本次游戏结束 · 最近连接</div>
           <h1 class="page-title">玩完了，这次怎么样？</h1>
           <p class="page-sub">回答两个小问题就好。最近连接会保留，但不会自动变成永久好友。</p>
         </div>
@@ -27,7 +27,7 @@ export function gameoverPage(state) {
             ${avatarWrap(partner.avatarKey, 64, partner.online)}
             <div style="min-width:0">
               <div class="profile-name"><strong>${esc(partner.name || "玩家")}</strong></div>
-              <div class="profile-handle">${esc(partner.device || "PC")} 路 ${esc(session.title || "刚刚一起玩过")}</div>
+              <div class="profile-handle">${esc(partner.device || "PC")} · ${esc(session.title || "刚刚一起玩过")}</div>
             </div>
             ${statusPill("DONE")}
           </div>

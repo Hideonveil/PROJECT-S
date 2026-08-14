@@ -1,11 +1,12 @@
-﻿import { icon } from "../icons.js";
+import { icon } from "../icons.js";
 import { avatar } from "../avatar.js";
-import { brand, button, esc, statusPill } from "../ui.js";
+import { brand, button, esc, fragments, statusPill } from "../ui.js";
 import { DEVICES, GENRES } from "../data.js";
 
 export function welcomeHero(state) {
   return `<section class="welcome-left">
     <div class="node-field-wrap"><canvas data-node-field></canvas></div>
+    ${fragments()}
     <div class="welcome-copy">
       ${brand(46)}
       <div>

@@ -54,7 +54,7 @@ export function roomPage(state) {
         ${avatar}
         <div class="room-member-info">
           <div class="room-member-name">${esc(p.name || p.nickname || "玩家")}</div>
-          <div class="room-member-meta">${esc(p.device || "PC")} 路 ${exited ? "已退出本次游戏" : esc(p.playStyle || "正在游戏中")}</div>
+          <div class="room-member-meta">${esc(p.device || "PC")} · ${exited ? "已退出本次游戏" : esc(p.playStyle || "正在游戏中")}</div>
         </div>
         ${exited ? statusPill("DONE", "已退出") : statusPill("PLAYING", "PLAYING")}
       </div>`;

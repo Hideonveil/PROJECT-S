@@ -1,34 +1,80 @@
+/* PROJECT S beta - Prism Design Tokens */
 :root {
-  color-scheme: dark;
-  --ink-0: #05070b;
-  --ink-1: #0a0e15;
-  --ink-2: #10161f;
-  --ink-3: #182130;
-  --line: rgba(235, 242, 255, 0.08);
-  --line-strong: rgba(235, 242, 255, 0.16);
-  --paper: #f2f0ea;
-  --dim: #a3acb8;
-  --muted: #7b8594;
-  --signal: #c9ff3d;
-  --signal-soft: rgba(201, 255, 61, 0.08);
-  --signal-dim: rgba(201, 255, 61, 0.14);
-  --signal-border: rgba(201, 255, 61, 0.42);
-  --danger: #ff6267;
-  --danger-dim: rgba(255, 98, 103, 0.12);
-  --danger-border: rgba(255, 98, 103, 0.36);
-  --warm: #ffb454;
-  --warm-dim: rgba(255, 180, 84, 0.12);
-  --font-sans: Inter, "SF Pro Display", "Segoe UI", "Microsoft YaHei",
-    system-ui, sans-serif;
-  --font-mono: "SF Mono", "Cascadia Code", "JetBrains Mono", Consolas,
-    monospace;
-  --r-sm: 6px;
-  --r-md: 8px;
+  color-scheme: light;
+
+  /* pearl base */
+  --ink-0: #f6f4ee;
+  --ink-1: #ffffff;
+  --ink-2: #f1eee5;
+  --ink-3: #e8e3d6;
+
+  /* text */
+  --paper: #262a35;
+  --dim: #5d6472;
+  --muted: #9b9587;
+
+  /* lines */
+  --line: rgba(38, 42, 53, 0.09);
+  --line-strong: rgba(38, 42, 53, 0.18);
+
+  /* prism accents */
+  --prism-cyan: #a8ddf0;
+  --prism-lilac: #d3c4f7;
+  --prism-pink: #f6c9dc;
+  --prism-mint: #bfe9d2;
+  --prism-yellow: #f4e4b8;
+  --prism-blue: #c3d5f8;
+  --prism-peach: #f8d9c4;
+
+  /* brand violet */
+  --signal: #7d6cf2;
+  --signal-strong: #6854e6;
+  --signal-soft: rgba(125, 108, 242, 0.10);
+  --signal-dim: rgba(125, 108, 242, 0.18);
+  --signal-border: rgba(125, 108, 242, 0.45);
+
+  /* status */
+  --live: #2fa36b;
+  --live-soft: rgba(64, 181, 128, 0.14);
+  --danger: #df6a72;
+  --danger-dim: rgba(223, 106, 114, 0.10);
+  --danger-border: rgba(223, 106, 114, 0.35);
+  --warm: #d98d3c;
+  --warm-dim: rgba(221, 144, 64, 0.14);
+
+  /* ambient atmosphere (game theme swaps these) */
+  --ambient-a: #d3c4f7;
+  --ambient-b: #a8ddf0;
+  --ambient-c: #f6c9dc;
+
+  /* type */
+  --font-sans: "Inter", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", system-ui, sans-serif;
+  --font-display: "Space Grotesk", "Inter", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif;
+  --font-mono: "SF Mono", "Cascadia Code", "JetBrains Mono", Consolas, monospace;
+
+  /* radius */
+  --r-sm: 10px;
+  --r-md: 14px;
+  --r-lg: 22px;
   --r-pill: 999px;
-  --shadow-1: 0 16px 48px rgba(0, 0, 0, 0.4);
-  --shadow-2: 0 8px 24px rgba(0, 0, 0, 0.35);
+
+  /* shadow */
+  --shadow-1: 0 24px 60px rgba(92, 84, 150, 0.13);
+  --shadow-2: 0 8px 28px rgba(92, 84, 150, 0.10);
+  --shadow-pop: 0 2px 6px rgba(92, 84, 150, 0.08), 0 18px 44px rgba(92, 84, 150, 0.16);
+
   --header-h: 64px;
   --rail-w: 236px;
   --tabbar-h: 72px;
-  --max-w: 1120px;
+  --max-w: 1160px;
 }
+
+/* game world atmospheres */
+body[data-game-theme="minecraft"] { --ambient-a: #bfe9d2; --ambient-b: #e2ecb6; --ambient-c: #a8ddf0; }
+body[data-game-theme="deadlock"] { --ambient-a: #eec3cd; --ambient-b: #d9d4e2; --ambient-c: #f4d9b4; }
+body[data-game-theme="stardew"] { --ambient-a: #f4e4b8; --ambient-b: #cfe8bf; --ambient-c: #f6d9c0; }
+body[data-game-theme="valorant"] { --ambient-a: #f6c9d2; --ambient-b: #e8e6f0; --ambient-c: #ffd9c9; }
+body[data-game-theme="genshin"] { --ambient-a: #c9d9f6; --ambient-b: #d3c4f7; --ambient-c: #c2ece4; }
+body[data-game-theme="pubg"] { --ambient-a: #e3d9bd; --ambient-b: #cfd8c4; --ambient-c: #e8c9a8; }
+body[data-game-theme="hok"] { --ambient-a: #f2ddb0; --ambient-b: #f0c9c4; --ambient-c: #d9c4f0; }
+body[data-game-theme="league"] { --ambient-a: #bcd9ea; --ambient-b: #b7e3d9; --ambient-c: #c9c4f2; }

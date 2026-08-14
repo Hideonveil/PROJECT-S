@@ -49,7 +49,7 @@ export function connectionsPage(state) {
                       ${avatarWrap(c.avatarKey, 56, c.online)}
                       <div class="friend-meta">
                         <div class="friend-name">${esc(c.name)}</div>
-                        <div class="friend-last">${esc(c.gameName || "游戏")} 路 ${esc(timeLabel(c.playedAt))} 路 一起玩过 ${c.playCount || 1} 次</div>
+                        <div class="friend-last">${esc(c.gameName || "游戏")} · ${esc(timeLabel(c.playedAt))} · 一起玩过 ${c.playCount || 1} 次</div>
                         ${c.rating ? `<div class="friend-last">这次：${esc(ratingLabel(c.rating))}</div>` : ""}
                       </div>
                     </div>

@@ -14,15 +14,20 @@ function escAttr(value) {
   return esc(value).replaceAll("'", "&#39;");
 }
 
-function hexPoints(cx, cy, r) {
-  return Array.from({ length: 6 }, (_, i) => {
-    const a = (Math.PI / 180) * (60 * i - 90);
-    return `${(cx + r * Math.cos(a)).toFixed(1)},${(cy + r * Math.sin(a)).toFixed(1)}`;
-  }).join(" ");
+export function brandMark(size = 32) {
+  return `<svg class="brand-mark" width="${size}" height="${size}" viewBox="0 0 48 48" fill="none" aria-hidden="true"><defs><linearGradient id="ps-prism" x1="8" y1="40" x2="40" y2="8" gradientUnits="userSpaceOnUse"><stop stop-color="#7d6cf2"/><stop offset="0.55" stop-color="#a793f6"/><stop offset="1" stop-color="#a8ddf0"/></linearGradient></defs><polygon points="24,7 41,39 7,39" fill="url(#ps-prism)" fill-opacity="0.92" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><rect x="32.2" y="3.2" width="8.6" height="8.6" rx="1.6" transform="rotate(45 36.5 7.5)" fill="#ffffff" fill-opacity="0.7" stroke="currentColor" stroke-width="1.8"/><rect x="8" y="9" width="5" height="5" rx="1" fill="currentColor" fill-opacity="0.55"/></svg>`;
 }
 
-export function brandMark(size = 32) {
-  return `<svg class="brand-mark" width="${size}" height="${Math.round(size * 0.68)}" viewBox="0 0 64 44" fill="none" aria-hidden="true"><polygon points="${hexPoints(22, 22, 10)}" fill="currentColor" fill-opacity="0.16" stroke="currentColor" stroke-width="2.2"/><polygon points="${hexPoints(45, 11, 7)}" fill="none" stroke="currentColor" stroke-width="2" opacity="0.75"/><polygon points="${hexPoints(45, 33, 7)}" fill="none" stroke="currentColor" stroke-width="2" opacity="0.75"/><line x1="31" y1="20" x2="39" y2="12" stroke="currentColor" stroke-width="2"/><line x1="31" y1="24" x2="39" y2="32" stroke="currentColor" stroke-width="2"/></svg>`;
+/* floating game-world fragments: pure CSS shapes, cheap to render */
+export function fragments() {
+  return `<div class="fragments" aria-hidden="true">
+    <span class="frag frag--tri" style="top:5%;right:9%;width:150px;height:132px;--dur:16s;--rot:8deg"></span>
+    <span class="frag frag--rhombus frag--mid" style="top:13%;left:7%;width:66px;height:66px;--dur:13s;--delay:-4s"></span>
+    <span class="frag frag--pixel frag--desktop-only" style="bottom:18%;right:15%;width:52px;height:52px;--dur:11s;--delay:-2s"></span>
+    <span class="frag frag--tri frag--far" style="bottom:6%;left:11%;width:112px;height:98px;--dur:18s;--delay:-7s;--rot:-6deg"></span>
+    <span class="frag frag--rhombus frag--far frag--desktop-only" style="top:36%;right:36%;width:38px;height:38px;--dur:12s;--delay:-5s"></span>
+    <span class="frag frag--pixel frag--mid frag--desktop-only" style="top:55%;left:20%;width:32px;height:32px;--dur:10s;--delay:-3s"></span>
+  </div>`;
 }
 
 export function brand(size = 32, tag = true) {
@@ -104,6 +109,7 @@ export function playerCard(candidate, { pending = false } = {}) {
         <div class="player-card-handle">${esc(candidate.handle)}</div>
         ${candidate.online ? statusPill("LIVE") : statusPill("OFFLINE")}
       </div>
+      ${typeof candidate.matchScore === "number" ? `<div class="player-card-score"><strong>${Math.round(candidate.matchScore)}%</strong><span>匹配度</span></div>` : ""}
     </div>
     ${needSummary(candidate.need, { compact: true })}
     <div class="section" style="gap:8px">

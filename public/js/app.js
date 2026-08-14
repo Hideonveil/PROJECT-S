@@ -115,6 +115,8 @@ function render() {
   }
   const route = parseRoute();
   if (route.name !== "need" && route.name !== "welcome") DRAFT.dirty = false;
+  if (route.name === "need" && DRAFT.game) document.body.dataset.gameTheme = DRAFT.game;
+  else delete document.body.dataset.gameTheme;
 
   if (!state.authenticated && route.name !== "auth") {
     location.hash = "#/auth";
@@ -1012,7 +1014,7 @@ function exitRoomPrompt() {
         ${avatarWrap(partner.avatarKey, 56, partner.online)}
         <div>
           <div class="profile-name"><strong>${esc(partner.name || "玩家")}</strong></div>
-          <div class="profile-handle">${esc(partner.device || "PC")} 路 本次连接会保留在最近连接里</div>
+          <div class="profile-handle">${esc(partner.device || "PC")} · 本次连接会保留在最近连接里</div>
         </div>
       </div>
       <div class="form-actions">
@@ -1035,7 +1037,7 @@ async function confirmExitRoom() {
     const now = new Date();
     const time = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
     const game = GAME_BY_ID[room.need?.game || state.need.game] || {};
-    const title = `${game.name || state.need.game || "游戏"} 路 ${room.need?.mode || state.need.mode || ""}`;
+    const title = `${game.name || state.need.game || "游戏"} · ${room.need?.mode || state.need.mode || ""}`;
     closeSheet();
     update({
       room: null,

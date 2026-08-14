@@ -9,7 +9,7 @@ export function initNodeField(root = document) {
 export class NodeField {
   constructor(canvas, options = {}) {
     this.canvas = canvas;
-    this.options = { count: 36, accent: "#c9ff3d", dim: "#7f8ea0", ...options };
+    this.options = { count: 34, accent: "#8a7cf6", dim: "#b8b2a2", ...options };
     this.nodes = [];
     this.raf = 0;
     this.t = 0;
@@ -80,11 +80,11 @@ export class NodeField {
         const dy = a.y - b.y;
         const dist = Math.hypot(dx, dy);
         if (dist < link) {
-          const alpha = (1 - dist / link) * 0.16;
+          const alpha = (1 - dist / link) * 0.2;
           ctx.strokeStyle =
             a.accent || b.accent
-              ? `rgba(201, 255, 61, ${alpha * 1.4})`
-              : `rgba(127, 142, 160, ${alpha})`;
+              ? `rgba(138, 124, 246, ${alpha * 1.35})`
+              : `rgba(148, 142, 128, ${alpha})`;
           ctx.lineWidth = 0.7;
           ctx.beginPath();
           ctx.moveTo(a.x, a.y);

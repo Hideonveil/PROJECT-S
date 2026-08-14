@@ -1,10 +1,10 @@
 const PALETTES = [
-  { bg: "#111a26", face: "#d9e2ec", accent: "#c9ff3d", warm: "#ffb454", line: "#2c3b50" },
-  { bg: "#15131d", face: "#e2dcec", accent: "#7ee8fa", warm: "#ffcf6b", line: "#3a3352" },
-  { bg: "#14201a", face: "#d7e8d8", accent: "#c9ff3d", warm: "#ffb454", line: "#2e4a3c" },
-  { bg: "#1d1512", face: "#ecddcf", accent: "#ffb454", warm: "#ff6267", line: "#54362d" },
-  { bg: "#101a22", face: "#d4e4ee", accent: "#7ee8fa", warm: "#ffb454", line: "#254a5e" },
-  { bg: "#1b1610", face: "#eee2cd", accent: "#c9ff3d", warm: "#ffb454", line: "#544630" },
+  { bg: "#e9eefb", face: "#fdf8f0", accent: "#7d6cf2", warm: "#dd9040", line: "#c9cfdf" },
+  { bg: "#e8f3ee", face: "#fbf5ea", accent: "#4fb386", warm: "#e0a44c", line: "#c4d6cc" },
+  { bg: "#f7ecef", face: "#fdf6ee", accent: "#df6a72", warm: "#7d6cf2", line: "#e3cdd2" },
+  { bg: "#eef6fa", face: "#f5f2ea", accent: "#4aa8cc", warm: "#dd9040", line: "#c8dde8" },
+  { bg: "#f4f0e6", face: "#fbf8f0", accent: "#c9a24d", warm: "#df6a72", line: "#ddd5c2" },
+  { bg: "#efeaf9", face: "#f8f4ec", accent: "#8a76f5", warm: "#e0a44c", line: "#d5cdeb" },
 ];
 
 export function avatar(seed, size = 72, extra = "") {

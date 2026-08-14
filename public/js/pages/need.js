@@ -92,7 +92,7 @@ function gameStep(draft) {
       ${games
         .map(
           (g) => `<button type="button" class="flow-game-card ${draft.game === g.id ? "flow-game-card--on" : ""}" data-action="wizard-game" data-value="${g.id}" data-game-name="${esc(g.name)}" data-game-tag="${esc(g.tag)}">
-            <span class="flow-game-tile">${esc(g.name.slice(0, 2))}</span>
+            <span class="flow-game-tile flow-game-tile--${g.id}"></span>
             <span class="flow-game-meta">
               <span class="flow-game-name">${esc(g.name)}</span>
               <span class="flow-game-tag">${esc(g.tag)}</span>
