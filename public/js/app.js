@@ -2209,6 +2209,7 @@ async function submitAuth() {
   }
 }
 
+render();
 ONLINE = await detectOnline();
 await restoreSession();
 if (ONLINE && state.authenticated && state.onboarded && state.token) connectEvents();
