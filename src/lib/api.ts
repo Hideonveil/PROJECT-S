@@ -33,14 +33,19 @@ export function generateRoomCode(): string {
   return randomPart(5);
 }
 
-export async function poolCounts(): Promise<{ online: number; matching: number; users: number }> {
+export async function poolCounts(): Promise<{ online: number; matching: number; users: number; playing: number }> {
   const recentCutoff = new Date(Date.now() - 2 * 60 * 1000).toISOString();
-  const [{ count: matching }, { count: online }, { count: users }] = await Promise.all([
+  const [{ count: matching }, { count: online }, { count: users }, { data: playingRooms }] = await Promise.all([
     supabaseAdmin().from("match_requests").select("id", { count: "exact", head: true }).eq("status", "matching").gt("expires_at", new Date().toISOString()),
     supabaseAdmin().from("profiles").select("id", { count: "exact", head: true }).eq("online", true).gte("last_seen", recentCutoff),
     supabaseAdmin().from("profiles").select("id", { count: "exact", head: true }),
+    supabaseAdmin().from("rooms").select("id").eq("status", "playing"),
   ]);
-  return { online: online ?? 0, matching: matching ?? 0, users: users ?? 0 };
+  const roomIds = (playingRooms || []).map((r) => r.id);
+  const { count: playing } = roomIds.length
+    ? await supabaseAdmin().from("room_members").select("id", { count: "exact", head: true }).eq("status", "active").in("room_id", roomIds)
+    : { count: 0 };
+  return { online: online ?? 0, matching: matching ?? 0, users: users ?? 0, playing: playing ?? 0 };
 }
 
 export async function activeRequest(profileId: string): Promise<MatchRequest | null> {

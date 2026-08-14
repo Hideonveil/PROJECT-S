@@ -67,6 +67,7 @@ export async function GET(request: Request) {
       user: await profileWithGames(profile),
       online: counts.online,
       matching: counts.matching,
+      playing: counts.playing,
       needs,
       friends,
       applications,

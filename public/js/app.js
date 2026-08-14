@@ -476,7 +476,7 @@ function roomShapeChanged(next, prev) {
 function applyServerSnapshot(data) {
   const routeName = parseRoute().name;
   const patch = {
-    match: { ...state.match, pool: data.matching ?? data.online ?? state.match.pool },
+    match: { ...state.match, pool: data.matching ?? data.online ?? state.match.pool, playing: data.playing ?? state.match.playing },
     matchRequestId: data.matchRequestId || null,
   };
   if (data.user) patch.user = data.user;
@@ -538,6 +538,12 @@ function applyServerSnapshot(data) {
   }
   const roomChanged = patch.room ? roomShapeChanged(patch.room, state.room) : false;
   update(patch);
+  if (routeName === "home") {
+    const onlineEl = document.getElementById("home-online-count");
+    const playingEl = document.getElementById("home-playing-count");
+    if (onlineEl) onlineEl.textContent = String(Math.max(0, state.match.pool ?? 0));
+    if (playingEl) playingEl.textContent = String(Math.max(0, state.match.playing ?? 0));
+  }
   if (patch.room && routeName !== "room") {
     navigate("#/room");
   } else if (patch.room === null && routeName === "room") {
@@ -658,7 +664,8 @@ function connectEvents() {
     hello: applyServerSnapshot,
     online: (data) => {
       const pool = data.matching ?? data.online ?? state.match.pool;
-      update({ match: { ...state.match, pool } });
+      const playing = data.playing ?? state.match.playing;
+      update({ match: { ...state.match, pool, playing } });
       const routeName = parseRoute().name;
       if (routeName === "home") render();
       if (routeName === "matching") {
@@ -667,7 +674,7 @@ function connectEvents() {
       }
     },
     needs: (data) => {
-      const patch = { match: { ...state.match, pool: data.matching ?? data.online ?? state.match.pool } };
+      const patch = { match: { ...state.match, pool: data.matching ?? data.online ?? state.match.pool, playing: data.playing ?? state.match.playing } };
       const routeName = parseRoute().name;
       if (state.need && ["matching", "results"].includes(routeName)) {
         const list = (data.needs || []).filter(
@@ -931,6 +938,7 @@ async function startMatch() {
     match: {
       status: "active",
       pool: state.match.pool ?? 0,
+      playing: state.match.playing ?? 0,
       candidates: [],
       pending: null,
     },
@@ -943,6 +951,7 @@ async function startMatch() {
         ...state.match,
         status: candidates.length ? "matched" : "active",
         pool: data.matching ?? data.online ?? state.match.pool,
+        playing: data.playing ?? state.match.playing,
         matchRequestId: data.requestId || null,
         candidates,
       },
@@ -1184,7 +1193,7 @@ async function rematchRecent(id) {
   }
   update({
     need,
-    match: { status: "active", pool: state.match.pool ?? 0, candidates: [], pending: null },
+    match: { status: "active", pool: state.match.pool ?? 0, playing: state.match.playing ?? 0, candidates: [], pending: null },
   });
   try {
     const data = await api.postNeed(state.token, need);
@@ -1193,6 +1202,7 @@ async function rematchRecent(id) {
         ...state.match,
         status: "active",
         pool: data.matching ?? data.online ?? state.match.pool,
+        playing: data.playing ?? state.match.playing,
         matchRequestId: data.requestId || null,
         candidates: normalizeCandidates(data.candidates || []),
       },
@@ -1245,6 +1255,7 @@ async function rematchFriend(id) {
     match: {
       status: "active",
       pool: state.match.pool ?? 0,
+      playing: state.match.playing ?? 0,
       candidates: [],
       pending: null,
     },
@@ -1256,6 +1267,7 @@ async function rematchFriend(id) {
         ...state.match,
         status: "active",
         pool: data.matching ?? data.online ?? state.match.pool,
+        playing: data.playing ?? state.match.playing,
         matchRequestId: data.requestId || null,
         candidates: normalizeCandidates(data.candidates || []),
       },
@@ -1281,6 +1293,7 @@ async function rematchNow() {
         ...state.match,
         status: "active",
         pool: data.matching ?? data.online ?? state.match.pool,
+        playing: data.playing ?? state.match.playing,
         matchRequestId: data.requestId || null,
         candidates: normalizeCandidates(data.candidates || []),
       },

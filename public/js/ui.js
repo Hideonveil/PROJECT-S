@@ -213,7 +213,14 @@ export function homeShell(state, content, active = "home") {
   return `<div class="home-shell">
     ${mirrors()}
     <header class="home-topbar">
-      <div class="home-top-left">${brand(40, false)}</div>
+      <div class="home-top-left">
+        ${brand(40, false)}
+        <div class="home-brand-live">
+          <div class="home-brand-slogan">总有人想一起玩。</div>
+          <div class="home-brand-stat"><span class="home-brand-dot home-brand-dot--online"></span><b id="home-online-count">${Math.max(0, state.match.pool ?? 0)}</b> 人在线找队友</div>
+          <div class="home-brand-stat"><span class="home-brand-dot home-brand-dot--playing"></span><b id="home-playing-count">${Math.max(0, state.match.playing ?? 0)}</b> 人正在游玩中</div>
+        </div>
+      </div>
       <div class="home-top-right">
         <nav class="home-nav" aria-label="主导航">
           ${navItems

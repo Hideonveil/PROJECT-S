@@ -29,6 +29,7 @@ export function defaultState() {
     match: {
       status: "idle",
       pool: 0,
+      playing: 0,
       candidates: [],
       pending: null,
     },
