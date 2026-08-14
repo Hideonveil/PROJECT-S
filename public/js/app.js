@@ -42,7 +42,6 @@ let activeField = null;
 let timers = [];
 let ONLINE = false;
 let eventSourceClose = null;
-let pendingVerify = null;
 
 function clearTimers() {
   timers.forEach((t) => {
@@ -183,7 +182,7 @@ function render() {
 }
 
 function prepareOnboardDraft() {
-  DRAFT.nickname = state.user.nickname || "";
+  DRAFT.nickname = state.user.nickname || state.authUsername || "";
   DRAFT.avatarKey = state.user.avatarKey || "me-1";
   DRAFT.device = state.user.device || "PC";
   DRAFT.gender = state.user.gender || "保密";
@@ -1159,13 +1158,10 @@ document.addEventListener("click", (event) => {
       navigate("#/need");
     },
     "switch-auth-mode": (value) => {
-      pendingVerify = null;
-      update({ authMode: value === "register" ? "register" : "login", authVerify: null, authError: "", authNotice: "" });
+      update({ authMode: value === "register" ? "register" : "login", authError: "", authNotice: "" });
       render();
     },
     "auth-submit": () => submitAuth(),
-    "verify-email": () => submitVerification(),
-    "resend-verification": () => resendVerification(),
     "pick-gender": (value) => {
       DRAFT.gender = value;
       DRAFT.dirty = true;
@@ -1286,33 +1282,25 @@ async function detectOnline() {
 
 function mapAuthError(err) {
   const message = String(err?.message || err?.error_description || err || "");
-  if (message.includes("Invalid login credentials")) return "邮箱或密码错误";
-  if (message.includes("Email not confirmed") || message.includes("email_not_confirmed")) return "邮箱还未验证，请先查收验证邮件";
-  if (message.includes("User already registered") || message.includes("email_exists")) return "该邮箱已注册，请直接登录";
+  if (message.includes("Invalid login credentials")) return "用户名或密码错误";
+  if (message.includes("User already registered") || message.includes("email_exists")) return "用户名已存在，请直接登录";
   if (message.includes("Password should be at least")) return "密码至少 6 位";
   if (message.includes("Failed to fetch") || message.includes("NetworkError") || message.includes("fetch")) return "网络连接失败，请检查网络后重试";
-  if (message.includes("unexpected_failure") || message.includes("Error sending confirmation")) return "注册失败：验证邮件发送失败，请稍后重试或联系管理员";
-  if (message.includes("Missing email")) return "请输入邮箱";
   if (message.includes("Missing password")) return "请输入密码";
-  if (message.includes("Token has expired") || message.includes("otp_expired")) return "验证码已过期，请重新获取";
-  if (message.includes("Token has invalid") || message.includes("invalid token") || message.includes("otp")) return "验证码错误或已失效";
-  if (message.includes("rate limit") || message.includes("over_email_send_rate_limit")) return "验证邮件发送过于频繁，请稍后再试（约 1 小时后恢复）";
   return message || "操作失败，请稍后重试";
 }
 
 async function handleAuthSuccess() {
-  pendingVerify = null;
   const session = await api.getSession();
   if (!session?.access_token) throw new Error("登录状态失效，请重试");
   const status = await api.sessionStatus(session.access_token);
   update({
     authenticated: true,
     token: session.access_token,
-    authEmail: session.user?.email || status.email || "",
+    authUsername: String(session.user?.user_metadata?.username || ""),
     onboarded: !!status.profile,
     authError: "",
     authNotice: "",
-    authVerify: null,
   });
   if (status.profile) {
     update({ user: status.profile });
@@ -1348,7 +1336,7 @@ async function restoreSession() {
     update({
       authenticated: true,
       token: session.access_token,
-      authEmail: status.email || session.user?.email || "",
+      authUsername: String(session.user?.user_metadata?.username || ""),
       onboarded: !!status.profile,
       authError: "",
       authNotice: "",
@@ -1370,85 +1358,26 @@ async function restoreSession() {
   }
 }
 
-async function submitVerification() {
-  const form = document.querySelector('[data-form="verify"]');
-  if (!form) return;
-  const submitBtn = form.querySelector('[data-action="verify-email"]');
-  if (submitBtn?.disabled) return;
-  const code = String(new FormData(form).get("code") || "").trim();
-  const email = pendingVerify?.email || state.authVerify?.email || "";
-  if (!email) {
-    update({ authError: "验证信息已失效，请重新注册" });
-    render();
-    return;
-  }
-  if (!/^\d{6}$/.test(code)) {
-    update({ authError: "请输入 6 位数字验证码" });
-    render();
-    return;
-  }
-  if (submitBtn) {
-    submitBtn.disabled = true;
-    submitBtn.textContent = "验证中…";
-  }
-  update({ authError: "", authNotice: "" });
-  try {
-    const data = await api.verifyEmail(email, code);
-    if (data.session?.access_token) {
-      pendingVerify = null;
-      update({ authVerify: null });
-      await handleAuthSuccess();
-      return;
-    }
-    if (pendingVerify?.password) {
-      await api.signIn(email, pendingVerify.password);
-      pendingVerify = null;
-      update({ authVerify: null });
-      await handleAuthSuccess();
-      return;
-    }
-    pendingVerify = null;
-    update({ authVerify: null, authMode: "login", authEmail: email, authNotice: "邮箱已通过验证，请登录" });
-    render();
-  } catch (err) {
-    update({ authError: mapAuthError(err) });
-    render();
-  }
-}
-
-async function resendVerification() {
-  const email = pendingVerify?.email || state.authVerify?.email || "";
-  if (!email) return;
-  const resendBtn = document.querySelector('[data-action="resend-verification"]');
-  if (resendBtn) {
-    resendBtn.disabled = true;
-    resendBtn.textContent = "发送中…";
-  }
-  update({ authError: "", authNotice: "" });
-  try {
-    await api.resendSignupEmail(email, pendingVerify?.password);
-    update({ authNotice: "验证邮件已重新发送，请查收（包括垃圾邮件）" });
-  } catch (err) {
-    update({ authError: mapAuthError(err) });
-  }
-  render();
-}
-
 async function submitAuth() {
   const form = document.querySelector('[data-form="auth"]');
   if (!form) return;
   const submitBtn = form.querySelector('[data-action="auth-submit"]');
   if (submitBtn?.disabled) return;
   const fd = new FormData(form);
-  const email = String(fd.get("email") || "").trim().toLowerCase();
+  const username = String(fd.get("username") || "").trim();
   const password = String(fd.get("password") || "");
-  if (!email || !password) {
-    update({ authError: "请输入邮箱和密码" });
+  if (!username || !password) {
+    update({ authError: "请输入用户名和密码" });
     render();
     return;
   }
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    update({ authError: "邮箱格式不正确" });
+  if (/\s/.test(username)) {
+    update({ authError: "用户名不能包含空格" });
+    render();
+    return;
+  }
+  if (username.length < 2 || username.length > 24) {
+    update({ authError: "用户名需为 2-24 个字符" });
     render();
     return;
   }
@@ -1463,22 +1392,19 @@ async function submitAuth() {
   }
   update({ authError: "", authNotice: "" });
   try {
-    if (state.authMode === "register") {
-      const data = await api.signUp(email, password);
-      if (data.session?.access_token) {
-        await handleAuthSuccess();
-      } else {
-        pendingVerify = { email, password };
-        update({ authVerify: { email }, authEmail: email, authNotice: "验证码已发送，请检查邮箱（包括垃圾邮件）。" });
-        render();
-      }
-    } else {
-      await api.signIn(email, password);
-      await handleAuthSuccess();
-    }
+    const data = state.authMode === "register"
+      ? await api.registerAccount(username, password)
+      : await api.loginByUsername(username, password);
+    await api.signIn(data.email, password);
+    await handleAuthSuccess();
   } catch (err) {
     update({ authError: mapAuthError(err) });
     render();
+  } finally {
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = state.authMode === "register" ? "注册" : "登录";
+    }
   }
 }
 

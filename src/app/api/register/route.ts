@@ -21,7 +21,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ user: await profileWithGames(existing), token });
     }
 
-    const nickname = String(body.nickname || "").trim().slice(0, 12);
+    const nickname = String(body.nickname || authUser.user_metadata?.username || "").trim().slice(0, 12);
     if (!nickname || !Array.isArray(body.games) || !body.games.length) {
       return NextResponse.json({ error: "昵称和常玩游戏不能为空" }, { status: 400 });
     }

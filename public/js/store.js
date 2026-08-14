@@ -5,11 +5,10 @@ const KEY = "node-mvp-v1";
 export function defaultState() {
   return {
     authenticated: false,
-    authEmail: "",
+    authUsername: "",
     authMode: "login",
     authError: "",
     authNotice: "",
-    authVerify: null,
     onboarded: false,
     user: {
       id: "",

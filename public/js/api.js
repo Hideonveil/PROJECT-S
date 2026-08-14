@@ -50,34 +50,12 @@ export async function currentToken() {
   return authToken;
 }
 
-export async function signUp(email, password) {
-  const sb = await getSupabase();
-  const { data, error } = await sb.auth.signUp({
-    email,
-    password,
-    options: { emailRedirectTo: `${window.location.origin}/#/auth` },
-  });
-  if (error) throw error;
-  return data;
+export async function registerAccount(username, password) {
+  return request("/api/auth/register", { username, password });
 }
 
-export async function verifyEmail(email, token) {
-  const sb = await getSupabase();
-  const { data, error } = await sb.auth.verifyOtp({ email, token, type: "signup" });
-  if (error) throw error;
-  return data;
-}
-
-export async function resendSignupEmail(email, password) {
-  const sb = await getSupabase();
-  const options = { emailRedirectTo: `${window.location.origin}/#/auth` };
-  if (typeof sb.auth.resend === "function") {
-    const { error } = await sb.auth.resend({ type: "signup", email, options });
-    if (!error) return;
-    if (!password) throw error;
-  }
-  const { error } = await sb.auth.signUp({ email, password, options });
-  if (error) throw error;
+export async function loginByUsername(username, password) {
+  return request("/api/auth/login", { username, password });
 }
 
 export async function signIn(email, password) {
