@@ -22,8 +22,11 @@ export async function POST(request: Request) {
     }
 
     const nickname = String(body.nickname || authUser.user_metadata?.username || "").trim().slice(0, 12);
-    if (!nickname || !Array.isArray(body.games) || !body.games.length) {
-      return NextResponse.json({ error: "昵称和常玩游戏不能为空" }, { status: 400 });
+    const genres = Array.isArray(body.genres)
+      ? body.genres.map((g: unknown) => String(g)).filter(Boolean).slice(0, 12)
+      : [];
+    if (!nickname || !genres.length) {
+      return NextResponse.json({ error: "昵称和常玩游戏类型不能为空" }, { status: 400 });
     }
 
     let profileId = "";
@@ -36,6 +39,7 @@ export async function POST(request: Request) {
           avatar_key: String(body.avatarKey || "me-1"),
           device: String(body.device || "PC"),
           gender: String(body.gender || "保密"),
+          genres,
           play_style: String(body.playStyle || ""),
           voice: body.voice !== false,
           online: true,
@@ -51,18 +55,6 @@ export async function POST(request: Request) {
       if (attempt === 5 || !String(error?.message || "").toLowerCase().includes("friend_code")) {
         return NextResponse.json({ error: error?.message || "注册失败，请稍后重试" }, { status: 500 });
       }
-    }
-
-    const gameRows = (body.games as Array<Record<string, unknown>>).map((g) => ({
-      user_id: profileId,
-      game_id: String(g.gameId || ""),
-      role: String(g.role || ""),
-      level: Number(g.level || 60),
-      win_rate: String(g.winRate || "50%"),
-      note: String(g.note || ""),
-    }));
-    if (gameRows.length) {
-      await admin.from("user_games").insert(gameRows);
     }
 
     const { data: profile } = await admin.from("profiles").select("*").eq("id", profileId).single();

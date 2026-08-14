@@ -3,7 +3,7 @@ import { avatar, avatarWrap, paintAvatars } from "./avatar.js";
 import { initNodeField } from "./field.js";
 import { button, esc, needSummary, shell, toast } from "./ui.js";
 import { state, update, resetState } from "./store.js";
-import { DEVICES, GAME_BY_ID, GAMES } from "./data.js";
+import { DEVICES, GAME_BY_ID, GAMES, GENRES } from "./data.js";
 import * as api from "./api.js";
 import { authPage } from "./pages/auth.js";
 import { welcomePage } from "./pages/welcome.js";
@@ -24,7 +24,7 @@ const DRAFT = {
   avatarKey: state.user.avatarKey,
   device: state.user.device,
   gender: state.user.gender || "保密",
-  games: (state.user.games || []).map((g) => g.gameId),
+  genres: state.user.genres || [],
   playStyle: state.user.playStyle,
   game: state.need.game,
   mode: state.need.mode,
@@ -186,7 +186,7 @@ function prepareOnboardDraft() {
   DRAFT.avatarKey = state.user.avatarKey || "me-1";
   DRAFT.device = state.user.device || "PC";
   DRAFT.gender = state.user.gender || "保密";
-  DRAFT.games = (state.user.games || []).map((g) => g.gameId);
+  DRAFT.genres = state.user.genres || [];
   DRAFT.playStyle = state.user.playStyle || "";
 }
 
@@ -261,6 +261,8 @@ function normalizeCandidates(list) {
     device: c.device || "PC",
     online: c.online !== false,
     games: c.games || [],
+    genres: c.genres || [],
+    playStyle: c.playStyle || "",
     need: c.need || state.need,
     reasons: c.reasons?.length ? c.reasons : ["此刻在线 · 真人玩家", "匹配池实时候选"],
     compat: [
@@ -280,6 +282,8 @@ function normalizeServerRoom(room) {
     handle: other.handle || `${other.nickname || "玩家"}#${String(other.id || "").slice(-4)}`,
     kind: "player",
     games: other.games || [],
+    genres: other.genres || [],
+    playStyle: other.playStyle || "",
     need: other.need || room.need || state.need,
   };
   return {
@@ -477,8 +481,8 @@ function connectEvents() {
 
 async function completeOnboard() {
   syncDraftFromDom("onboard");
-  if (!DRAFT.nickname.trim() || !DRAFT.games.length) {
-    toast("昵称和常玩游戏至少填一项");
+  if (!DRAFT.nickname.trim() || !DRAFT.genres.length) {
+    toast("昵称和常玩游戏类型至少选一项");
     return;
   }
   const user = {
@@ -488,19 +492,7 @@ async function completeOnboard() {
     device: DRAFT.device,
     gender: DRAFT.gender || "保密",
     playStyle: DRAFT.playStyle,
-    games: DRAFT.games.map((gameId) => {
-      const existing = state.user.games.find((g) => g.gameId === gameId);
-      const game = GAME_BY_ID[gameId];
-      return (
-        existing || {
-          gameId,
-          role: game?.roles?.[0] || "输出",
-          level: 60,
-          winRate: "50%",
-          note: DRAFT.playStyle,
-        }
-      );
-    }),
+    genres: DRAFT.genres,
   };
   if (!ONLINE) {
     toast("服务暂不可用，请稍后重试");
@@ -512,7 +504,7 @@ async function completeOnboard() {
       avatarKey: user.avatarKey,
       device: user.device,
       gender: user.gender,
-      games: user.games,
+      genres: user.genres,
       playStyle: user.playStyle,
       voice: user.voice,
     });
@@ -818,8 +810,8 @@ function closeSheet() {
 function openProfileEdit() {
   const user = state.user;
   DRAFT.avatarKey = user.avatarKey;
-  DRAFT.games = (user.games || []).map((g) => g.gameId);
-  const selected = (user.games || []).map((g) => g.gameId);
+  DRAFT.genres = user.genres || [];
+  const selected = [...DRAFT.genres];
   showSheet(`
     <div class="sheet" role="dialog" aria-modal="true" aria-label="编辑游戏身份">
       <div class="sheet-head">
@@ -863,9 +855,9 @@ function openProfileEdit() {
           </select>
         </div>
         <div class="field">
-          <span class="label">常玩游戏</span>
-          <div class="chip-group" data-chip-group="edit-games">
-            ${GAMES.map((g) => `<button type="button" class="chip ${selected.includes(g.id) ? "chip--on" : ""}" data-action="toggle-game" data-value="${g.id}">${esc(g.name)}</button>`).join("")}
+          <span class="label">常玩游戏类型</span>
+          <div class="chip-group" data-chip-group="edit-genres">
+            ${GENRES.map((g) => `<button type="button" class="chip ${selected.includes(g) ? "chip--on" : ""}" data-action="toggle-genre" data-value="${g}">${esc(g)}</button>`).join("")}
           </div>
         </div>
         <div class="field">
@@ -888,13 +880,7 @@ async function saveProfile() {
   const device = String(fd.get("device") || state.user.device);
   const gender = String(fd.get("gender") || state.user.gender || "保密");
   const playStyle = String(fd.get("playStyle") || "").trim() || state.user.playStyle;
-  const games = DRAFT.games.length
-    ? DRAFT.games.map((gameId) => {
-        const existing = state.user.games.find((g) => g.gameId === gameId);
-        const game = GAME_BY_ID[gameId];
-        return existing || { gameId, role: game?.roles?.[0] || "输出", level: 60, winRate: "50%", note: playStyle };
-      })
-    : state.user.games;
+  const genres = DRAFT.genres;
   if (!ONLINE) {
     toast("服务暂不可用，请稍后重试");
     return;
@@ -906,7 +892,7 @@ async function saveProfile() {
       gender,
       playStyle,
       avatarKey: DRAFT.avatarKey,
-      games,
+      genres,
       voice: state.user.voice,
     });
     update({ user: { ...state.user, ...data.user } });
@@ -1099,21 +1085,11 @@ document.addEventListener("click", (event) => {
     return;
   }
 
-  if (action === "toggle-game") {
-    const group = actionEl.closest("[data-chip-group]");
-    const isEdit = group?.dataset.chipGroup === "edit-games";
-    if (isEdit) {
-      const selected = new Set(DRAFT.games);
-      if (selected.has(value)) selected.delete(value);
-      else selected.add(value);
-      DRAFT.games = [...selected];
-      actionEl.classList.toggle("chip--on");
-      return;
-    }
-    const selected = new Set(DRAFT.games);
+  if (action === "toggle-genre") {
+    const selected = new Set(DRAFT.genres || []);
     if (selected.has(value)) selected.delete(value);
     else selected.add(value);
-    DRAFT.games = [...selected];
+    DRAFT.genres = [...selected];
     actionEl.classList.toggle("chip--on");
     return;
   }
@@ -1315,7 +1291,7 @@ async function handleAuthSuccess() {
     navigate("#/home");
     toast(`欢迎回来，${state.user.nickname}`);
   } else {
-    update({ user: { ...state.user, nickname: "", avatarKey: "me-1", device: "PC", gender: "保密", games: [], playStyle: "" } });
+    update({ user: { ...state.user, nickname: "", avatarKey: "me-1", device: "PC", gender: "保密", games: [], genres: [], playStyle: "" } });
     navigate("#/welcome");
   }
 }
@@ -1351,7 +1327,7 @@ async function restoreSession() {
         // keep profile-only state
       }
     } else {
-      update({ user: { ...state.user, nickname: "", avatarKey: "me-1", device: "PC", gender: "保密", games: [], playStyle: "" } });
+      update({ user: { ...state.user, nickname: "", avatarKey: "me-1", device: "PC", gender: "保密", games: [], genres: [], playStyle: "" } });
     }
   } catch {
     resetState();

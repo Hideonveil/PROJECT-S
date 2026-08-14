@@ -1,19 +1,14 @@
 import { icon } from "../icons.js";
 import { avatarWrap } from "../avatar.js";
 import { button, esc, needSummary, shell, statusPill } from "../ui.js";
-import { GAME_BY_ID } from "../data.js";
+
 
 export function profilePage(state, candidate) {
   const pending = state.match.pending === candidate.id;
-  const gameLines = (candidate.games || [])
-    .map((g) => {
-      const game = GAME_BY_ID[g.gameId] || { name: g.gameId };
-      return `<div class="game-line">
-        <div class="game-line-main"><span class="game-line-name">${esc(game.name)}</span><span class="game-line-meta">${esc(g.role)} · ${esc(g.note || "")}</span></div>
-        <div class="game-line-stats"><span>Lv.${esc(g.level || "-")}</span><span>${esc(g.winRate || "-")}</span></div>
-      </div>`;
-    })
-    .join("");
+  const genres = candidate.genres || [];
+  const genreTags = genres.length
+    ? `<div class="chip-group">${genres.map((g) => `<span class="chip chip--on">${esc(g)}</span>`).join("")}</div>`
+    : `<span class="dim" style="font-size:13px">未填写常玩游戏类型</span>`;
 
   const compat = (candidate.compat || [])
     .map(
@@ -46,7 +41,7 @@ export function profilePage(state, candidate) {
             <span class="reason-tag reason-tag--neutral">${candidate.need.voice ? icon("mic", 13) + " 开麦" : icon("volumeX", 13) + " 闭麦"}</span>
             <span class="reason-tag reason-tag--neutral">${icon("shieldCheck", 13)} 基础身份已验证</span>
           </div>
-          <p class="profile-bio">${esc(candidate.games?.[0]?.note || "正在等待这一局。")}</p>
+          <p class="profile-bio">${esc(candidate.playStyle || "正在等待这一局。")}</p>
         </div>
         <div class="card card--pad-lg" style="display:flex;flex-direction:column;gap:14px">
           ${needSummary(candidate.need)}
@@ -61,12 +56,12 @@ export function profilePage(state, candidate) {
           <div>${compat}</div>
         </div>
         <div class="card">
-          <div class="card-title" style="margin-bottom:4px">游戏身份</div>
-          <div class="game-identity">${gameLines}</div>
+          <div class="card-title" style="margin-bottom:4px">常玩游戏类型</div>
+          ${genreTags}
           <hr class="divider" />
           <div class="kv-row">
             <div class="kv-label">${icon("activity", 14)}打法风格</div>
-            <div class="kv-value">${esc(candidate.games?.[0]?.note || "待补充")}</div>
+            <div class="kv-value">${esc(candidate.playStyle || "待补充")}</div>
           </div>
           <div class="kv-row">
             <div class="kv-label">${icon("mic", 14)}语音</div>

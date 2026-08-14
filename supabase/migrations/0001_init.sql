@@ -245,30 +245,46 @@ alter table public.matches enable row level security;
 alter table public.messages enable row level security;
 
 -- games: everyone can read the catalog
+drop policy if exists "games_select" on public.games;
 create policy "games_select" on public.games for select to anon, authenticated using (true);
 
 -- profiles: all signed-in players are visible (matching pool / player pages)
+drop policy if exists "profiles_select" on public.profiles;
 create policy "profiles_select" on public.profiles for select to authenticated using (true);
+drop policy if exists "profiles_insert_own" on public.profiles;
 create policy "profiles_insert_own" on public.profiles for insert to authenticated with check (auth_user_id = auth.uid());
+drop policy if exists "profiles_update_own" on public.profiles;
 create policy "profiles_update_own" on public.profiles for update to authenticated using (auth_user_id = auth.uid()) with check (auth_user_id = auth.uid());
 
 -- user_games: visible to all signed-in players, editable by owner
+drop policy if exists "user_games_select" on public.user_games;
 create policy "user_games_select" on public.user_games for select to authenticated using (true);
+drop policy if exists "user_games_insert_own" on public.user_games;
 create policy "user_games_insert_own" on public.user_games for insert to authenticated with check (user_id = public.current_profile_id());
+drop policy if exists "user_games_update_own" on public.user_games;
 create policy "user_games_update_own" on public.user_games for update to authenticated using (user_id = public.current_profile_id()) with check (user_id = public.current_profile_id());
+drop policy if exists "user_games_delete_own" on public.user_games;
 create policy "user_games_delete_own" on public.user_games for delete to authenticated using (user_id = public.current_profile_id());
 
 -- match_requests: pool is visible to all signed-in players
+drop policy if exists "match_requests_select" on public.match_requests;
 create policy "match_requests_select" on public.match_requests for select to authenticated using (true);
+drop policy if exists "match_requests_insert_own" on public.match_requests;
 create policy "match_requests_insert_own" on public.match_requests for insert to authenticated with check (user_id = public.current_profile_id());
+drop policy if exists "match_requests_update_own" on public.match_requests;
 create policy "match_requests_update_own" on public.match_requests for update to authenticated using (user_id = public.current_profile_id()) with check (user_id = public.current_profile_id());
+drop policy if exists "match_requests_delete_own" on public.match_requests;
 create policy "match_requests_delete_own" on public.match_requests for delete to authenticated using (user_id = public.current_profile_id());
 
 -- applications: only the two involved players can see or act on a request
+drop policy if exists "applications_select_involved" on public.applications;
 create policy "applications_select_involved" on public.applications for select to authenticated using (from_user_id = public.current_profile_id() or to_user_id = public.current_profile_id());
+drop policy if exists "applications_insert_own" on public.applications;
 create policy "applications_insert_own" on public.applications for insert to authenticated with check (from_user_id = public.current_profile_id());
+drop policy if exists "applications_update_involved" on public.applications;
 create policy "applications_update_involved" on public.applications for update to authenticated using (from_user_id = public.current_profile_id() or to_user_id = public.current_profile_id()) with check (from_user_id = public.current_profile_id() or to_user_id = public.current_profile_id());
 -- matches: participants can see the match record
+drop policy if exists "matches_select_involved" on public.matches;
 create policy "matches_select_involved" on public.matches for select to authenticated using (
   exists (
     select 1 from public.match_requests mr
@@ -278,11 +294,13 @@ create policy "matches_select_involved" on public.matches for select to authenti
 );
 
 -- rooms: only members can see the room
+drop policy if exists "rooms_select_member" on public.rooms;
 create policy "rooms_select_member" on public.rooms for select to authenticated using (exists (
   select 1 from public.room_members rm where rm.room_id = public.rooms.id and rm.user_id = public.current_profile_id()
 ));
 
 -- room_members: a player can see rows they belong to, plus other members of their rooms
+drop policy if exists "room_members_select_own" on public.room_members;
 create policy "room_members_select_own" on public.room_members for select to authenticated using (
   user_id = public.current_profile_id()
   or room_id in (
@@ -290,12 +308,14 @@ create policy "room_members_select_own" on public.room_members for select to aut
   )
 );
 -- messages: room members can read and send messages
+drop policy if exists "messages_select_member" on public.messages;
 create policy "messages_select_member" on public.messages for select to authenticated using (
   exists (
     select 1 from public.room_members rm
     where rm.room_id = public.messages.room_id and rm.user_id = public.current_profile_id()
   )
 );
+drop policy if exists "messages_insert_member" on public.messages;
 create policy "messages_insert_member" on public.messages for insert to authenticated with check (
   sender_id = public.current_profile_id()
   and exists (
@@ -305,6 +325,7 @@ create policy "messages_insert_member" on public.messages for insert to authenti
 );
 
 -- sessions: only participants can see the session
+drop policy if exists "sessions_select_participant" on public.sessions;
 create policy "sessions_select_participant" on public.sessions for select to authenticated using (
   exists (
     select 1 from jsonb_array_elements_text(public.sessions.players) p
@@ -313,14 +334,21 @@ create policy "sessions_select_participant" on public.sessions for select to aut
 );
 
 -- friendships: each player can only see their own rows
+drop policy if exists "friendships_select_own" on public.friendships;
 create policy "friendships_select_own" on public.friendships for select to authenticated using (user_id = public.current_profile_id());
+drop policy if exists "friendships_insert_own" on public.friendships;
 create policy "friendships_insert_own" on public.friendships for insert to authenticated with check (user_id = public.current_profile_id());
+drop policy if exists "friendships_update_own" on public.friendships;
 create policy "friendships_update_own" on public.friendships for update to authenticated using (user_id = public.current_profile_id()) with check (user_id = public.current_profile_id());
+drop policy if exists "friendships_delete_own" on public.friendships;
 create policy "friendships_delete_own" on public.friendships for delete to authenticated using (user_id = public.current_profile_id());
 
 -- feedback: create/read own only; email delivery columns are server-only
+drop policy if exists "feedback_insert_own" on public.feedback;
 create policy "feedback_insert_own" on public.feedback for insert to authenticated with check (user_id = public.current_profile_id());
+drop policy if exists "feedback_select_own" on public.feedback;
 create policy "feedback_select_own" on public.feedback for select to authenticated using (user_id = public.current_profile_id());
+drop policy if exists "feedback_insert_anon" on public.feedback;
 create policy "feedback_insert_anon" on public.feedback for insert to anon with check (user_id is null);
 
 -- ---------------------------------------------------------------------------

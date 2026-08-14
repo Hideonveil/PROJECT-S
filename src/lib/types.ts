@@ -14,6 +14,7 @@ export interface Profile {
   avatar_key: string;
   device: string;
   gender: string;
+  genres: string[];
   play_style: string;
   voice: boolean;
   online: boolean;
@@ -33,6 +34,7 @@ export interface PublicProfile {
   voice: boolean;
   online: boolean;
   friendCode: string;
+  genres: string[];
   games: GameIdentity[];
 }
 
@@ -74,6 +76,7 @@ export interface Candidate {
   device: string;
   online: boolean;
   friendCode: string;
+  genres: string[];
   games: GameIdentity[];
   need: {
     game: string;

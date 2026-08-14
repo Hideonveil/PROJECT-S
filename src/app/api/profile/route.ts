@@ -19,6 +19,9 @@ export async function POST(request: Request) {
     if (!existing) return NextResponse.json({ error: "个人资料不存在" }, { status: 404 });
 
     const nickname = String(body.nickname || existing.nickname).trim().slice(0, 12);
+    const genres = Array.isArray(body.genres)
+      ? body.genres.map((g: unknown) => String(g)).filter(Boolean).slice(0, 12)
+      : existing.genres || [];
     await admin
       .from("profiles")
       .update({
@@ -26,25 +29,13 @@ export async function POST(request: Request) {
         avatar_key: String(body.avatarKey || existing.avatar_key),
         device: String(body.device || existing.device),
         gender: String(body.gender || existing.gender),
+        genres,
         play_style: String(body.playStyle ?? existing.play_style),
         voice: body.voice !== undefined ? body.voice : existing.voice,
         online: true,
         last_seen: new Date().toISOString(),
       })
       .eq("id", existing.id);
-
-    if (Array.isArray(body.games)) {
-      await admin.from("user_games").delete().eq("user_id", existing.id);
-      const gameRows = (body.games as Array<Record<string, unknown>>).map((g) => ({
-        user_id: existing.id,
-        game_id: String(g.gameId || ""),
-        role: String(g.role || ""),
-        level: Number(g.level || 60),
-        win_rate: String(g.winRate || "50%"),
-        note: String(g.note || ""),
-      }));
-      if (gameRows.length) await admin.from("user_games").insert(gameRows);
-    }
 
     const { data: updated } = await admin.from("profiles").select("*").eq("id", existing.id).single();
     return NextResponse.json({ user: await profileWithGames(updated) });

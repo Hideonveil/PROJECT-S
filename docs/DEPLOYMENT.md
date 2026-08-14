@@ -1,17 +1,21 @@
 # NODE Web MVP 公网部署手册
 
-目标：把当前 MVP 部署到 Vercel，使用 Supabase 做真实数据库与实时通道，Resend 发送反馈邮件，最终得到 `https://项目名.vercel.app` 公网地址。
+目标：把当前 MVP 部署到 Vercel，使用 Supabase 做真实数据库与实时通道，Resend 发送反馈邮件，最终得到公网地址。
+
+当前生产环境：https://project-s-iota.vercel.app
+当前代码仓库：https://github.com/Hideonveil/PROJECT-S.git
 
 ---
 
 ## 1. Supabase
 
-1. 打开 https://supabase.com 注册并创建一个 Project（Region 建议选 Singapore，接近国内用户）。
-2. 左侧进入 **Authentication → Providers**，打开 **Email**。可选开启 **Confirm email**（推荐开启，注册后需到邮箱验证才能登录）。当前 MVP 使用邮箱 + 密码注册/登录，不再使用匿名账号。
-3. 进入 **SQL Editor**，把 `supabase/migrations/0001_init.sql` 全部内容粘贴执行。
-   - 创建 `games / profiles / user_games / match_requests / matches / applications / rooms / room_members / messages / sessions / friendships / feedback`
-   - 种子 6 个真实游戏：我的世界、星露谷物语、PUBG、无畏契约、王者荣耀、英雄联盟
-   - 启用 RLS、索引、Realtime 发布
+1. 打开 https://supabase.com 注册并创建一个 Project（Region 建议选 Singapore）。
+2. 当前 MVP 使用“用户名 + 密码”注册/登录，不依赖邮箱验证；服务端会把用户名映射成私有合成邮箱后创建账号。
+3. 进入 **SQL Editor**，按顺序执行迁移：
+   - `supabase/migrations/0001_init.sql`
+   - `supabase/migrations/0002_profiles_gender.sql`
+   - `supabase/migrations/0003_profiles_genres.sql`
+   创建 `games / profiles / user_games / match_requests / matches / applications / rooms / room_members / messages / sessions / friendships / feedback`，并启用 RLS、索引、Realtime 发布。
 4. 进入 **Project Settings → API**，记录：
    - `Project URL` → `NEXT_PUBLIC_SUPABASE_URL`
    - `anon public` → `NEXT_PUBLIC_SUPABASE_ANON_KEY`
@@ -56,26 +60,22 @@ pnpm dev
 
 ## 4. GitHub
 
-1. 在 GitHub 新建一个空仓库，例如 `node-web-mvp`（不要勾选 README）。
-2. 本地初始化并推送：
+当前仓库已连接：https://github.com/Hideonveil/PROJECT-S.git，分支 `main`。
 
 ```bash
 cd outputs/web-mvp
-git init
 git add .
-git commit -m "deployable NODE web MVP with Supabase + Resend"
-git branch -M main
-git remote add origin git@github.com:你的用户名/node-web-mvp.git
-git push -u origin main
+git commit -m "update"
+git push origin main
 ```
 
-`.env`、`.env.local`、`node_modules`、`.next` 已由 `.gitignore` 排除。
+`.env`、`.env.local`、`node_modules`、`.next` 已由 `.gitignore` 排除，不要把任何 Secret 提交。
 
 ## 5. Vercel
 
 1. 打开 https://vercel.com ，用 GitHub 登录。
-2. **Add New → Project → Import** 选择 `node-web-mvp`。
-3. Framework 自动识别为 Next.js，无需额外命令。
+2. **Add New → Project → Import** 选择 `PROJECT-S`。
+3. **Root Directory** 选择 `outputs/web-mvp`，Framework 自动识别为 Next.js。
 4. 在 Environment Variables 添加：
 
 | Name | Value |
@@ -88,19 +88,19 @@ git push -u origin main
 | `RESEND_FROM_EMAIL` | `NODE <onboarding@resend.dev>` |
 
 5. 点击 **Deploy**。
-6. 完成后得到类似 `https://node-web-mvp.vercel.app` 的公网地址。可后续在 Vercel → Settings → Domains 绑定自己的域名，不需要改代码。
+6. 当前生产地址为 https://project-s-iota.vercel.app；以后可绑定正式域名，不需要改代码。
 
 ## 6. 公网测试方法
 
 使用两台设备（或浏览器无痕窗口）打开公网地址：
 
-1. 设备 A：进入 → 创建游戏身份（昵称/头像/设备/常玩游戏）→ 首页 → 开始匹配 → 填写需求。
-2. 设备 B：同样注册并创建相同游戏的需求。
+1. 设备 A：用用户名注册 → 创建游戏身份（昵称/头像/性别/设备/常玩游戏类型）→ 首页 → 开始匹配 → 填写需求。
+2. 设备 B：同样注册并创建游戏身份，选择相同游戏的需求。
 3. 双方都会看到匹配池人数实时变化，并互相出现在匹配结果。
-4. A 点“申请一起玩”，B 收到弹窗 → 接受 → 进入临时房间。
-5. 任一方点“开始游戏”→“结束游戏”→ 双方选择“再玩一局”。
-6. 双方都选“愿意”后，进入好友列表。
-7. 任一账号在“我的”提交反馈，检查 2716374688@qq.com 是否收到邮件。
+4. A 点“申请一起玩”，B 收到申请 → 接受 → 进入临时房间。
+5. 房间里可实时文字聊天；任一方结束游戏，双方选择是否再次一起玩。
+6. 双方都选“愿意”后，自动进入好友/搭子列表。
+7. 任一账号在“我的 → 提交反馈”，检查 2716374688@qq.com 是否收到邮件。
 
 ## 7. 反馈邮件验证
 
@@ -122,7 +122,7 @@ git push -u origin main
 
 ## 9. 已知边界
 
-- 当前 MVP 用 Supabase 匿名账号保存身份；同一浏览器重新打开仍是同一账号，清除浏览器数据会得到新账号。
-- 头像支持预设与本地图片上传（Data URL 直接存 Supabase，MVP 足够用）。
+- 账号为“用户名 + 密码”；用户名会被映射成一个私有合成邮箱（`u<sha256>@mvp.local`），用户无需真实邮箱。
+- 头像支持预设与本地图片上传（Data URL 存 Supabase，MVP 足够用）。
 - 匹配候选按“同游戏 + 活动/时间/人数/语音/目标”加权排序，无复杂 AI。
 - 公网版本保留现有 UI 与功能，没有新增产品功能。

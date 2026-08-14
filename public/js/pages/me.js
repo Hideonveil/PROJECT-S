@@ -1,21 +1,16 @@
 import { icon } from "../icons.js";
 import { avatarWrap } from "../avatar.js";
 import { button, esc, shell, statBlock, statusPill } from "../ui.js";
-import { GAME_BY_ID } from "../data.js";
+
 
 export function mePage(state) {
   const user = state.user;
   const stats = state.stats || { sessions: 0, connected: 0, hours: 0 };
   const friendCode = user.friendCode || "NODE-XXXX-XXXX";
-  const gameLines = (user.games || [])
-    .map((g) => {
-      const game = GAME_BY_ID[g.gameId] || { name: g.gameId };
-      return `<div class="game-line">
-        <div class="game-line-main"><span class="game-line-name">${esc(game.name)}</span><span class="game-line-meta">${esc(g.role)} · ${esc(g.note || "")}</span></div>
-        <div class="game-line-stats"><span>Lv.${esc(g.level || "-")}</span><span>${esc(g.winRate || "-")}</span></div>
-      </div>`;
-    })
-    .join("");
+  const genres = user.genres || [];
+  const genreTags = genres.length
+    ? `<div class="chip-group">${genres.map((g) => `<span class="chip chip--on">${esc(g)}</span>`).join("")}</div>`
+    : `<span class="dim" style="font-size:13px">未填写常玩游戏类型</span>`;
 
   return shell(
     state,
@@ -69,8 +64,8 @@ export function mePage(state) {
 
         <div class="grid-2">
           <div class="card">
-            <div class="card-title" style="margin-bottom:4px">我的游戏</div>
-            <div class="game-identity">${gameLines}</div>
+            <div class="card-title" style="margin-bottom:4px">常玩游戏类型</div>
+            ${genreTags}
           </div>
           <div class="card">
             <div class="card-title" style="margin-bottom:10px">匹配记录</div>

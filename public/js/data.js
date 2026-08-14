@@ -51,6 +51,8 @@ export const GAMES = [
 
 export const DEVICES = ["PC", "主机", "手机"];
 
+export const GENRES = ["FPS", "MOBA", "RTS", "射击", "沙盒", "模拟", "生存", "竞速", "卡牌", "角色扮演"];
+
 export const DEFAULT_NEED = {
   game: "valorant",
   mode: "排位赛",

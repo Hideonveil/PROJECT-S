@@ -19,6 +19,7 @@ export function defaultState() {
       device: "PC",
       gender: "保密",
       games: [],
+      genres: [],
       playStyle: "",
       voice: true,
       online: false,

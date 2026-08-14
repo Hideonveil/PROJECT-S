@@ -13,6 +13,7 @@ export function publicProfile(profile: Profile, games: GameIdentity[] = []): Pub
     voice: profile.voice,
     online: profile.online,
     friendCode: profile.friend_code,
+    genres: Array.isArray(profile.genres) ? profile.genres : [],
     games,
   };
 }

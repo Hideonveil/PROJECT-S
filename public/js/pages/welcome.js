@@ -1,7 +1,7 @@
 import { icon } from "../icons.js";
 import { avatar } from "../avatar.js";
 import { brand, button, esc, statusPill } from "../ui.js";
-import { DEVICES, GAMES } from "../data.js";
+import { DEVICES, GENRES } from "../data.js";
 
 export function welcomeHero(state) {
   return `<section class="welcome-left">
@@ -26,7 +26,7 @@ export function welcomeHero(state) {
 }
 
 export function welcomePage(state, draft) {
-  const selectedGames = draft.games || [];
+  const selectedGenres = draft.genres || [];
   const genderOptions = ["男", "女", "保密"];
   return `<div class="welcome">
     ${welcomeHero(state)}
@@ -78,13 +78,11 @@ export function welcomePage(state, draft) {
             </div>
           </div>
           <div class="field">
-            <span class="label">常玩游戏 <span class="label-note">至少选一个</span></span>
-            <div class="chip-group" data-chip-group="games">
-              ${GAMES.map(
+            <span class="label">常玩游戏类型 <span class="label-note">至少选一个</span></span>
+            <div class="chip-group" data-chip-group="genres">
+              ${GENRES.map(
                 (g) =>
-                  `<button type="button" class="chip ${selectedGames.includes(g.id) ? "chip--on" : ""}" data-action="toggle-game" data-value="${g.id}">${esc(
-                    g.name
-                  )}<span class="mono" style="color:var(--muted);font-size:10px">${g.tag}</span></button>`
+                  `<button type="button" class="chip ${selectedGenres.includes(g) ? "chip--on" : ""}" data-action="toggle-genre" data-value="${g}">${esc(g)}</button>`
               ).join("")}
             </div>
           </div>
