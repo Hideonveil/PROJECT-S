@@ -39,7 +39,11 @@ export async function GET(request: Request) {
     const { data: profile } = await admin.from("profiles").select("*").eq("auth_user_id", authUser.id).maybeSingle();
     if (!profile) return NextResponse.json({ error: "请先创建游戏身份" }, { status: 400 });
 
-    await admin.from("profiles").update({ online: true, last_seen: new Date().toISOString() }).eq("id", profile.id);
+    const nowIso = new Date().toISOString();
+    const lastSeenAt = profile.last_seen ? new Date(profile.last_seen).getTime() : 0;
+    if (Date.now() - lastSeenAt > 20000) {
+      await admin.from("profiles").update({ online: true, last_seen: nowIso }).eq("id", profile.id);
+    }
 
     const { data: pendingApps } = await admin
       .from("applications")

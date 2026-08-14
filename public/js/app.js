@@ -390,7 +390,27 @@ function normalizeServerRoom(room) {
   };
 }
 
+function snapshotCandidates(data) {
+  if (!state.need) return null;
+  const routeName = parseRoute().name;
+  if (!["matching", "results"].includes(routeName)) return null;
+  const list = (data.needs || []).filter(
+    (n) => n.user.id !== state.user.id && n.need?.game === state.need.game
+  );
+  return normalizeCandidates(list.map((n) => ({ ...n.user, need: n.need })));
+}
+
+function roomShapeChanged(next, prev) {
+  if (!next || !prev) return true;
+  if (next.code !== prev.code || next.status !== prev.status) return true;
+  if (JSON.stringify(next.need || {}) !== JSON.stringify(prev.need || {})) return true;
+  const members = (next.members || []).map((m) => m.id + ":" + (m.memberStatus || "active") + ":" + (m.exitedAt || "")).join("|");
+  const oldMembers = (prev.members || []).map((m) => m.id + ":" + (m.memberStatus || "active") + ":" + (m.exitedAt || "")).join("|");
+  return members !== oldMembers;
+}
+
 function applyServerSnapshot(data) {
+  const routeName = parseRoute().name;
   const patch = {
     match: { ...state.match, pool: data.matching ?? data.online ?? state.match.pool },
     matchRequestId: data.matchRequestId || null,
@@ -444,10 +464,25 @@ function applyServerSnapshot(data) {
   if (Array.isArray(data.applications) && data.applications.length && !state.incomingRequest) {
     patch.incomingRequest = { application: data.applications[0] };
   }
+  const candidates = snapshotCandidates(data);
+  if (candidates !== null) {
+    patch.match = {
+      ...patch.match,
+      candidates,
+      status: candidates.length ? "matched" : "active",
+    };
+  }
+  const roomChanged = patch.room ? roomShapeChanged(patch.room, state.room) : false;
   update(patch);
-  if (patch.room && parseRoute().name !== "room") navigate("#/room");
-  if (patch.room === null && parseRoute().name === "room") render();
-  if ((patch.room && parseRoute().name === "room") || patch.session) render();
+  if (patch.room && routeName !== "room") {
+    navigate("#/room");
+  } else if (patch.room === null && routeName === "room") {
+    render();
+  } else if (patch.room && routeName === "room" && roomChanged) {
+    render();
+  }
+  if (routeName === "matching" && (patch.match?.candidates || []).length) navigate("#/results");
+  if (patch.session) render();
 }
 
 function handleIncomingApplication(application) {
