@@ -3,7 +3,7 @@ import { avatar, avatarWrap, paintAvatars } from "./avatar.js";
 import { initNodeField } from "./field.js";
 import { button, esc, needSummary, shell, toast } from "./ui.js";
 import { state, update, resetState } from "./store.js";
-import { DEVICES, GAME_BY_ID, GAMES, GENRES } from "./data.js";
+import { DEVICES, GAME_BY_ID, GAMES, GENRES, HOME_CASUAL_TIMES, HOME_COMPETITIVE_GAME_IDS, HOME_GAME_IDS, HOME_RANK_TIMES } from "./data.js";
 import { FLOW } from "./flow.js";
 import * as api from "./api.js";
 import { authPage } from "./pages/auth.js";
@@ -59,6 +59,7 @@ const HOME_FILTER = {
   time: "现在就玩",
   team: "1",
   voice: "需要",
+  step: 1,
 };
 let activeField = null;
 let timers = [];
@@ -264,42 +265,86 @@ function prepareNeedDraft() {
   DRAFT.dirty = false;
 }
 
-function toggleHomeGroup(actionEl) {
-  const group = actionEl.closest("[data-home-group]");
-  group?.querySelectorAll(".chip").forEach((c) => c.classList.remove("chip--on"));
-  actionEl.classList.add("chip--on");
+function homeFilterCompetitive(gameId) {
+  return HOME_COMPETITIVE_GAME_IDS.includes(gameId);
 }
 
-function updateHomeModeChips() {
-  const wrap = document.querySelector("[data-home-mode-wrap]");
-  if (!wrap) return;
-  const game = GAMES.find((g) => g.id === HOME_FILTER.game) || GAMES[0];
-  wrap.innerHTML = (game.modes || [])
-    .map(
-      (m, i) =>
-        `<button type="button" class="chip ${!HOME_FILTER.mode || HOME_FILTER.mode === m ? "chip--on" : ""}" data-action="home-mode" data-value="${esc(m)}">${esc(m)}</button>`
-    )
-    .join("");
-}
-
-function applyHomeFilterChips() {
-  const groups = document.querySelectorAll("[data-home-group]");
-  groups.forEach((group) => {
-    const key = group.dataset.homeGroup;
-    group.querySelectorAll(".chip").forEach((c) => {
-      c.classList.toggle("chip--on", c.dataset.value === String(HOME_FILTER[key] || ""));
-    });
+function renderHomeFilterGameState() {
+  document.querySelectorAll("[data-home-game]").forEach((row) => {
+    row.classList.toggle("is-on", row.dataset.homeGame === HOME_FILTER.game);
   });
-  updateHomeModeChips();
 }
 
-function resetHomeFilter() {
-  HOME_FILTER.game = GAMES[0].id;
-  HOME_FILTER.mode = GAMES[0].modes[0] || "";
-  HOME_FILTER.time = "现在就玩";
-  HOME_FILTER.team = "1";
-  HOME_FILTER.voice = "需要";
-  applyHomeFilterChips();
+function renderHomeFilterTags() {
+  const modeWrap = document.getElementById("home-filter-mode-tags");
+  const timeWrap = document.getElementById("home-filter-time-tags");
+  const game = GAMES.find((g) => g.id === HOME_FILTER.game) || GAMES[0];
+  const competitive = homeFilterCompetitive(game.id);
+  const times = competitive ? HOME_RANK_TIMES : HOME_CASUAL_TIMES;
+  if (modeWrap) {
+    modeWrap.innerHTML = (game.modes || [])
+      .map(
+        (m) =>
+          `<button type="button" class="home-filter-tag ${m === HOME_FILTER.mode ? "is-on" : ""}" data-action="home-mode" data-value="${esc(m)}">${esc(m)}</button>`
+      )
+      .join("");
+  }
+  if (timeWrap) {
+    timeWrap.innerHTML = times
+      .map(
+        (t) =>
+          `<button type="button" class="home-filter-tag ${t === HOME_FILTER.time ? "is-on" : ""}" data-action="home-time" data-value="${esc(t)}">${esc(t)}</button>`
+      )
+      .join("");
+  }
+  const timeLabel = document.getElementById("home-filter-time-label");
+  const timeTitle = document.getElementById("home-filter-time-title");
+  const timeSub = document.getElementById("home-filter-time-sub");
+  if (timeLabel) timeLabel.textContent = competitive ? "局数" : "时间";
+  if (timeTitle) timeTitle.textContent = competitive ? "想打几局？" : "什么时候玩？";
+  if (timeSub) timeSub.textContent = competitive ? "选择本次对局的局数。" : "确定本次匹配的启动时间。";
+}
+
+function renderHomeFilterStep() {
+  const panels = ["game", "mode", "team", "time", "voice"];
+  const step = Math.max(1, Math.min(5, Number(HOME_FILTER.step) || 1));
+  HOME_FILTER.step = step;
+  document.querySelectorAll("[data-home-panel]").forEach((panel) => {
+    panel.classList.toggle("is-show", panel.dataset.homePanel === panels[step - 1]);
+  });
+  document.querySelectorAll("[data-home-step]").forEach((el, i) => {
+    el.classList.toggle("is-done", i < step - 1);
+    el.classList.toggle("is-on", i === step - 1);
+  });
+  const hint = document.getElementById("home-filter-hint");
+  if (hint) hint.textContent = `${step} / 5`;
+  const back = document.querySelector("[data-action='home-filter-back']");
+  const disabled = step === 1;
+  if (back) {
+    back.classList.toggle("is-disabled", disabled);
+    back.disabled = disabled;
+  }
+  const next = document.querySelector("[data-action='home-filter-next']");
+  if (next) {
+    const final = step === 5;
+    next.classList.toggle("is-final", final);
+    next.innerHTML = final ? "开始匹配" : `下一步${icon("arrowRight", 16)}`;
+  }
+}
+
+function renderHomeFilterState() {
+  renderHomeFilterGameState();
+  renderHomeFilterTags();
+  renderHomeFilterStep();
+}
+
+function showHomeFilter(open) {
+  const overlay = document.querySelector("[data-home-filter]");
+  if (!overlay) return;
+  overlay.hidden = !open;
+  const diamond = document.querySelector(".home-diamond");
+  diamond?.setAttribute("aria-expanded", String(open));
+  if (open) renderHomeFilterState();
 }
 
 function startHomeFilter() {
@@ -1860,12 +1905,14 @@ document.addEventListener("click", (event) => {
   }
 
   if (action === "toggle-home-filter") {
-    const filter = document.getElementById("home-filter");
-    if (!filter) return;
-    const show = filter.hidden;
-    filter.hidden = !show;
-    const diamond = document.querySelector(".home-diamond");
-    diamond?.setAttribute("aria-expanded", String(show));
+    const overlay = document.querySelector("[data-home-filter]");
+    if (!overlay) return;
+    showHomeFilter(overlay.hidden);
+    return;
+  }
+
+  if (action === "close-home-filter") {
+    showHomeFilter(false);
     return;
   }
 
@@ -1873,44 +1920,65 @@ document.addEventListener("click", (event) => {
     HOME_FILTER.game = value;
     const game = GAMES.find((g) => g.id === value);
     HOME_FILTER.mode = game?.modes?.[0] || "";
-    applyHomeFilterChips();
+    HOME_FILTER.time = homeFilterCompetitive(value) ? HOME_RANK_TIMES[0] : HOME_CASUAL_TIMES[0];
+    renderHomeFilterGameState();
+    renderHomeFilterTags();
     return;
   }
 
   if (action === "home-mode") {
     HOME_FILTER.mode = value;
-    toggleHomeGroup(actionEl);
+    const group = actionEl.closest(".home-filter-tag-group");
+    group?.querySelectorAll(".home-filter-tag").forEach((c) => c.classList.remove("is-on"));
+    actionEl.classList.add("is-on");
     return;
   }
 
   if (action === "home-time") {
     HOME_FILTER.time = value;
-    toggleHomeGroup(actionEl);
+    const group = actionEl.closest(".home-filter-tag-group");
+    group?.querySelectorAll(".home-filter-tag").forEach((c) => c.classList.remove("is-on"));
+    actionEl.classList.add("is-on");
     return;
   }
 
   if (action === "home-team") {
     HOME_FILTER.team = value;
-    toggleHomeGroup(actionEl);
+    const group = actionEl.closest(".home-filter-tag-group");
+    group?.querySelectorAll(".home-filter-tag").forEach((c) => c.classList.remove("is-on"));
+    actionEl.classList.add("is-on");
     return;
   }
 
   if (action === "home-voice") {
     HOME_FILTER.voice = value;
-    toggleHomeGroup(actionEl);
+    const group = actionEl.closest(".home-filter-tag-group");
+    group?.querySelectorAll(".home-filter-tag").forEach((c) => c.classList.remove("is-on"));
+    actionEl.classList.add("is-on");
     return;
   }
 
-  if (action === "home-filter-reset") {
-    resetHomeFilter();
+  if (action === "home-filter-open-voice") {
+    HOME_FILTER.step = 5;
+    renderHomeFilterStep();
     return;
   }
 
-  if (action === "home-filter-start") {
-    startHomeFilter();
+  if (action === "home-filter-back") {
+    HOME_FILTER.step = Math.max(1, Number(HOME_FILTER.step) - 1);
+    renderHomeFilterStep();
     return;
   }
 
+  if (action === "home-filter-next") {
+    if (Number(HOME_FILTER.step) >= 5) {
+      startHomeFilter();
+      return;
+    }
+    HOME_FILTER.step = Number(HOME_FILTER.step) + 1;
+    renderHomeFilterStep();
+    return;
+  }
 
   const actions = {
     "go-home": () => navigate("#/home"),
