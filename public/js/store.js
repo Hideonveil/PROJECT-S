@@ -9,6 +9,7 @@ export function defaultState() {
     authMode: "login",
     authError: "",
     authNotice: "",
+    authVerify: null,
     onboarded: false,
     user: {
       id: "",

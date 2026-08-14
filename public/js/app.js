@@ -42,6 +42,7 @@ let activeField = null;
 let timers = [];
 let ONLINE = false;
 let eventSourceClose = null;
+let pendingVerify = null;
 
 function clearTimers() {
   timers.forEach((t) => {
@@ -1158,10 +1159,13 @@ document.addEventListener("click", (event) => {
       navigate("#/need");
     },
     "switch-auth-mode": (value) => {
-      update({ authMode: value === "register" ? "register" : "login", authError: "", authNotice: "" });
+      pendingVerify = null;
+      update({ authMode: value === "register" ? "register" : "login", authVerify: null, authError: "", authNotice: "" });
       render();
     },
     "auth-submit": () => submitAuth(),
+    "verify-email": () => submitVerification(),
+    "resend-verification": () => resendVerification(),
     "pick-gender": (value) => {
       DRAFT.gender = value;
       DRAFT.dirty = true;
@@ -1289,10 +1293,14 @@ function mapAuthError(err) {
   if (message.includes("Failed to fetch") || message.includes("NetworkError") || message.includes("fetch")) return "网络连接失败，请检查网络后重试";
   if (message.includes("Missing email")) return "请输入邮箱";
   if (message.includes("Missing password")) return "请输入密码";
+  if (message.includes("Token has expired") || message.includes("otp_expired")) return "验证码已过期，请重新获取";
+  if (message.includes("Token has invalid") || message.includes("invalid token") || message.includes("otp")) return "验证码错误或已失效";
+  if (message.includes("rate limit") || message.includes("over_email_send_rate_limit")) return "发送过于频繁，请稍后再试";
   return message || "操作失败，请稍后重试";
 }
 
 async function handleAuthSuccess() {
+  pendingVerify = null;
   const session = await api.getSession();
   if (!session?.access_token) throw new Error("登录状态失效，请重试");
   const status = await api.sessionStatus(session.access_token);
@@ -1303,6 +1311,7 @@ async function handleAuthSuccess() {
     onboarded: !!status.profile,
     authError: "",
     authNotice: "",
+    authVerify: null,
   });
   if (status.profile) {
     update({ user: status.profile });
@@ -1360,6 +1369,70 @@ async function restoreSession() {
   }
 }
 
+async function submitVerification() {
+  const form = document.querySelector('[data-form="verify"]');
+  if (!form) return;
+  const submitBtn = form.querySelector('[data-action="verify-email"]');
+  if (submitBtn?.disabled) return;
+  const code = String(new FormData(form).get("code") || "").trim();
+  const email = pendingVerify?.email || state.authVerify?.email || "";
+  if (!email) {
+    update({ authError: "验证信息已失效，请重新注册" });
+    render();
+    return;
+  }
+  if (!/^\d{6}$/.test(code)) {
+    update({ authError: "请输入 6 位数字验证码" });
+    render();
+    return;
+  }
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.textContent = "验证中…";
+  }
+  update({ authError: "", authNotice: "" });
+  try {
+    const data = await api.verifyEmail(email, code);
+    if (data.session?.access_token) {
+      pendingVerify = null;
+      update({ authVerify: null });
+      await handleAuthSuccess();
+      return;
+    }
+    if (pendingVerify?.password) {
+      await api.signIn(email, pendingVerify.password);
+      pendingVerify = null;
+      update({ authVerify: null });
+      await handleAuthSuccess();
+      return;
+    }
+    pendingVerify = null;
+    update({ authVerify: null, authMode: "login", authEmail: email, authNotice: "邮箱已通过验证，请登录" });
+    render();
+  } catch (err) {
+    update({ authError: mapAuthError(err) });
+    render();
+  }
+}
+
+async function resendVerification() {
+  const email = pendingVerify?.email || state.authVerify?.email || "";
+  if (!email) return;
+  const resendBtn = document.querySelector('[data-action="resend-verification"]');
+  if (resendBtn) {
+    resendBtn.disabled = true;
+    resendBtn.textContent = "发送中…";
+  }
+  update({ authError: "", authNotice: "" });
+  try {
+    await api.resendSignupEmail(email, pendingVerify?.password);
+    update({ authNotice: "验证邮件已重新发送，请查收（包括垃圾邮件）" });
+  } catch (err) {
+    update({ authError: mapAuthError(err) });
+  }
+  render();
+}
+
 async function submitAuth() {
   const form = document.querySelector('[data-form="auth"]');
   if (!form) return;
@@ -1394,7 +1467,8 @@ async function submitAuth() {
       if (data.session?.access_token) {
         await handleAuthSuccess();
       } else {
-        update({ authMode: "login", authEmail: email, authNotice: "注册成功，验证邮件已发送。请前往邮箱点击验证链接，然后回来登录。" });
+        pendingVerify = { email, password };
+        update({ authVerify: { email }, authEmail: email, authNotice: "验证码已发送，请检查邮箱（包括垃圾邮件）。" });
         render();
       }
     } else {

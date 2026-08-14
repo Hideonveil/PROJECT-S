@@ -61,6 +61,25 @@ export async function signUp(email, password) {
   return data;
 }
 
+export async function verifyEmail(email, token) {
+  const sb = await getSupabase();
+  const { data, error } = await sb.auth.verifyOtp({ email, token, type: "signup" });
+  if (error) throw error;
+  return data;
+}
+
+export async function resendSignupEmail(email, password) {
+  const sb = await getSupabase();
+  const options = { emailRedirectTo: `${window.location.origin}/#/auth` };
+  if (typeof sb.auth.resend === "function") {
+    const { error } = await sb.auth.resend({ type: "signup", email, options });
+    if (!error) return;
+    if (!password) throw error;
+  }
+  const { error } = await sb.auth.signUp({ email, password, options });
+  if (error) throw error;
+}
+
 export async function signIn(email, password) {
   const sb = await getSupabase();
   const { data, error } = await sb.auth.signInWithPassword({ email, password });
