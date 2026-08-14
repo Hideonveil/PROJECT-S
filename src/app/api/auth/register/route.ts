@@ -25,7 +25,9 @@ export async function POST(request: Request) {
 
     if (error) {
       const message = String(error.message || error.code || "");
-      if (message.toLowerCase().includes("already registered") || message.includes("email_exists")) {
+      const code = String(error.code || "");
+      const combined = `${message} ${code}`.toLowerCase();
+      if (combined.includes("already") || combined.includes("registered") || combined.includes("email_exists") || combined.includes("duplicate")) {
         return NextResponse.json({ error: "用户名已存在，请换一个" }, { status: 409 });
       }
       return NextResponse.json({ error: "注册失败，请稍后重试" }, { status: 500 });
