@@ -1291,6 +1291,7 @@ function mapAuthError(err) {
   if (message.includes("User already registered") || message.includes("email_exists")) return "该邮箱已注册，请直接登录";
   if (message.includes("Password should be at least")) return "密码至少 6 位";
   if (message.includes("Failed to fetch") || message.includes("NetworkError") || message.includes("fetch")) return "网络连接失败，请检查网络后重试";
+  if (message.includes("unexpected_failure") || message.includes("Error sending confirmation")) return "注册失败：验证邮件发送失败，请稍后重试或联系管理员";
   if (message.includes("Missing email")) return "请输入邮箱";
   if (message.includes("Missing password")) return "请输入密码";
   if (message.includes("Token has expired") || message.includes("otp_expired")) return "验证码已过期，请重新获取";
@@ -1381,8 +1382,8 @@ async function submitVerification() {
     render();
     return;
   }
-  if (!/^\d{6,8}$/.test(code)) {
-    update({ authError: "请输入 6-8 位数字验证码" });
+  if (!/^\d{6}$/.test(code)) {
+    update({ authError: "请输入 6 位数字验证码" });
     render();
     return;
   }
