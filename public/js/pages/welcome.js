@@ -10,7 +10,7 @@ export function welcomeHero(state) {
       ${brand(46)}
       <div>
         <h1 class="welcome-title">此刻想怎么玩，<br /><span class="accent">就此刻找到人。</span></h1>
-        <p class="welcome-sub">NODE 不做大厅，只做一件事：把此刻正在找游戏伙伴的玩家和队伍连在一起。</p>
+        <p class="welcome-sub">project S beta 不做大厅，只做一件事：把此刻正在找游戏伙伴的玩家和队伍连在一起。</p>
       </div>
       <div class="welcome-proof">
         <span class="reason-tag reason-tag--neutral">${icon("zap", 13)} 实时匹配池</span>
@@ -86,12 +86,8 @@ export function welcomePage(state, draft) {
               ).join("")}
             </div>
           </div>
-          <div class="field">
-            <label class="label" for="playStyle">一句话介绍打法</label>
-            <input class="input" id="playStyle" name="playStyle" value="${esc(draft.playStyle)}" placeholder="例如：稳定沟通，不摆烂" />
-          </div>
           ${button({
-            label: "进入 NODE",
+            label: "进入 project S beta",
             action: "complete-onboard",
             kind: "primary",
             size: "lg",

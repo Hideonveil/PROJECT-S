@@ -14,6 +14,7 @@ import { resultsPage } from "./pages/results.js";
 import { profilePage } from "./pages/profile.js";
 import { roomPage } from "./pages/room.js";
 import { gameoverPage } from "./pages/gameover.js";
+import { connectionsPage } from "./pages/connections.js";
 import { friendsPage } from "./pages/friends.js";
 import { mePage } from "./pages/me.js";
 
@@ -42,6 +43,7 @@ let activeField = null;
 let timers = [];
 let ONLINE = false;
 let eventSourceClose = null;
+let chatClose = null;
 
 function clearTimers() {
   timers.forEach((t) => {
@@ -75,6 +77,10 @@ function parseRoute() {
 function render() {
   clearTimers();
   destroyField();
+  if (chatClose) {
+    chatClose();
+    chatClose = null;
+  }
   const route = parseRoute();
   if (route.name !== "need" && route.name !== "welcome") DRAFT.dirty = false;
 
@@ -104,6 +110,9 @@ function render() {
       break;
     case "home":
       html = homePage(state);
+      break;
+    case "connections":
+      html = connectionsPage(state);
       break;
     case "need":
       if (!DRAFT.dirty) prepareNeedDraft();
@@ -179,6 +188,7 @@ function render() {
     );
   }
   if (route.name === "room" && state.room?.status === "playing") startRoomTimer();
+  if (route.name === "room" && state.room?.id) initRoomChat();
 }
 
 function prepareOnboardDraft() {
@@ -287,6 +297,7 @@ function normalizeServerRoom(room) {
     need: other.need || room.need || state.need,
   };
   return {
+    id: room.id,
     code: room.code,
     partner,
     status: room.status || "ready",
@@ -395,6 +406,13 @@ function handleServerGameOver(session) {
   const time = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
   const gameName = GAME_BY_ID[session.need?.game]?.name || session.need?.game || state.need.game || "游戏";
   const mode = session.need?.mode || state.need.mode || "";
+  const historyEntry = {
+    id: `s-${session.roomCode}-${Date.now()}`,
+    title: `${gameName}${mode ? ` · ${mode}` : ""}`,
+    partnerName: partner.name || partner.nickname || "玩家",
+    time: `${now.getMonth() + 1}月${now.getDate()}日 ${time}`,
+    result: "已完成",
+  };
   update({
     room: null,
     lastRoomCode: session.roomCode,
@@ -413,6 +431,7 @@ function handleServerGameOver(session) {
       sessions: state.stats.sessions + 1,
       hours: state.stats.hours + 1,
     },
+    history: [historyEntry, ...state.history].slice(0, 20),
   });
   navigate("#/gameover");
 }
@@ -477,6 +496,119 @@ function connectEvents() {
       toast("对方暂不接受");
     },
   });
+}
+
+function renderAuthMode() {
+  const isLogin = state.authMode !== "register";
+  document.querySelectorAll(".auth-tab").forEach((tab) => {
+    const active = tab.dataset.value === (isLogin ? "login" : "register");
+    tab.classList.toggle("auth-tab--active", active);
+  });
+  const card = document.querySelector(".auth-card");
+  if (!card) return;
+  const title = card.querySelector(".card-title");
+  if (title) title.textContent = isLogin ? "欢迎回来" : "创建账号";
+  const sub = card.querySelector(".page-sub");
+  if (sub) sub.textContent = isLogin ? "登录后继续你的游戏身份和匹配。" : "用用户名注册，匹配到的每一步都是真人玩家。";
+  const submitLabel = card.querySelector('[data-action="auth-submit"] span');
+  if (submitLabel) submitLabel.textContent = isLogin ? "登录" : "注册";
+  const switchBtn = card.querySelector(".auth-switch");
+  if (switchBtn) switchBtn.textContent = isLogin ? "没有账号？去注册" : "已有账号？去登录";
+  const pw = card.querySelector('[name="password"]');
+  if (pw) {
+    pw.placeholder = isLogin ? "输入密码" : "至少 6 位";
+    pw.autocomplete = isLogin ? "current-password" : "new-password";
+  }
+  card.querySelector("[data-auth-error]")?.remove();
+  card.querySelector("[data-auth-note]")?.remove();
+}
+
+function showAuthError(message) {
+  update({ authError: message });
+  const form = document.querySelector('[data-form="auth"]');
+  const card = form?.closest(".auth-card") || document.querySelector(".auth-card");
+  let errorEl = card?.querySelector("[data-auth-error]");
+  if (!errorEl && card) {
+    errorEl = document.createElement("div");
+    errorEl.className = "auth-error";
+    errorEl.dataset.authError = "";
+    const actions = card.querySelector(".form-actions");
+    if (actions) actions.insertAdjacentElement("beforebegin", errorEl);
+    else card.appendChild(errorEl);
+  }
+  if (errorEl) errorEl.textContent = message;
+  const pw = form?.querySelector('[name="password"]');
+  if (pw) pw.value = "";
+  const userInput = form?.querySelector('[name="username"]');
+  if (userInput) update({ authUsername: userInput.value.trim() });
+}
+
+async function initRoomChat() {
+  const room = state.room;
+  if (!room?.id || !state.token) return;
+  try {
+    const messages = await api.fetchRoomMessages(room.id);
+    renderChatMessages(messages);
+  } catch {
+    // history load is best-effort
+  }
+  try {
+    const sb = await api.getSupabaseClient();
+    const channel = sb.channel(`room-chat-${room.id}`);
+    channel.on("postgres_changes", { event: "INSERT", schema: "public", table: "messages", filter: `room_id=eq.${room.id}` }, (payload) => {
+      appendChatMessage(payload.new);
+    });
+    await channel.subscribe();
+    chatClose = () => sb.removeChannel(channel);
+  } catch {
+    // realtime chat is best-effort
+  }
+  const form = document.querySelector('[data-form="room-chat"]');
+  form?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    sendRoomChat();
+  });
+}
+
+function renderChatMessages(messages) {
+  const el = document.getElementById("room-chat");
+  if (!el) return;
+  if (!messages.length) {
+    el.innerHTML = '<div class="chat-empty">还没有消息，打个招呼吧</div>';
+    return;
+  }
+  el.innerHTML = messages.map(chatMessageHtml).join("");
+  el.scrollTop = el.scrollHeight;
+}
+
+function chatMessageHtml(m) {
+  const mine = m.sender_id === state.user.id;
+  const time = m.created_at
+    ? new Date(m.created_at).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })
+    : "";
+  return `<div class="chat-msg ${mine ? "chat-msg--mine" : ""}"><div class="chat-bubble">${esc(m.content || "")}</div><div class="chat-time">${time}</div></div>`;
+}
+
+function appendChatMessage(m) {
+  const el = document.getElementById("room-chat");
+  if (!el) return;
+  const empty = el.querySelector(".chat-empty");
+  if (empty) empty.remove();
+  el.insertAdjacentHTML("beforeend", chatMessageHtml(m));
+  el.scrollTop = el.scrollHeight;
+}
+
+async function sendRoomChat() {
+  const room = state.room;
+  const input = document.getElementById("chat-input");
+  const text = input?.value.trim();
+  if (!room?.id || !text) return;
+  try {
+    await api.sendRoomMessage(room.id, text, state.user.id);
+    input.value = "";
+  } catch (err) {
+    toast(err.message || "消息发送失败");
+  }
 }
 
 async function completeOnboard() {
@@ -677,6 +809,13 @@ async function finishGame() {
   const now = new Date();
   const time = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
   const title = `${GAME_BY_ID[state.need.game]?.name || state.need.game} · ${state.need.mode}`;
+  const historyEntry = {
+    id: `f-${state.room?.code}-${Date.now()}`,
+    title,
+    partnerName: partner.name || "玩家",
+    time: `${now.getMonth() + 1}月${now.getDate()}日 ${time}`,
+    result: "已完成",
+  };
   update({
     room: null,
     lastRoomCode: state.room?.code,
@@ -1078,6 +1217,15 @@ document.addEventListener("click", (event) => {
     return;
   }
 
+  if (action === "pick-gender") {
+    DRAFT.gender = value;
+    DRAFT.dirty = true;
+    const group = actionEl.closest('[data-chip-group="gender"]');
+    group?.querySelectorAll(".chip").forEach((c) => c.classList.remove("chip--on"));
+    actionEl.classList.add("chip--on");
+    return;
+  }
+
   if (action === "choose-avatar-file") {
     const scope = actionEl.closest("[data-avatar-pick]");
     const input = scope?.querySelector("input[data-avatar-file]");
@@ -1135,14 +1283,9 @@ document.addEventListener("click", (event) => {
     },
     "switch-auth-mode": (value) => {
       update({ authMode: value === "register" ? "register" : "login", authError: "", authNotice: "" });
-      render();
+      renderAuthMode();
     },
     "auth-submit": () => submitAuth(),
-    "pick-gender": (value) => {
-      DRAFT.gender = value;
-      DRAFT.dirty = true;
-      render();
-    },
     "complete-onboard": completeOnboard,
     "start-match": startMatch,
     "cancel-match": cancelMatch,
@@ -1243,6 +1386,7 @@ window.addEventListener("hashchange", render);
 window.addEventListener("beforeunload", () => {
   clearTimers();
   destroyField();
+  if (chatClose) chatClose();
   if (eventSourceClose) eventSourceClose();
   if (ONLINE && state.token) api.goOffline(state.token);
 });
@@ -1342,24 +1486,21 @@ async function submitAuth() {
   const fd = new FormData(form);
   const username = String(fd.get("username") || "").trim();
   const password = String(fd.get("password") || "");
+  update({ authUsername: username });
   if (!username || !password) {
-    update({ authError: "请输入用户名和密码" });
-    render();
+    showAuthError("请输入用户名和密码");
     return;
   }
   if (/\s/.test(username)) {
-    update({ authError: "用户名不能包含空格" });
-    render();
+    showAuthError("用户名不能包含空格");
     return;
   }
   if (username.length < 2 || username.length > 24) {
-    update({ authError: "用户名需为 2-24 个字符" });
-    render();
+    showAuthError("用户名需为 2-24 个字符");
     return;
   }
   if (password.length < 6) {
-    update({ authError: "密码至少 6 位" });
-    render();
+    showAuthError("密码至少 6 位");
     return;
   }
   if (submitBtn) {
@@ -1367,6 +1508,7 @@ async function submitAuth() {
     submitBtn.textContent = "提交中…";
   }
   update({ authError: "", authNotice: "" });
+  document.querySelector("[data-auth-error]")?.remove();
   try {
     const data = state.authMode === "register"
       ? await api.registerAccount(username, password)
@@ -1374,8 +1516,7 @@ async function submitAuth() {
     await api.signIn(data.email, password);
     await handleAuthSuccess();
   } catch (err) {
-    update({ authError: mapAuthError(err) });
-    render();
+    showAuthError(mapAuthError(err));
   } finally {
     if (submitBtn) {
       submitBtn.disabled = false;

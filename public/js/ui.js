@@ -26,7 +26,7 @@ export function brandMark(size = 32) {
 }
 
 export function brand(size = 32, tag = true) {
-  return `<a class="brand" href="#/home" aria-label="NODE 首页">${brandMark(size)}<span><span class="brand-name">NODE</span>${tag ? `<span class="brand-tag">此刻，一起玩</span>` : ""}</span></a>`;
+  return `<a class="brand" href="#/home" aria-label="project S beta 首页">${brandMark(size)}<span><span class="brand-name">project S beta</span>${tag ? `<span class="brand-tag">此刻，一起玩</span>` : ""}</span></a>`;
 }
 
 export function statusPill(status, text = null) {
@@ -116,6 +116,7 @@ export function statBlock(label, value, { signal = false } = {}) {
 export function shell(state, route, content, { immersive = false, topRight = "" } = {}) {
   const navItems = [
     { id: "home", label: "首页", href: "#/home", icon: "house" },
+    { id: "connections", label: "最近", href: "#/connections", icon: "clock" },
     { id: "friends", label: "好友", href: "#/friends", icon: "users" },
     { id: "me", label: "我的", href: "#/me", icon: "user" },
   ];

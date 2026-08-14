@@ -1,6 +1,6 @@
-# NODE · 实时游戏活动匹配平台（公网 Web MVP）
+# project S beta · 实时游戏活动匹配平台（公网 Web MVP）
 
-保留现有 NODE 产品与 UI，把真实数据、账号与实时匹配放到 Supabase，部署到 Vercel 公网。
+保留现有 project S beta 产品与 UI，把真实数据、账号与实时匹配放到 Supabase，部署到 Vercel 公网。
 
 ## 当前产品流程
 

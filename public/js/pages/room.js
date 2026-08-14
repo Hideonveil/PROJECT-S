@@ -52,14 +52,18 @@ export function roomPage(state) {
         <div class="card" style="display:flex;flex-direction:column;gap:14px">
           <div class="section-head"><h2 class="section-title">成员</h2><span class="section-note">${players.length}/${esc(state.need.target)}</span></div>
           <div class="room-members">${memberRows}</div>
-          ${
-            partner.kind === "team"
-              ? `<p class="muted" style="font-size:12px">队伍其他成员将在开始时同步进入，队长已确认你的申请。</p>`
-              : ""
-          }
+          ${partner.kind === "team" ? `<p class="muted" style="font-size:12px">队伍其他成员将在开始时同步进入，队长已确认你的申请。</p>` : ""}
         </div>
         ${actionArea}
       </div>
+      <section class="card room-chat-card">
+        <div class="section-head"><h2 class="section-title">聊天室</h2><span class="section-note">实时文字</span></div>
+        <div id="room-chat" class="chat-messages"><div class="chat-empty">还没有消息，打个招呼吧</div></div>
+        <form data-form="room-chat" class="chat-composer">
+          <input class="input" id="chat-input" maxlength="500" placeholder="输入消息…" autocomplete="off" />
+          <button class="btn btn--primary" id="chat-send" type="submit">${icon("send", 16)}<span>发送</span></button>
+        </form>
+      </section>
     </div>`,
     { immersive: true, topRight: room.status === "playing" ? "" : button({ label: "离开", action: "leave-room", kind: "ghost", size: "sm", iconName: "logOut" }) }
   );

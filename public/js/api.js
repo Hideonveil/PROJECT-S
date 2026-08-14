@@ -100,6 +100,28 @@ export const searchFriend = (token, code) => request("/api/friends/search", { to
 export const addFriendByCode = (token, friendCode) => request("/api/friends/add", { token, friendCode });
 export const sendFeedback = (token, payload) => request("/api/feedback", { token, ...payload });
 
+export async function getSupabaseClient() {
+  return getSupabase();
+}
+
+export async function fetchRoomMessages(roomId) {
+  const sb = await getSupabase();
+  const { data, error } = await sb
+    .from("messages")
+    .select("*")
+    .eq("room_id", roomId)
+    .order("created_at", { ascending: true })
+    .limit(100);
+  if (error) throw error;
+  return data || [];
+}
+
+export async function sendRoomMessage(roomId, content, senderId) {
+  const sb = await getSupabase();
+  const { error } = await sb.from("messages").insert({ room_id: roomId, sender_id: senderId, content });
+  if (error) throw error;
+}
+
 export function openEvents(token, handlers) {
   let closeFn = null;
   import("./realtime.js")

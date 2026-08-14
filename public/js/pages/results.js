@@ -36,7 +36,7 @@ export function resultsPage(state) {
           ${needSummary(state.need)}
           <div class="card" style="display:flex;flex-direction:column;gap:12px">
             <div class="card-title">为什么按需求匹配</div>
-            <p class="dim" style="font-size:13px">NODE 不比较两个人的长期资料有多像，而是比较此刻的需求是否在同一局里互补：目标、人数、时间窗口、职责、语音。</p>
+            <p class="dim" style="font-size:13px">project S beta 不比较两个人的长期资料有多像，而是比较此刻的需求是否在同一局里互补：目标、人数、时间窗口、职责、语音。</p>
             <div class="reason-tags" style="display:flex;flex-wrap:wrap;gap:8px">
               <span class="reason-tag reason-tag--neutral">同游戏</span>
               <span class="reason-tag reason-tag--neutral">同目标</span>

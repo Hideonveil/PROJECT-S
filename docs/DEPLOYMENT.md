@@ -1,4 +1,4 @@
-# NODE Web MVP 公网部署手册
+# project S beta Web MVP 公网部署手册
 
 目标：把当前 MVP 部署到 Vercel，使用 Supabase 做真实数据库与实时通道，Resend 发送反馈邮件，最终得到公网地址。
 

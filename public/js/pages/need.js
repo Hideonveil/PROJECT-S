@@ -13,7 +13,7 @@ export function needPage(state, draft) {
       <div class="page-head">
         <div class="page-eyebrow">${icon("radio", 13)} 开始匹配 · 第一步</div>
         <h1 class="page-title">此刻，你想怎么玩？</h1>
-        <p class="page-sub">只描述这一局的需求。NODE 按这个需求去找，不按人脉猜。</p>
+        <p class="page-sub">只描述这一局的需求。project S beta 按这个需求去找，不按人脉猜。</p>
       </div>
       <form class="card card--pad-lg need-form" data-form="need">
         <div class="field">
