@@ -59,6 +59,7 @@ let ONLINE = false;
 let eventSourceClose = null;
 let chatClose = null;
 let wizardAdvanceTimer = null;
+let roomExitReadyAt = 0;
 
 function clearTimers() {
   timers.forEach((t) => {
@@ -210,16 +211,11 @@ function render() {
   activeField = initNodeField(app);
 
   if (route.name === "matching") startMatchingFlow();
-  if (route.name === "room" && state.room?.status === "connecting") {
-    timers.push(
-      window.setTimeout(() => {
-        update({ room: { ...state.room, status: "ready" } });
-        render();
-      }, 1500)
-    );
-  }
   if (route.name === "room" && state.room?.status === "playing") startRoomTimer();
-  if (route.name === "room" && state.room?.id) initRoomChat();
+  if (route.name === "room" && state.room?.id) {
+    initRoomChat();
+    initRoomExitCountdown();
+  }
 }
 
 function prepareOnboardDraft() {
@@ -260,7 +256,29 @@ function prepareNeedDraft() {
 }
 
 function findCandidate(id) {
-  return state.match.candidates?.find((c) => c.id === id) || null;
+  const fromRecent = state.recentConnections?.find((c) => c.id === id);
+  if (fromRecent) {
+    return {
+      id: fromRecent.id,
+      name: fromRecent.name || "玩家",
+      nickname: fromRecent.name || "玩家",
+      handle: fromRecent.handle || `${fromRecent.name || "玩家"}#${String(fromRecent.id).slice(-4)}`,
+      avatarKey: fromRecent.avatarKey,
+      device: "PC",
+      online: fromRecent.online !== false,
+      games: [],
+      genres: [],
+      playStyle: "",
+      kind: "player",
+      need: state.need,
+      reasons: ["最近一起玩过"],
+    };
+  }
+  return (
+    state.match.candidates?.find((c) => c.id === id) ||
+    state.room?.members?.find((m) => m.id === id) ||
+    null
+  );
 }
 
 function readImageAsDataUrl(file) {
@@ -330,23 +348,43 @@ function normalizeCandidates(list) {
 }
 
 function normalizeServerRoom(room) {
-  const players = room.players || [];
-  const other = players.find((p) => p.id !== state.user.id) || players[0] || {};
+  const rawMembers = room.members || (room.players || []).map((p) => ({ ...p, memberStatus: "active", exitedAt: null }));
+  const members = rawMembers.map((m) => ({
+    ...m,
+    id: m.id,
+    name: m.nickname || m.name || "玩家",
+    handle: m.handle || `${m.nickname || "玩家"}#${String(m.id || "").slice(-4)}`,
+    kind: "player",
+    games: m.games || [],
+    genres: m.genres || [],
+    playStyle: m.playStyle || "",
+    need: m.need || room.need || state.need,
+    memberStatus: m.memberStatus || "active",
+    exitedAt: m.exitedAt || null,
+    gameAccounts: m.gameAccounts || {},
+  }));
+  const other =
+    members.find((p) => p.id !== state.user.id && p.memberStatus === "active") ||
+    members.find((p) => p.id !== state.user.id) ||
+    members[0] ||
+    {};
   const partner = {
     ...other,
-    name: other.nickname || other.name || "玩家",
+    name: other.name || other.nickname || "玩家",
     handle: other.handle || `${other.nickname || "玩家"}#${String(other.id || "").slice(-4)}`,
     kind: "player",
     games: other.games || [],
     genres: other.genres || [],
     playStyle: other.playStyle || "",
     need: other.need || room.need || state.need,
+    gameAccounts: other.gameAccounts || {},
   };
   return {
     id: room.id,
     code: room.code,
     partner,
-    status: room.status || "ready",
+    members,
+    status: room.status || "playing",
     startedAt: room.startedAt || 0,
     target: room.need?.target || state.need.target || 5,
   };
@@ -369,11 +407,24 @@ function applyServerSnapshot(data) {
     }));
   }
   if (data.room) {
-    const room = normalizeServerRoom(data.room);
-    if (!state.room || state.room.code !== room.code) patch.room = room;
-    else if (state.room.code === room.code && (state.room.status !== room.status || state.room.startedAt !== room.startedAt)) {
-      patch.room = room;
-    }
+    patch.room = normalizeServerRoom(data.room);
+  } else if (data.room === null && state.room) {
+    patch.room = null;
+  }
+  if (Array.isArray(data.recentConnections)) {
+    patch.recentConnections = data.recentConnections.map((c) => ({
+      id: c.player?.id || c.id,
+      name: c.player?.nickname || c.player?.name || "玩家",
+      avatarKey: c.player?.avatarKey,
+      online: c.player?.online !== false,
+      handle: c.player?.handle || "",
+      gameId: c.gameId || "",
+      gameName: (GAME_BY_ID[c.gameId] || {}).name || c.gameId || "游戏",
+      playedAt: c.playedAt || "",
+      playCount: c.playCount || 1,
+      rating: c.rating || null,
+      wantAgain: c.wantAgain || null,
+    }));
   }
   if (data.session) {
     const session = data.session;
@@ -395,6 +446,7 @@ function applyServerSnapshot(data) {
   }
   update(patch);
   if (patch.room && parseRoute().name !== "room") navigate("#/room");
+  if (patch.room === null && parseRoute().name === "room") render();
   if ((patch.room && parseRoute().name === "room") || patch.session) render();
 }
 
@@ -424,7 +476,7 @@ function showApplicationSheet() {
       </div>
       ${needSummary(need, { compact: true })}
       <div class="form-actions" style="margin-top:16px">
-        ${button({ label: "接受并开房", action: "accept-application", value: application.id, kind: "primary", iconName: "check" })}
+        ${button({ label: "接受一起玩", action: "accept-application", value: application.id, kind: "primary", iconName: "check" })}
         ${button({ label: "先拒绝", action: "decline-application", value: application.id, kind: "danger", iconName: "x" })}
       </div>
     </div>
@@ -432,14 +484,16 @@ function showApplicationSheet() {
 }
 
 function handleServerRoom(room) {
+  const normalized = normalizeServerRoom(room);
+  if (!state.room || state.room.code !== normalized.code) roomExitReadyAt = 0;
   update({
-    room: normalizeServerRoom(room),
+    room: normalized,
     need: room.need || state.need,
     session: null,
     incomingRequest: null,
     match: {
       ...state.match,
-      pending: state.match.pending || room.players?.find((p) => p.id !== state.user.id)?.id || null,
+      pending: state.match.pending || normalized.partner?.id || null,
     },
   });
   navigate("#/room");
@@ -600,6 +654,26 @@ function showAuthError(message) {
   if (pw) pw.value = "";
   const userInput = form?.querySelector('[name="username"]');
   if (userInput) update({ authUsername: userInput.value.trim() });
+}
+
+function initRoomExitCountdown() {
+  const btn = document.querySelector('[data-action="exit-room"]');
+  if (!btn) return;
+  if (!roomExitReadyAt) roomExitReadyAt = Date.now() + 5000;
+  const label = btn.querySelector("span");
+  const tick = () => {
+    const remain = Math.max(0, Math.ceil((roomExitReadyAt - Date.now()) / 1000));
+    if (remain > 0) {
+      btn.disabled = true;
+      if (label) label.textContent = `${remain}s 后可以退出`;
+    } else {
+      btn.disabled = false;
+      if (label) label.textContent = "退出游戏";
+    }
+  };
+  tick();
+  const timer = window.setInterval(tick, 1000);
+  timers.push(timer);
 }
 
 async function initRoomChat() {
@@ -808,7 +882,7 @@ async function applyPartner(id) {
     await api.applyTo(state.token, candidate.id);
     update({ match: { ...state.match, pending: id } });
     render();
-    toast("申请已发送，等待对方接受");
+    toast("邀请已发送，等对方也邀请你");
   } catch (err) {
     toast(err.message);
   }
@@ -887,6 +961,142 @@ async function finishGame() {
     },
   });
   navigate("#/gameover");
+}
+
+function exitRoomPrompt() {
+  const partner = state.room?.partner;
+  if (!partner) return;
+  closeSheet();
+  showSheet(`
+    <div class="sheet" role="dialog" aria-modal="true" aria-label="退出游戏">
+      <div class="sheet-head">
+        <h2 class="sheet-title">确定结束这次游戏？</h2>
+        <button class="sheet-close" data-action="close-sheet" aria-label="关闭">${icon("x", 18)}</button>
+      </div>
+      <div class="profile-identity" style="margin-bottom:14px">
+        ${avatarWrap(partner.avatarKey, 56, partner.online)}
+        <div>
+          <div class="profile-name"><strong>${esc(partner.name || "玩家")}</strong></div>
+          <div class="profile-handle">${esc(partner.device || "PC")} 路 本次连接会保留在最近连接里</div>
+        </div>
+      </div>
+      <div class="form-actions">
+        ${button({ label: "取消", action: "close-sheet", kind: "ghost" })}
+        ${button({ label: "退出", action: "confirm-exit-room", kind: "danger", iconName: "logOut" })}
+      </div>
+    </div>
+  `);
+}
+
+async function confirmExitRoom() {
+  const room = state.room;
+  if (!room?.code || !ONLINE) {
+    toast("服务暂不可用，请稍后重试");
+    return;
+  }
+  const partner = room.partner || {};
+  try {
+    await api.roomAction(room.code, "exit", state.token);
+    const now = new Date();
+    const time = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+    const game = GAME_BY_ID[room.need?.game || state.need.game] || {};
+    const title = `${game.name || state.need.game || "游戏"} 路 ${room.need?.mode || state.need.mode || ""}`;
+    closeSheet();
+    update({
+      room: null,
+      lastRoomCode: room.code,
+      session: {
+        partner: { ...partner },
+        roomCode: room.code,
+        title,
+        time,
+        rating: null,
+        wantAgain: null,
+      },
+    });
+    navigate("#/gameover");
+    toast("已退出，本次连接已记录");
+  } catch (err) {
+    toast(err.message);
+  }
+}
+
+async function saveRoomGameAccount() {
+  const form = document.querySelector('[data-form="room-account"]');
+  if (!form || !ONLINE) return;
+  const gameId = state.need?.game || state.room?.need?.game;
+  if (!gameId) return;
+  const fd = new FormData(form);
+  const next = {
+    ...(state.user.gameAccounts || {}),
+    [gameId]: { ...((state.user.gameAccounts || {})[gameId] || {}) },
+  };
+  for (const [key, value] of fd.entries()) {
+    next[gameId][key] = String(value || "").trim();
+  }
+  try {
+    const data = await api.updateProfile(state.token, { gameAccounts: next });
+    update({ user: { ...state.user, ...data.user } });
+    render();
+    toast("游戏账号已保存");
+  } catch (err) {
+    toast(err.message);
+  }
+}
+
+async function setRoomRating(rating) {
+  const code = state.session?.roomCode || state.lastRoomCode;
+  if (!code || !ONLINE) return;
+  try {
+    await api.roomFeedback(code, { rating }, state.token);
+    update({ session: { ...state.session, rating } });
+    render();
+  } catch (err) {
+    toast(err.message);
+  }
+}
+
+async function setRoomWantAgain(wantAgain) {
+  const code = state.session?.roomCode || state.lastRoomCode;
+  if (!code || !ONLINE) return;
+  try {
+    await api.roomFeedback(code, { wantAgain }, state.token);
+    update({ session: { ...state.session, wantAgain } });
+    render();
+    if (wantAgain) toast("已记录，下次可以再来找 TA");
+  } catch (err) {
+    toast(err.message);
+  }
+}
+
+async function rematchRecent(id) {
+  const item = state.recentConnections.find((c) => c.id === id);
+  if (!item) return;
+  const game = GAMES.find((g) => g.id === item.gameId) || GAMES[0];
+  const need = { ...state.need, game: game.id, mode: game.modes[0], goal: "" };
+  if (!ONLINE) {
+    toast("服务暂不可用，请稍后重试");
+    return;
+  }
+  update({
+    need,
+    match: { status: "active", pool: state.match.pool ?? 0, candidates: [], pending: null },
+  });
+  try {
+    const data = await api.postNeed(state.token, need);
+    update({
+      match: {
+        ...state.match,
+        status: "active",
+        pool: data.matching ?? data.online ?? state.match.pool,
+        matchRequestId: data.requestId || null,
+        candidates: normalizeCandidates(data.candidates || []),
+      },
+    });
+  } catch (err) {
+    toast(err.message);
+  }
+  navigate("#/matching");
 }
 
 function setOutcome(outcome) {
@@ -1560,10 +1770,20 @@ document.addEventListener("click", (event) => {
     "view-profile": (id) => navigate(`#/player/${id}`),
     "apply-partner": (id) => applyPartner(id),
     "open-room": () => navigate("#/room"),
-    "leave-room": () => {
-      update({ room: null });
-      navigate("#/home");
+    "leave-room": exitRoomPrompt,
+    "exit-room": exitRoomPrompt,
+    "confirm-exit-room": confirmExitRoom,
+    "save-room-account": saveRoomGameAccount,
+    "copy-room-account": (value) => copyText(value),
+    "add-game-friend": (value) => {
+      copyText(value);
+      toast("已复制，请去游戏内添加好友");
     },
+    "set-room-rating": (value) => setRoomRating(value),
+    "set-room-want": (value) => setRoomWantAgain(value === "yes"),
+    "rematch-recent": (id) => rematchRecent(id),
+    "back-to-match": () => navigate("#/need"),
+    "go-recent": () => navigate("#/connections"),
     "start-game": startGame,
     "finish-game": finishGame,
     "set-outcome": (outcome) => setOutcome(outcome),
@@ -1580,9 +1800,17 @@ document.addEventListener("click", (event) => {
     "submit-feedback": submitFeedback,
     "accept-application": async (id) => {
       try {
-        await api.acceptApplication(state.token, id);
+        const result = await api.acceptApplication(state.token, id);
         closeSheet();
         update({ incomingRequest: null });
+        if (result.room) {
+          update({
+            room: normalizeServerRoom(result.room),
+            need: result.room.need || state.need,
+            session: null,
+          });
+          navigate("#/room");
+        }
       } catch (err) {
         toast(err.message);
       }

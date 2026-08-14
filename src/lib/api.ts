@@ -9,10 +9,12 @@ import {
 } from "./data";
 import type {
   Application,
+  EnrichedRecentConnection,
   MatchRequest,
   NeedInput,
   Profile,
   PublicProfile,
+  RecentConnection,
   Room,
   Session,
 } from "./types";
@@ -99,9 +101,19 @@ export async function candidatesFor(myProfile: Profile, myNeed: NeedInput) {
 export async function enrichRoom(room: Record<string, unknown>): Promise<Room> {
   const { data: members } = await supabaseAdmin()
     .from("room_members")
-    .select("user_id")
-    .eq("room_id", room.id as string);
-  const players = await publicProfilesFor((members || []).map((m) => m.user_id));
+    .select("user_id,status,exited_at")
+    .eq("room_id", room.id as string)
+    .order("joined_at", { ascending: true });
+  const rows = (members || []) as Array<{ user_id: string; status: string; exited_at: string | null }>;
+  const profiles = await publicProfilesFor(rows.map((m) => m.user_id));
+  const byId = new Map(profiles.map((p) => [p.id, p]));
+  const memberViews = rows
+    .filter((m) => byId.has(m.user_id))
+    .map((m) => ({
+      ...(byId.get(m.user_id) as PublicProfile),
+      memberStatus: m.status || "active",
+      exitedAt: m.exited_at || null,
+    }));
   return {
     id: room.id as string,
     code: room.code as string,
@@ -109,7 +121,8 @@ export async function enrichRoom(room: Record<string, unknown>): Promise<Room> {
     status: room.status as string,
     started_at: (room.started_at as string | null) || null,
     startedAt: (room.started_at as string | null) || null,
-    players,
+    players: memberViews.filter((m) => m.memberStatus === "active"),
+    members: memberViews,
   };
 }
 
@@ -117,7 +130,8 @@ export async function activeRoomFor(profileId: string): Promise<Room | null> {
   const { data: members } = await supabaseAdmin()
     .from("room_members")
     .select("room_id")
-    .eq("user_id", profileId);
+    .eq("user_id", profileId)
+    .eq("status", "active");
   const roomIds = (members || []).map((m) => m.room_id);
   if (!roomIds.length) return null;
   const { data: rooms } = await supabaseAdmin()
@@ -130,6 +144,66 @@ export async function activeRoomFor(profileId: string): Promise<Room | null> {
   const room = rooms?.[0];
   if (!room) return null;
   return enrichRoom(room);
+}
+
+export async function recentConnectionsFor(profileId: string): Promise<EnrichedRecentConnection[]> {
+  const { data } = await supabaseAdmin()
+    .from("recent_connections")
+    .select("*")
+    .eq("user_id", profileId)
+    .order("played_at", { ascending: false });
+  const rows = (data || []) as RecentConnection[];
+  const grouped = new Map<string, { row: RecentConnection; playCount: number }>();
+  for (const row of rows) {
+    const current = grouped.get(row.friend_id);
+    if (!current) {
+      grouped.set(row.friend_id, { row, playCount: row.play_count });
+      continue;
+    }
+    current.playCount += row.play_count;
+    if (new Date(row.played_at).getTime() > new Date(current.row.played_at).getTime()) {
+      current.row = row;
+    }
+  }
+  const profiles = await publicProfilesFor(Array.from(grouped.keys()));
+  const byId = new Map(profiles.map((p) => [p.id, p]));
+  return Array.from(grouped.entries())
+    .map(([friendId, entry]) => {
+      const player = byId.get(friendId);
+      if (!player) return null;
+      return {
+        player,
+        gameId: entry.row.game_id,
+        playedAt: entry.row.played_at,
+        playCount: entry.playCount,
+        rating: entry.row.rating,
+        wantAgain: entry.row.want_again,
+      };
+    })
+    .filter((entry): entry is EnrichedRecentConnection => entry !== null);
+}
+
+export async function recordRoomConnection(room: Record<string, unknown>): Promise<void> {
+  const gameId = String((room.need as Record<string, unknown>)?.game || "");
+  if (!gameId) return;
+  const { data: members } = await supabaseAdmin()
+    .from("room_members")
+    .select("user_id")
+    .eq("room_id", room.id as string);
+  const ids = Array.from(new Set((members || []).map((m) => m.user_id)));
+  if (ids.length < 2) return;
+  const rows: Array<{ user_id: string; friend_id: string; game_id: string; room_id: string }> = [];
+  for (let i = 0; i < ids.length; i++) {
+    for (let j = i + 1; j < ids.length; j++) {
+      rows.push({ user_id: ids[i], friend_id: ids[j], game_id: gameId, room_id: room.id as string });
+      rows.push({ user_id: ids[j], friend_id: ids[i], game_id: gameId, room_id: room.id as string });
+    }
+  }
+  if (!rows.length) return;
+  await supabaseAdmin().from("recent_connections").upsert(rows, {
+    onConflict: "user_id,friend_id,room_id",
+    ignoreDuplicates: true,
+  });
 }
 
 export async function activeSessionFor(profileId: string): Promise<Session | null> {

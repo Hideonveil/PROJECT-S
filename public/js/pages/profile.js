@@ -46,8 +46,8 @@ export function profilePage(state, candidate) {
         <div class="card card--pad-lg" style="display:flex;flex-direction:column;gap:14px">
           ${needSummary(candidate.need)}
           ${pending
-            ? `<div class="inline-actions">${statusPill("CONNECTED")}<span class="dim" style="font-size:13px">申请已发送，对方已接受</span></div>`
-            : button({ label: candidate.kind === "team" ? "申请加入队伍" : "申请一起玩", action: "apply-partner", value: candidate.id, kind: "primary", size: "lg", iconName: "send" })}
+            ? `<div class="inline-actions">${statusPill("CONNECTED")}<span class="dim" style="font-size:13px">邀请已发送，等对方也邀请你</span></div>`
+            : button({ label: candidate.kind === "team" ? "邀请加入队伍" : "邀请一起玩", action: "apply-partner", value: candidate.id, kind: "primary", size: "lg", iconName: "send" })}
         </div>
       </section>
       <section class="grid-2">

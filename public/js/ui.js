@@ -115,8 +115,8 @@ export function playerCard(candidate, { pending = false } = {}) {
     <div class="player-card-actions">
       ${button({ label: "查看主页", action: "view-profile", value: candidate.id, kind: "outline", size: "sm", iconName: "user" })}
       ${pending
-        ? `<span class="status-pill status-pill--live"><span class="dot"></span>已申请</span>`
-        : button({ label: isTeam ? "申请加入" : "申请一起玩", action: "apply-partner", value: candidate.id, kind: "primary", size: "sm", iconName: "send" })}
+        ? `<span class="status-pill status-pill--live"><span class="dot"></span>已邀请</span>`
+        : button({ label: isTeam ? "邀请加入" : "邀请一起玩", action: "apply-partner", value: candidate.id, kind: "primary", size: "sm", iconName: "send" })}
     </div>
   </article>`;
 }

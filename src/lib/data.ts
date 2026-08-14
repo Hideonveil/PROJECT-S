@@ -15,6 +15,7 @@ export function publicProfile(profile: Profile, games: GameIdentity[] = []): Pub
     friendCode: profile.friend_code,
     genres: Array.isArray(profile.genres) ? profile.genres : [],
     games,
+    gameAccounts: (profile.game_accounts || {}) as Record<string, Record<string, string>>,
   };
 }
 

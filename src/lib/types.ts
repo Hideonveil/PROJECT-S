@@ -20,6 +20,7 @@ export interface Profile {
   online: boolean;
   last_seen: string | null;
   friend_code: string;
+  game_accounts: Record<string, Record<string, string>> | null;
   created_at: string;
 }
 
@@ -36,6 +37,7 @@ export interface PublicProfile {
   friendCode: string;
   genres: string[];
   games: GameIdentity[];
+  gameAccounts: Record<string, Record<string, string>>;
 }
 
 export interface NeedInput {
@@ -105,6 +107,11 @@ export interface Application {
   created_at: string;
 }
 
+export interface RoomMemberView extends PublicProfile {
+  memberStatus: string;
+  exitedAt: string | null;
+}
+
 export interface Room {
   id: string;
   code: string;
@@ -113,6 +120,29 @@ export interface Room {
   started_at: string | null;
   startedAt: string | null;
   players: PublicProfile[];
+  members: RoomMemberView[];
+}
+
+export interface RecentConnection {
+  id: string;
+  user_id: string;
+  friend_id: string;
+  game_id: string;
+  room_id: string | null;
+  played_at: string;
+  play_count: number;
+  rating: string | null;
+  want_again: boolean | null;
+  created_at: string;
+}
+
+export interface EnrichedRecentConnection {
+  player: PublicProfile;
+  gameId: string;
+  playedAt: string;
+  playCount: number;
+  rating: string | null;
+  wantAgain: boolean | null;
 }
 
 export interface Session {

@@ -9,6 +9,7 @@ import {
   poolCounts,
   profileWithGames,
   publicNeeds,
+  recentConnectionsFor,
 } from "@/lib/api";
 import { supabaseAdmin } from "@/lib/supabase";
 import type { Session } from "@/lib/types";
@@ -47,7 +48,7 @@ export async function GET(request: Request) {
       .eq("status", "pending")
       .order("created_at", { ascending: false });
 
-    const [counts, needs, friends, applications, room, session, activeReq] = await Promise.all([
+    const [counts, needs, friends, applications, room, session, activeReq, recentConnections] = await Promise.all([
       poolCounts(),
       publicNeeds(),
       friendsFor(profile.id),
@@ -55,6 +56,7 @@ export async function GET(request: Request) {
       activeRoomFor(profile.id),
       activeSessionFor(profile.id),
       activeRequest(profile.id),
+      recentConnectionsFor(profile.id),
     ]);
 
     return NextResponse.json({
@@ -67,6 +69,7 @@ export async function GET(request: Request) {
       room,
       session: mapSession(session),
       matchRequestId: activeReq?.id || null,
+      recentConnections,
     });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "状态获取失败" }, { status: 500 });

@@ -11,7 +11,7 @@ export function resultsPage(state) {
       <div class="results-head">
         <div class="page-eyebrow">${icon("link2", 13)} 匹配完成 · 你来决定</div>
         <h1 class="page-title">找到 ${candidates.length} 个合适节点</h1>
-        <p class="page-sub">算法只负责筛选，选择和谁一起玩由你决定。先看主页里的游戏身份，再决定是否申请。</p>
+        <p class="page-sub">算法只负责筛选，选择和谁一起玩由你决定。先看主页里的游戏身份，再决定是否邀请。</p>
         <div class="inline-actions">
           ${statusPill("LIVE")}
           <span class="candidate-count">${esc(Math.max(0, state.match.pool ?? 0))} 人仍在匹配池</span>
@@ -21,7 +21,7 @@ export function resultsPage(state) {
       ${
         pending
           ? `<div class="card" style="border-color:var(--signal-border);background:var(--signal-soft);display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
-              <div class="inline-actions">${statusPill("CONNECTED")}<span style="color:var(--paper);font-weight:700">已发送申请，对方已接受</span></div>
+              <div class="inline-actions">${statusPill("CONNECTED")}<span style="color:var(--paper);font-weight:700">邀请已发送，等对方也邀请你</span></div>
               ${button({ label: "进入临时房间", action: "open-room", kind: "primary", iconName: "arrowRight" })}
             </div>`
           : ""

@@ -32,6 +32,11 @@ export async function POST(request: Request) {
         genres,
         play_style: String(body.playStyle ?? existing.play_style),
         voice: body.voice !== undefined ? body.voice : existing.voice,
+        game_accounts:
+          body.gameAccounts && typeof body.gameAccounts === "object"
+            ? body.gameAccounts
+            : existing.game_accounts || {},
+
         online: true,
         last_seen: new Date().toISOString(),
       })

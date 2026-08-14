@@ -95,6 +95,7 @@ export const applyTo = (token, toUserId) => request("/api/apply", { token, toUse
 export const acceptApplication = (token, applicationId) => request("/api/accept-application", { token, applicationId });
 export const declineApplication = (token, applicationId) => request("/api/decline-application", { token, applicationId });
 export const roomAction = (code, action, token) => request(`/api/room/${code}/${action}`, { token });
+export const roomFeedback = (code, payload, token) => request(`/api/room/${code}/feedback`, { token, ...payload });
 export const rematch = (code, choice, token) => request(`/api/room/${code}/rematch`, { token, choice });
 export const searchFriend = (token, code) => request("/api/friends/search", { token, code });
 export const addFriendByCode = (token, friendCode) => request("/api/friends/add", { token, friendCode });

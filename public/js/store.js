@@ -23,6 +23,7 @@ export function defaultState() {
       playStyle: "",
       voice: true,
       online: false,
+      gameAccounts: {},
     },
     need: JSON.parse(JSON.stringify(DEFAULT_NEED)),
     match: {
@@ -39,6 +40,7 @@ export function defaultState() {
     room: null,
     session: null,
     friends: [],
+    recentConnections: [],
     history: [],
     stats: {
       sessions: 0,

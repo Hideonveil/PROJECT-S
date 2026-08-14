@@ -1158,3 +1158,8 @@
   flex-direction: column;
   gap: 8px;
 }
+/* room lifecycle */
+.room-account-value{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0}
+.room-member a{display:inline-flex;border-radius:50%;outline-offset:2px}
+.room-member a:hover{outline:2px solid var(--signal-border)}
+.outcome-btn span{font-size:15px;font-weight:800}

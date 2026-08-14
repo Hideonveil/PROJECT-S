@@ -45,18 +45,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ cod
     if (players.length && decided.length === players.length) {
       const allYes = decided.every((p) => updated.rematch_by[p] === "yes");
       connected = allYes;
-      if (allYes) {
-        const rows: Array<{ user_id: string; friend_id: string }> = [];
-        for (let i = 0; i < players.length; i++) {
-          for (let j = i + 1; j < players.length; j++) {
-            rows.push({ user_id: players[i], friend_id: players[j] });
-            rows.push({ user_id: players[j], friend_id: players[i] });
-          }
-        }
-        if (rows.length) {
-          await admin.from("friendships").upsert(rows, { onConflict: "user_id,friend_id", ignoreDuplicates: true });
-        }
-      }
+      // Recent connections stay non-permanent; friends are only added by choice.
     }
 
     return NextResponse.json({ session: mapSession(updated), connected });
