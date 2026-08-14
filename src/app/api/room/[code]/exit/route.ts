@@ -45,6 +45,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ cod
           .from("rooms")
           .update({ status: "completed", completed_at: new Date().toISOString() })
           .eq("id", room.id);
+        await admin.from("rooms").update({ status: "closed" }).eq("id", room.id);
         const { data: memberRows } = await admin.from("room_members").select("user_id").eq("room_id", room.id);
         for (const row of memberRows || []) {
           await admin
