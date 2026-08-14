@@ -51,10 +51,10 @@ function verifyPage(state) {
         </div>
         <form data-form="verify" class="auth-form" novalidate>
           <h2 class="card-title">输入验证码</h2>
-          <p class="page-sub" style="font-size:13px">验证码已发送到 <strong>${esc(email)}</strong>，请输入 6 位数字验证码完成注册。</p>
+          <p class="page-sub" style="font-size:13px">验证码已发送到 <strong>${esc(email)}</strong>，请输入邮箱中的数字验证码完成注册。</p>
           <div class="field">
             <label class="label" for="verify-code">验证码</label>
-            <input class="input" id="verify-code" name="code" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="6 位数字" required />
+            <input class="input" id="verify-code" name="code" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="8" placeholder="6-8 位数字" required />
           </div>
           ${notice ? `<div class="auth-note" data-auth-note>${esc(notice)}</div>` : ""}
           ${error ? `<div class="auth-error" data-auth-error>${esc(error)}</div>` : ""}

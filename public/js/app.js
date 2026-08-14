@@ -1295,7 +1295,7 @@ function mapAuthError(err) {
   if (message.includes("Missing password")) return "请输入密码";
   if (message.includes("Token has expired") || message.includes("otp_expired")) return "验证码已过期，请重新获取";
   if (message.includes("Token has invalid") || message.includes("invalid token") || message.includes("otp")) return "验证码错误或已失效";
-  if (message.includes("rate limit") || message.includes("over_email_send_rate_limit")) return "发送过于频繁，请稍后再试";
+  if (message.includes("rate limit") || message.includes("over_email_send_rate_limit")) return "验证邮件发送过于频繁，请稍后再试（约 1 小时后恢复）";
   return message || "操作失败，请稍后重试";
 }
 
@@ -1381,8 +1381,8 @@ async function submitVerification() {
     render();
     return;
   }
-  if (!/^\d{6}$/.test(code)) {
-    update({ authError: "请输入 6 位数字验证码" });
+  if (!/^\d{6,8}$/.test(code)) {
+    update({ authError: "请输入 6-8 位数字验证码" });
     render();
     return;
   }
