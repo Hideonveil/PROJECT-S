@@ -53,6 +53,13 @@ const DRAFT = {
   dirty: false,
 };
 
+const HOME_FILTER = {
+  game: GAMES[0].id,
+  mode: GAMES[0].modes[0] || "",
+  time: "现在就玩",
+  team: "1",
+  voice: "需要",
+};
 let activeField = null;
 let timers = [];
 let ONLINE = false;
@@ -255,6 +262,61 @@ function prepareNeedDraft() {
   DRAFT.style = "";
   DRAFT.details = {};
   DRAFT.dirty = false;
+}
+
+function toggleHomeGroup(actionEl) {
+  const group = actionEl.closest("[data-home-group]");
+  group?.querySelectorAll(".chip").forEach((c) => c.classList.remove("chip--on"));
+  actionEl.classList.add("chip--on");
+}
+
+function updateHomeModeChips() {
+  const wrap = document.querySelector("[data-home-mode-wrap]");
+  if (!wrap) return;
+  const game = GAMES.find((g) => g.id === HOME_FILTER.game) || GAMES[0];
+  wrap.innerHTML = (game.modes || [])
+    .map(
+      (m, i) =>
+        `<button type="button" class="chip ${!HOME_FILTER.mode || HOME_FILTER.mode === m ? "chip--on" : ""}" data-action="home-mode" data-value="${esc(m)}">${esc(m)}</button>`
+    )
+    .join("");
+}
+
+function applyHomeFilterChips() {
+  const groups = document.querySelectorAll("[data-home-group]");
+  groups.forEach((group) => {
+    const key = group.dataset.homeGroup;
+    group.querySelectorAll(".chip").forEach((c) => {
+      c.classList.toggle("chip--on", c.dataset.value === String(HOME_FILTER[key] || ""));
+    });
+  });
+  updateHomeModeChips();
+}
+
+function resetHomeFilter() {
+  HOME_FILTER.game = GAMES[0].id;
+  HOME_FILTER.mode = GAMES[0].modes[0] || "";
+  HOME_FILTER.time = "现在就玩";
+  HOME_FILTER.team = "1";
+  HOME_FILTER.voice = "需要";
+  applyHomeFilterChips();
+}
+
+function startHomeFilter() {
+  prepareNeedDraft();
+  const game = GAMES.find((g) => g.id === HOME_FILTER.game) || GAMES[0];
+  DRAFT.game = game.id;
+  DRAFT.mode = HOME_FILTER.mode || game.modes[0] || "";
+  const flow = FLOW[DRAFT.game] || {};
+  DRAFT.goal = flow.goalByMode?.[DRAFT.mode] || "";
+  DRAFT.time = HOME_FILTER.time || "现在就玩";
+  DRAFT.current = 1;
+  DRAFT.needed = Math.min(4, Math.max(1, Number(HOME_FILTER.team) || 1));
+  DRAFT.voice = HOME_FILTER.voice !== "不需要";
+  DRAFT.voicePref = HOME_FILTER.voice || "都可以";
+  DRAFT.wizardStep = "confirm";
+  DRAFT.dirty = true;
+  navigate("#/need");
 }
 
 function findCandidate(id) {
@@ -1784,8 +1846,62 @@ document.addEventListener("click", (event) => {
     return;
   }
 
+  if (action === "toggle-home-filter") {
+    const filter = document.getElementById("home-filter");
+    if (!filter) return;
+    const show = filter.hidden;
+    filter.hidden = !show;
+    const diamond = document.querySelector(".home-diamond");
+    diamond?.setAttribute("aria-expanded", String(show));
+    return;
+  }
+
+  if (action === "home-game") {
+    HOME_FILTER.game = value;
+    const game = GAMES.find((g) => g.id === value);
+    HOME_FILTER.mode = game?.modes?.[0] || "";
+    applyHomeFilterChips();
+    return;
+  }
+
+  if (action === "home-mode") {
+    HOME_FILTER.mode = value;
+    toggleHomeGroup(actionEl);
+    return;
+  }
+
+  if (action === "home-time") {
+    HOME_FILTER.time = value;
+    toggleHomeGroup(actionEl);
+    return;
+  }
+
+  if (action === "home-team") {
+    HOME_FILTER.team = value;
+    toggleHomeGroup(actionEl);
+    return;
+  }
+
+  if (action === "home-voice") {
+    HOME_FILTER.voice = value;
+    toggleHomeGroup(actionEl);
+    return;
+  }
+
+  if (action === "home-filter-reset") {
+    resetHomeFilter();
+    return;
+  }
+
+  if (action === "home-filter-start") {
+    startHomeFilter();
+    return;
+  }
+
+
   const actions = {
     "go-home": () => navigate("#/home"),
+    "go-me": () => navigate("#/me"),
     "go-friends": () => navigate("#/friends"),
     "go-need": () => {
       prepareNeedDraft();

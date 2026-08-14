@@ -204,6 +204,40 @@ export function shell(state, route, content, { immersive = false, topRight = "" 
   </div>`;
 }
 
+export function homeShell(state, content, active = "home") {
+  const navItems = [
+    { id: "home", label: "首页", href: "#/home", icon: "house" },
+    { id: "connections", label: "最近", href: "#/connections", icon: "clock" },
+    { id: "friends", label: "好友", href: "#/friends", icon: "users" },
+  ];
+  return `<div class="home-shell">
+    ${mirrors()}
+    <header class="home-topbar">
+      <div class="home-top-left">${brand(40, false)}</div>
+      <div class="home-top-right">
+        <nav class="home-nav" aria-label="主导航">
+          ${navItems
+            .map(
+              (n) =>
+                `<a class="home-nav-link ${active === n.id ? "home-nav-link--active" : ""}" href="${n.href}" data-nav>${icon(n.icon, 16)}<span>${n.label}</span></a>`
+            )
+            .join("")}
+        </nav>
+        <div class="home-avatar">
+          ${avatarWrap(state.user.avatarKey, 38, state.user.online)}
+          <div class="home-avatar-pop">
+            <button type="button" data-action="go-me">${icon("user", 15)}<span>我的主页</span></button>
+            <button type="button" data-action="open-profile-edit">${icon("settings", 15)}<span>选项</span></button>
+            <button type="button" data-action="open-feedback">${icon("send", 15)}<span>反馈</span></button>
+          </div>
+        </div>
+      </div>
+    </header>
+    <main class="home-main">${content}</main>
+    <div class="home-note"><span class="home-note-dot"></span>仅支持桌面端</div>
+  </div>`;
+}
+
 export function toast(message) {
   const old = document.querySelector(".toast");
   if (old) old.remove();
