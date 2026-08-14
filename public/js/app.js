@@ -662,8 +662,13 @@ function renderAuthMode() {
   if (sub) sub.textContent = isLogin ? "登录后继续你的游戏身份和匹配。" : "用用户名注册，匹配到的每一步都是真人玩家。";
   const submitLabel = card.querySelector('[data-action="auth-submit"] span');
   if (submitLabel) submitLabel.textContent = isLogin ? "登录" : "注册";
-  const switchBtn = card.querySelector(".auth-switch");
-  if (switchBtn) switchBtn.textContent = isLogin ? "没有账号？去注册" : "已有账号？去登录";
+  const switchWrap = card.querySelector(".auth-switch");
+  const switchLink = card.querySelector(".auth-switch-link");
+  if (switchWrap) switchWrap.childNodes[0].textContent = isLogin ? "没有账号？" : "已有账号？";
+  if (switchLink) {
+    switchLink.textContent = isLogin ? "去注册" : "去登录";
+    switchLink.dataset.value = isLogin ? "register" : "login";
+  }
   const pw = card.querySelector('[name="password"]');
   if (pw) {
     pw.placeholder = isLogin ? "输入密码" : "至少 6 位";
@@ -1789,6 +1794,15 @@ document.addEventListener("click", (event) => {
     "switch-auth-mode": (value) => {
       update({ authMode: value === "register" ? "register" : "login", authError: "", authNotice: "" });
       renderAuthMode();
+    },
+    "toggle-password": () => {
+      const input = document.querySelector("#auth-password");
+      const toggle = document.querySelector("[data-action='toggle-password']");
+      if (!input || !toggle) return;
+      const show = input.type === "password";
+      input.type = show ? "text" : "password";
+      toggle.classList.toggle("is-show", show);
+      toggle.setAttribute("aria-label", show ? "隐藏密码" : "显示密码");
     },
     "auth-submit": () => submitAuth(),
     "complete-onboard": completeOnboard,

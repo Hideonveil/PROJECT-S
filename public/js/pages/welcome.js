@@ -1,12 +1,10 @@
 import { icon } from "../icons.js";
 import { avatar } from "../avatar.js";
-import { brand, button, esc, fragments, statusPill } from "../ui.js";
+import { brand, button, esc, mirrors, statusPill } from "../ui.js";
 import { DEVICES, GENRES } from "../data.js";
 
 export function welcomeHero(state) {
   return `<section class="welcome-left">
-    <div class="node-field-wrap"><canvas data-node-field></canvas></div>
-    ${fragments()}
     <div class="welcome-copy">
       ${brand(46)}
       <div>
@@ -30,6 +28,7 @@ export function welcomePage(state, draft) {
   const selectedGenres = draft.genres || [];
   const genderOptions = ["男", "女", "保密", "其他"];
   return `<div class="welcome">
+    ${mirrors()}
     ${welcomeHero(state)}
     <section class="welcome-right">
       <form class="welcome-form" data-form="onboard">

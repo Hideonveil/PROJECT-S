@@ -27,34 +27,20 @@ body {
   text-rendering: optimizeLegibility;
 }
 
-/* ambient prismatic atmosphere: three soft light fields, theme-aware */
+/* global hazy prism wash: a single soft light field across the whole page */
 body::before {
   content: "";
   position: fixed;
   inset: 0;
   z-index: -2;
   pointer-events: none;
-  background:
-    radial-gradient(46% 38% at 12% -4%, var(--ambient-b), transparent 70%),
-    radial-gradient(52% 44% at 88% 6%, var(--ambient-a), transparent 72%),
-    radial-gradient(60% 46% at 62% 108%, var(--ambient-c), transparent 74%);
-  opacity: 0.55;
+  background: linear-gradient(115deg, rgba(184,160,240,0.11) 0%, rgba(180,216,248,0.07) 36%, rgba(248,216,232,0.09) 66%, rgba(184,160,240,0.07) 100%);
   transition: opacity 0.6s ease;
 }
 
-/* faint pixel lattice, the quiet game-culture layer */
+/* pixel lattice removed from the global layer; login uses large mirror crystals */
 body::after {
-  content: "";
-  position: fixed;
-  inset: 0;
-  z-index: -1;
-  pointer-events: none;
-  background-image:
-    linear-gradient(to right, rgba(38, 42, 53, 0.035) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(38, 42, 53, 0.035) 1px, transparent 1px);
-  background-size: 44px 44px;
-  mask-image: radial-gradient(120% 90% at 50% 0%, #000 25%, transparent 78%);
-  -webkit-mask-image: radial-gradient(120% 90% at 50% 0%, #000 25%, transparent 78%);
+  content: none;
 }
 
 button,

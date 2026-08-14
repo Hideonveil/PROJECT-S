@@ -3,39 +3,39 @@
   color-scheme: light;
 
   /* pearl base */
-  --ink-0: #f6f4ee;
+  --ink-0: #f8f8fc;
   --ink-1: #ffffff;
-  --ink-2: #f1eee5;
-  --ink-3: #e8e3d6;
+  --ink-2: #f2f2f8;
+  --ink-3: #e9e9f2;
 
   /* text */
-  --paper: #262a35;
-  --dim: #5d6472;
-  --muted: #9b9587;
+  --paper: #222;
+  --dim: #666;
+  --muted: #999;
 
   /* lines */
-  --line: rgba(38, 42, 53, 0.09);
-  --line-strong: rgba(38, 42, 53, 0.18);
+  --line: rgba(34, 34, 34, 0.08);
+  --line-strong: rgba(34, 34, 34, 0.14);
 
   /* prism accents */
-  --prism-cyan: #a8ddf0;
-  --prism-lilac: #d3c4f7;
-  --prism-pink: #f6c9dc;
+  --prism-cyan: #b4d8f8;
+  --prism-lilac: #d9ccf8;
+  --prism-pink: #f8d8e8;
   --prism-mint: #bfe9d2;
   --prism-yellow: #f4e4b8;
   --prism-blue: #c3d5f8;
   --prism-peach: #f8d9c4;
 
   /* brand violet */
-  --signal: #7d6cf2;
-  --signal-strong: #6854e6;
-  --signal-soft: rgba(125, 108, 242, 0.10);
-  --signal-dim: rgba(125, 108, 242, 0.18);
-  --signal-border: rgba(125, 108, 242, 0.45);
+  --signal: #b8a0f0;
+  --signal-strong: #a98fe8;
+  --signal-soft: rgba(184, 160, 240, 0.10);
+  --signal-dim: rgba(184, 160, 240, 0.18);
+  --signal-border: rgba(184, 160, 240, 0.42);
 
   /* status */
-  --live: #2fa36b;
-  --live-soft: rgba(64, 181, 128, 0.14);
+  --live: #6fbfa0;
+  --live-soft: rgba(111, 191, 160, 0.14);
   --danger: #df6a72;
   --danger-dim: rgba(223, 106, 114, 0.10);
   --danger-border: rgba(223, 106, 114, 0.35);
@@ -53,15 +53,15 @@
   --font-mono: "SF Mono", "Cascadia Code", "JetBrains Mono", Consolas, monospace;
 
   /* radius */
-  --r-sm: 10px;
-  --r-md: 14px;
-  --r-lg: 22px;
+  --r-sm: 12px;
+  --r-md: 12px;
+  --r-lg: 20px;
   --r-pill: 999px;
 
   /* shadow */
-  --shadow-1: 0 24px 60px rgba(92, 84, 150, 0.13);
-  --shadow-2: 0 8px 28px rgba(92, 84, 150, 0.10);
-  --shadow-pop: 0 2px 6px rgba(92, 84, 150, 0.08), 0 18px 44px rgba(92, 84, 150, 0.16);
+  --shadow-1: 0 24px 70px rgba(90, 80, 150, 0.08);
+  --shadow-2: 0 10px 30px rgba(90, 80, 150, 0.07);
+  --shadow-pop: 0 2px 8px rgba(90, 80, 150, 0.05), 0 18px 48px rgba(90, 80, 150, 0.10);
 
   --header-h: 64px;
   --rail-w: 236px;

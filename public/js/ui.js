@@ -15,7 +15,7 @@ function escAttr(value) {
 }
 
 export function brandMark(size = 32) {
-  return `<svg class="brand-mark" width="${size}" height="${size}" viewBox="0 0 48 48" fill="none" aria-hidden="true"><defs><linearGradient id="ps-prism" x1="8" y1="40" x2="40" y2="8" gradientUnits="userSpaceOnUse"><stop stop-color="#7d6cf2"/><stop offset="0.55" stop-color="#a793f6"/><stop offset="1" stop-color="#a8ddf0"/></linearGradient></defs><polygon points="24,7 41,39 7,39" fill="url(#ps-prism)" fill-opacity="0.92" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><rect x="32.2" y="3.2" width="8.6" height="8.6" rx="1.6" transform="rotate(45 36.5 7.5)" fill="#ffffff" fill-opacity="0.7" stroke="currentColor" stroke-width="1.8"/><rect x="8" y="9" width="5" height="5" rx="1" fill="currentColor" fill-opacity="0.55"/></svg>`;
+  return `<svg class="brand-mark" width="${size}" height="${size}" viewBox="0 0 64 64" fill="none" aria-hidden="true"><defs><linearGradient id="ps-prism" x1="8" y1="56" x2="56" y2="8" gradientUnits="userSpaceOnUse"><stop stop-color="#b8a0f0" stop-opacity="0.88"/><stop offset="0.5" stop-color="#c8bcf6" stop-opacity="0.55"/><stop offset="1" stop-color="#b4d8f8" stop-opacity="0.82"/></linearGradient></defs><polygon points="32,3 59,32 32,61 5,32" fill="url(#ps-prism)" stroke="rgba(255,255,255,0.55)" stroke-width="1.4" stroke-linejoin="round"/><polygon points="32,3 59,32 32,34 5,32" fill="#ffffff" fill-opacity="0.16"/><polygon points="32,61 59,32 32,34 5,32" fill="#ffffff" fill-opacity="0.06"/><path d="M32 3 L32 61 M5 32 L59 32 M13 13 L51 51 M51 13 L13 51" stroke="#ffffff" stroke-opacity="0.22" stroke-width="1"/><rect x="50" y="2" width="7" height="7" rx="1.5" transform="rotate(45 53.5 5.5)" fill="#f8d8e8" fill-opacity="0.9"/><rect x="7" y="9" width="5" height="5" rx="1" fill="#222" fill-opacity="0.45"/></svg>`;
 }
 
 /* floating game-world fragments: pure CSS shapes, cheap to render */
@@ -31,7 +31,19 @@ export function fragments() {
 }
 
 export function brand(size = 32, tag = true) {
-  return `<a class="brand" href="#/home" aria-label="project S beta 首页">${brandMark(size)}<span><span class="brand-name">project S beta</span>${tag ? `<span class="brand-tag">此刻，一起玩</span>` : ""}</span></a>`;
+  return `<a class="brand" href="#/home" aria-label="Project-S beta 首页">${brandMark(size)}<span><span class="brand-name">Project-S <span class="brand-beta">beta</span></span>${tag ? `<span class="brand-tag">此刻，一起玩</span>` : ""}</span></a>`;
+}
+
+/* large translucent mirror / prism crystals for login atmosphere */
+export function mirrors() {
+  return `<div class="prism-mirrors" aria-hidden="true">
+    <span class="mirror mirror--a"></span>
+    <span class="mirror mirror--b"></span>
+    <span class="mirror mirror--c"></span>
+    <span class="mirror mirror--d"></span>
+    <span class="mirror-pixel mirror-pixel--1"></span>
+    <span class="mirror-pixel mirror-pixel--2"></span>
+  </div>`;
 }
 
 export function statusPill(status, text = null) {
