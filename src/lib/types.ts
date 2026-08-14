@@ -48,6 +48,7 @@ export interface NeedInput {
   duration: string;
   voice: boolean;
   playerType: string;
+  details?: Record<string, unknown>;
 }
 
 export interface MatchRequest {
@@ -65,6 +66,7 @@ export interface MatchRequest {
   status: string;
   created_at: string;
   expires_at: string | null;
+  details: Record<string, unknown> | null;
 }
 
 export interface Candidate {
@@ -88,6 +90,7 @@ export interface Candidate {
     duration: string;
     voice: boolean;
     playerType: string;
+    details?: Record<string, unknown>;
   };
   matchScore: number;
   reasons: string[];

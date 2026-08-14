@@ -4,6 +4,7 @@ import { initNodeField } from "./field.js";
 import { button, esc, needSummary, shell, toast } from "./ui.js";
 import { state, update, resetState } from "./store.js";
 import { DEVICES, GAME_BY_ID, GAMES, GENRES } from "./data.js";
+import { FLOW } from "./flow.js";
 import * as api from "./api.js";
 import { authPage } from "./pages/auth.js";
 import { welcomePage } from "./pages/welcome.js";
@@ -36,6 +37,19 @@ const DRAFT = {
   duration: state.need.duration,
   voice: state.need.voice,
   playerType: state.need.playerType,
+  wizardStep: "game",
+  wizardSearch: "",
+  activityPos: "mode",
+  teamPos: "current",
+  selectedTags: [],
+  modpack: "",
+  modpackCustom: "",
+  rank: "",
+  hero: "",
+  role: "",
+  voicePref: "都可以",
+  style: "",
+  needed: 1,
   dirty: false,
 };
 
@@ -44,6 +58,7 @@ let timers = [];
 let ONLINE = false;
 let eventSourceClose = null;
 let chatClose = null;
+let wizardAdvanceTimer = null;
 
 function clearTimers() {
   timers.forEach((t) => {
@@ -51,6 +66,21 @@ function clearTimers() {
     window.clearInterval(t);
   });
   timers = [];
+}
+
+function clearWizardAdvance() {
+  if (wizardAdvanceTimer) {
+    window.clearTimeout(wizardAdvanceTimer);
+    wizardAdvanceTimer = null;
+  }
+}
+
+function scheduleWizardAdvance(fn, ms) {
+  clearWizardAdvance();
+  wizardAdvanceTimer = window.setTimeout(() => {
+    wizardAdvanceTimer = null;
+    fn();
+  }, ms);
 }
 
 function destroyField() {
@@ -76,6 +106,7 @@ function parseRoute() {
 
 function render() {
   clearTimers();
+  clearWizardAdvance();
   destroyField();
   if (chatClose) {
     chatClose();
@@ -201,15 +232,30 @@ function prepareOnboardDraft() {
 }
 
 function prepareNeedDraft() {
-  DRAFT.game = state.need.game;
-  DRAFT.mode = state.need.mode;
-  DRAFT.goal = state.need.goal;
-  DRAFT.current = state.need.current;
-  DRAFT.target = state.need.target;
-  DRAFT.time = state.need.time;
-  DRAFT.duration = state.need.duration;
-  DRAFT.voice = state.need.voice;
-  DRAFT.playerType = state.need.playerType;
+  const durations = ["60", "120", "180", "不限"];
+  const times = ["现在就玩", "30分钟后", "晚些时候"];
+  DRAFT.game = state.need.game || "valorant";
+  DRAFT.mode = state.need.mode || "";
+  DRAFT.goal = state.need.goal || "";
+  DRAFT.current = Math.min(4, Math.max(1, Number(state.need.current) || 1));
+  DRAFT.needed = Math.min(4, Math.max(1, Number(state.need.target || 2) - Number(state.need.current || 1)));
+  DRAFT.time = times.includes(state.need.time) ? state.need.time : "现在就玩";
+  DRAFT.duration = durations.includes(state.need.duration) ? state.need.duration : "60";
+  DRAFT.voice = state.need.voice !== false;
+  DRAFT.playerType = state.need.playerType || "不限";
+  DRAFT.wizardStep = "game";
+  DRAFT.wizardSearch = "";
+  DRAFT.activityPos = "mode";
+  DRAFT.teamPos = "current";
+  DRAFT.selectedTags = [];
+  DRAFT.modpack = "";
+  DRAFT.modpackCustom = "";
+  DRAFT.rank = "";
+  DRAFT.hero = "";
+  DRAFT.role = "";
+  DRAFT.voicePref = DRAFT.voice ? "需要" : "不需要";
+  DRAFT.style = "";
+  DRAFT.details = {};
   DRAFT.dirty = false;
 }
 
@@ -458,24 +504,37 @@ function connectEvents() {
   eventSourceClose = api.openEvents(state.token, {
     hello: applyServerSnapshot,
     online: (data) => {
-      update({ match: { ...state.match, pool: data.matching ?? data.online ?? state.match.pool } });
-      if (parseRoute().name === "home") render();
+      const pool = data.matching ?? data.online ?? state.match.pool;
+      update({ match: { ...state.match, pool } });
+      const routeName = parseRoute().name;
+      if (routeName === "home") render();
+      if (routeName === "matching") {
+        const poolEl = document.getElementById("pool-count");
+        if (poolEl) poolEl.textContent = String(Math.max(0, pool ?? 0));
+      }
     },
     needs: (data) => {
       const patch = { match: { ...state.match, pool: data.matching ?? data.online ?? state.match.pool } };
       const routeName = parseRoute().name;
       if (state.need && ["matching", "results"].includes(routeName)) {
         const list = (data.needs || []).filter(
-          (n) =>
-            n.user.id !== state.user.id &&
-            n.need?.game === state.need.game &&
-            n.need?.mode === state.need.mode
+          (n) => n.user.id !== state.user.id && n.need?.game === state.need.game
         );
-        if (list.length) {
-          patch.match.candidates = normalizeCandidates(list.map((n) => ({ ...n.user, need: n.need })));
-        }
+        patch.match.candidates = normalizeCandidates(list.map((n) => ({ ...n.user, need: n.need })));
+        if (list.length) patch.match.status = "matched";
+        else patch.match.candidates = [];
       }
       update(patch);
+      if (routeName === "matching") {
+        if ((patch.match.candidates || []).length) {
+          navigate("#/results");
+        } else {
+          const poolEl = document.getElementById("pool-count");
+          if (poolEl) poolEl.textContent = String(Math.max(0, patch.match.pool ?? 0));
+          const foundEl = document.getElementById("match-found");
+          if (foundEl) foundEl.textContent = "0";
+        }
+      }
     },
     friends: (data) => {
       update({ friends: mapServerFriends(data.friends || []) });
@@ -659,16 +718,31 @@ async function completeOnboard() {
 async function startMatch() {
   syncDraftFromDom("need");
   DRAFT.dirty = false;
+  const tags = DRAFT.selectedTags || [];
+  const styleParts = [DRAFT.style, ...tags].filter(Boolean);
+  const playerType = styleParts.length ? styleParts.join(" / ") : "不限";
+  const target = Math.min(8, Math.max(2, Number(DRAFT.current || 1) + Number(DRAFT.needed || 1)));
   const need = {
     game: DRAFT.game,
     mode: DRAFT.mode,
     goal: DRAFT.goal,
-    current: Math.min(DRAFT.current, DRAFT.target - 1),
-    target: DRAFT.target,
-    time: DRAFT.time,
-    duration: DRAFT.duration,
-    voice: DRAFT.voice,
-    playerType: DRAFT.playerType,
+    current: Math.min(Number(DRAFT.current || 1), target - 1),
+    target,
+    time: DRAFT.time || "现在就玩",
+    duration: DRAFT.duration || "60",
+    voice: DRAFT.voice !== false,
+    playerType,
+    details: {
+      modpack: DRAFT.modpack || "",
+      activityType: DRAFT.mode || "",
+      playStyle: DRAFT.style || "",
+      rank: DRAFT.rank || "",
+      hero: DRAFT.hero || "",
+      role: DRAFT.role || "",
+      gameMode: DRAFT.mode || "",
+      tags,
+      voicePreference: DRAFT.voicePref || "都可以",
+    },
   };
   if (!ONLINE) {
     toast("服务暂不可用，请稍后重试");
@@ -685,16 +759,17 @@ async function startMatch() {
   });
   try {
     const data = await api.postNeed(state.token, need);
+    const candidates = normalizeCandidates(data.candidates || []);
     update({
       match: {
         ...state.match,
-        status: "active",
+        status: candidates.length ? "matched" : "active",
         pool: data.matching ?? data.online ?? state.match.pool,
         matchRequestId: data.requestId || null,
-        candidates: normalizeCandidates(data.candidates || []),
+        candidates,
       },
     });
-    navigate("#/matching");
+    navigate(candidates.length ? "#/results" : "#/matching");
   } catch (err) {
     toast(err.message);
   }
@@ -702,21 +777,16 @@ async function startMatch() {
 
 function startMatchingFlow() {
   const started = Date.now();
-  const basePool = Math.max(0, state.match.pool ?? 0);
   const interval = window.setInterval(() => {
     const elapsed = (Date.now() - started) / 1000;
     const poolEl = document.getElementById("pool-count");
     const timeEl = document.getElementById("match-time");
     const foundEl = document.getElementById("match-found");
     const titleEl = document.getElementById("match-title");
-    if (poolEl) {
-      poolEl.textContent = String(basePool);
-    }
+    if (poolEl) poolEl.textContent = String(Math.max(0, state.match.pool ?? 0));
     if (timeEl) timeEl.textContent = `${Math.floor(elapsed)}s`;
-    if (foundEl) foundEl.textContent = Math.min(3, Math.floor(elapsed / 1.25));
-    if (titleEl) {
-      titleEl.textContent = elapsed > 3 ? "正在锁定候选节点" : "正在筛选节点";
-    }
+    if (foundEl) foundEl.textContent = String((state.match.candidates || []).length);
+    if (titleEl) titleEl.textContent = elapsed > 3 ? "正在锁定候选节点" : "正在筛选节点";
     const steps = document.querySelectorAll(".match-step");
     if (steps.length === 3) {
       steps[1].classList.toggle("match-step--active", elapsed < 3);
@@ -725,25 +795,6 @@ function startMatchingFlow() {
     }
   }, 350);
   timers.push(interval);
-
-  timers.push(
-    window.setTimeout(() => {
-      clearTimers();
-      update({
-        match: {
-          ...state.match,
-          status: "matched",
-          pool: state.match.pool ?? 0,
-        },
-      });
-      if (!state.match.candidates.length) {
-        navigate("#/home");
-        toast("匹配池暂无合适真人，换个需求再试");
-        return;
-      }
-      navigate("#/results");
-    }, 4200)
-  );
 }
 
 async function applyPartner(id) {
@@ -1274,6 +1325,213 @@ document.addEventListener("click", (event) => {
     return;
   }
 
+  if (action === "wizard-game") {
+    clearWizardAdvance();
+    const game = GAMES.find((g) => g.id === value);
+    if (!game) return;
+    DRAFT.game = game.id;
+    DRAFT.mode = "";
+    DRAFT.goal = "";
+    DRAFT.modpack = "";
+    DRAFT.modpackCustom = "";
+    DRAFT.rank = "";
+    DRAFT.hero = "";
+    DRAFT.role = "";
+    DRAFT.selectedTags = [];
+    DRAFT.activityPos = "mode";
+    DRAFT.teamPos = "current";
+    DRAFT.wizardStep = "activity";
+    DRAFT.dirty = true;
+    render();
+    return;
+  }
+
+  if (action === "wizard-mode") {
+    clearWizardAdvance();
+    DRAFT.mode = value;
+    const flow = FLOW[DRAFT.game] || {};
+    DRAFT.goal = flow.goalByMode?.[value] || "";
+    DRAFT.activityPos = "mode";
+    if (DRAFT.game === "deadlock") {
+      DRAFT.activityPos = "rank";
+    } else if (DRAFT.game === "minecraft" && value === "整合包") {
+      DRAFT.activityPos = "modpack";
+    } else {
+      DRAFT.activityPos = "done";
+    }
+    DRAFT.dirty = true;
+    render();
+    if (DRAFT.activityPos === "done") {
+      scheduleWizardAdvance(() => {
+        DRAFT.wizardStep = "people";
+        render();
+      }, 280);
+    }
+    return;
+  }
+
+  if (action === "wizard-modpack") {
+    clearWizardAdvance();
+    DRAFT.modpack = value;
+    DRAFT.activityPos = "done";
+    DRAFT.dirty = true;
+    render();
+    scheduleWizardAdvance(() => {
+      DRAFT.wizardStep = "people";
+      render();
+    }, 260);
+    return;
+  }
+
+  if (action === "wizard-rank") {
+    DRAFT.rank = value;
+    DRAFT.activityPos = "hero";
+    DRAFT.dirty = true;
+    render();
+    return;
+  }
+
+  if (action === "wizard-hero") {
+    DRAFT.hero = value;
+    DRAFT.activityPos = "role";
+    DRAFT.dirty = true;
+    render();
+    return;
+  }
+
+  if (action === "wizard-role") {
+    DRAFT.role = value;
+    DRAFT.activityPos = "done";
+    DRAFT.dirty = true;
+    render();
+    scheduleWizardAdvance(() => {
+      DRAFT.wizardStep = "people";
+      render();
+    }, 260);
+    return;
+  }
+
+  if (action === "wizard-next-activity") {
+    clearWizardAdvance();
+    if (DRAFT.activityPos === "modpack" && DRAFT.modpackCustom) DRAFT.modpack = DRAFT.modpackCustom;
+    DRAFT.wizardStep = "people";
+    DRAFT.dirty = true;
+    render();
+    return;
+  }
+
+  if (action === "wizard-tag") {
+    const tags = new Set(DRAFT.selectedTags || []);
+    if (tags.has(value)) tags.delete(value);
+    else tags.add(value);
+    DRAFT.selectedTags = [...tags];
+    actionEl.classList.toggle("chip--on");
+    return;
+  }
+
+  if (action === "wizard-skip-tags") {
+    DRAFT.selectedTags = [];
+    DRAFT.playerType = "不限";
+    DRAFT.wizardStep = "time";
+    DRAFT.dirty = true;
+    render();
+    return;
+  }
+
+  if (action === "wizard-next-people") {
+    DRAFT.wizardStep = "time";
+    DRAFT.dirty = true;
+    render();
+    return;
+  }
+
+  if (action === "wizard-time") {
+    DRAFT.time = value;
+    DRAFT.teamPos = "current";
+    DRAFT.wizardStep = "team";
+    DRAFT.dirty = true;
+    render();
+    return;
+  }
+
+  if (action === "wizard-current") {
+    DRAFT.current = value === "4人+" ? 4 : Number(value.replace("人", "")) || 1;
+    DRAFT.teamPos = "needed";
+    DRAFT.dirty = true;
+    render();
+    return;
+  }
+
+  if (action === "wizard-needed") {
+    DRAFT.needed = value === "4人+" ? 4 : Number(value.replace("人", "")) || 1;
+    DRAFT.wizardStep = "details";
+    DRAFT.dirty = true;
+    render();
+    return;
+  }
+
+  if (action === "wizard-voice") {
+    DRAFT.voicePref = value;
+    DRAFT.voice = value !== "不需要";
+    DRAFT.dirty = true;
+    const group = actionEl.closest(".chip-group");
+    group?.querySelectorAll(".chip").forEach((c) => c.classList.remove("chip--on"));
+    actionEl.classList.add("chip--on");
+    return;
+  }
+
+  if (action === "wizard-duration") {
+    DRAFT.duration = value;
+    DRAFT.dirty = true;
+    const group = actionEl.closest(".chip-group");
+    group?.querySelectorAll(".chip").forEach((c) => c.classList.remove("chip--on"));
+    actionEl.classList.add("chip--on");
+    return;
+  }
+
+  if (action === "wizard-style") {
+    DRAFT.style = value;
+    DRAFT.dirty = true;
+    const group = actionEl.closest(".chip-group");
+    group?.querySelectorAll(".chip").forEach((c) => c.classList.remove("chip--on"));
+    actionEl.classList.add("chip--on");
+    return;
+  }
+
+  if (action === "wizard-next-details") {
+    DRAFT.wizardStep = "confirm";
+    DRAFT.dirty = true;
+    render();
+    return;
+  }
+
+  if (action === "wizard-back") {
+    clearWizardAdvance();
+    const order = ["game", "activity", "people", "time", "team", "details", "confirm"];
+    const idx = order.indexOf(DRAFT.wizardStep);
+    if (DRAFT.wizardStep === "activity" && DRAFT.activityPos !== "mode") {
+      if (DRAFT.game === "deadlock") {
+        DRAFT.activityPos = DRAFT.activityPos === "role" ? "hero" : DRAFT.activityPos === "hero" ? "rank" : "mode";
+      } else {
+        DRAFT.activityPos = "mode";
+      }
+      render();
+      return;
+    }
+    if (DRAFT.wizardStep === "team" && DRAFT.teamPos === "needed") {
+      DRAFT.teamPos = "current";
+      render();
+      return;
+    }
+    if (idx <= 0) {
+      navigate("#/home");
+      return;
+    }
+    DRAFT.wizardStep = order[idx - 1];
+    render();
+    return;
+  }
+
   const actions = {
     "go-home": () => navigate("#/home"),
     "go-friends": () => navigate("#/friends"),
@@ -1380,6 +1638,24 @@ document.addEventListener("change", (event) => {
 
 document.addEventListener("submit", (event) => {
   event.preventDefault();
+});
+
+document.addEventListener("input", (event) => {
+  const target = event.target;
+  if (!(target instanceof HTMLInputElement)) return;
+  if (target.matches("[data-flow-search]")) {
+    DRAFT.wizardSearch = target.value;
+    const q = target.value.trim().toLowerCase();
+    document.querySelectorAll("[data-game-name]").forEach((el) => {
+      const hay = `${el.dataset.gameName || ""} ${el.dataset.gameTag || ""}`.toLowerCase();
+      el.hidden = Boolean(q) && !hay.includes(q);
+    });
+    return;
+  }
+  if (target.matches("[data-flow-modpack-custom]")) {
+    DRAFT.modpackCustom = target.value.trim();
+    DRAFT.modpack = DRAFT.modpackCustom;
+  }
 });
 
 window.addEventListener("hashchange", render);

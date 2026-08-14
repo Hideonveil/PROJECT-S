@@ -64,16 +64,28 @@ export function button({
   }<span>${esc(label)}</span></button>`;
 }
 
+function detailLine(details) {
+  const parts = [];
+  if (details.modpack) parts.push(`整合包 ${details.modpack}`);
+  if (details.rank) parts.push(`段位 ${details.rank}`);
+  if (details.hero) parts.push(`英雄 ${details.hero}`);
+  if (details.role) parts.push(`位置 ${details.role}`);
+  if (Array.isArray(details.tags) && details.tags.length) parts.push(details.tags.slice(0, 3).join(" / "));
+  if (!parts.length) return "";
+  return `<div class="need-line"><span>${icon("badgeCheck", 14)}</span><span>${esc(parts.join(" · "))}</span></div>`;
+}
+
 export function needSummary(need, { compact = false, title = "当前需求" } = {}) {
   const game = GAME_BY_ID[need.game] || { name: need.game || "未知游戏" };
   return `<div class="need-block">
     <div class="need-block-label">${icon("radio", 13)}${esc(title)}</div>
     <div class="need-line"><strong>${esc(game.name)}</strong><span>${esc(need.mode || "")}</span></div>
     <div class="need-line"><span>${icon("target", 14)}</span><span>${esc(need.goal || "还没有写目标")}</span></div>
+    ${detailLine(need.details || {})}
     <div class="need-line">
       <span>${icon("users", 14)} ${esc(need.current || 1)}/${esc(need.target || 1)} 人</span>
       <span>${icon("clock", 14)} ${esc(need.time || "--:--")}</span>
-      <span>${icon("timer", 14)} ${esc(need.duration || "60")} 分钟</span>
+      <span>${icon("timer", 14)} ${esc(need.duration === "不限" ? "时长不限" : `${need.duration || "60"} 分钟`)}</span>
       <span>${need.voice ? icon("mic", 14) + " 开麦" : icon("volumeX", 14) + " 闭麦"}</span>
     </div>
     ${compact ? "" : `<div class="need-line"><span>${icon("footprints", 14)}</span><span>${esc(need.playerType || "不限")}</span></div>`}

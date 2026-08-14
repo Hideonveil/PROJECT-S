@@ -1,4 +1,4 @@
-import { icon } from "../icons.js";
+﻿import { icon } from "../icons.js";
 import { avatar } from "../avatar.js";
 import { brand, button, esc, statusPill } from "../ui.js";
 import { DEVICES, GENRES } from "../data.js";
@@ -27,7 +27,7 @@ export function welcomeHero(state) {
 
 export function welcomePage(state, draft) {
   const selectedGenres = draft.genres || [];
-  const genderOptions = ["男", "女", "保密"];
+  const genderOptions = ["男", "女", "保密", "其他"];
   return `<div class="welcome">
     ${welcomeHero(state)}
     <section class="welcome-right">

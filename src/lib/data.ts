@@ -76,6 +76,7 @@ export function needFromRequest(r: MatchRequest): NeedInput {
     duration: r.duration || "90",
     voice: r.voice_required,
     playerType: r.desired_player_type || "",
+    details: r.details || {},
   };
 }
 

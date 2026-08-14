@@ -26,6 +26,7 @@ export async function POST(request: Request) {
       duration: String(body.need?.duration || "90"),
       voice: body.need?.voice !== false,
       playerType: String(body.need?.playerType || ""),
+      details: body.need?.details && typeof body.need.details === "object" ? body.need.details : {},
     };
     if (!need.game) return NextResponse.json({ error: "请选择游戏" }, { status: 400 });
 
@@ -48,6 +49,7 @@ export async function POST(request: Request) {
         duration: need.duration,
         voice_required: need.voice,
         desired_player_type: need.playerType,
+        details: need.details || {},
         status: "matching",
         expires_at: expiresAt,
       })
