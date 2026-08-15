@@ -2584,21 +2584,8 @@
   background: var(--signal-soft);
 }
 
-/* confirm need page matches home filter dialog */
-.prism-confirm-page {
-  width: min(900px, calc(100vw - 72px));
-  min-height: calc(100vh - var(--header-h));
-  justify-content: center;
-  align-items: center;
-  padding-top: calc(var(--header-h) + 40px);
-}
-
-.prism-confirm-page .home-filter-dialog {
-  width: 100%;
-  animation: none;
-}
-
-.prism-confirm-page .home-filter-panel {
+/* confirm need panel stays inside the home filter dialog */
+.home-filter-panel[data-home-panel="confirm"] {
   min-height: 300px;
 }
 

@@ -9,7 +9,7 @@ import * as api from "./api.js";
 import { authPage } from "./pages/auth.js";
 import { welcomePage } from "./pages/welcome.js";
 import { homePage } from "./pages/home.js";
-import { needPage } from "./pages/need.js";
+import { needPage, confirmSummary } from "./pages/need.js";
 import { matchingPage } from "./pages/matching.js";
 import { resultsPage } from "./pages/results.js";
 import { profilePage } from "./pages/profile.js";
@@ -61,7 +61,6 @@ const HOME_FILTER = {
   voice: "需要",
   step: 1,
 };
-let homeFilterReopen = false;
 let activeField = null;
 let timers = [];
 let ONLINE = false;
@@ -221,10 +220,6 @@ function render() {
   paintAvatars(app);
   activeField = initNodeField(app);
 
-  if (route.name === "home" && homeFilterReopen) {
-    homeFilterReopen = false;
-    showHomeFilter(true);
-  }
 
   if (route.name === "matching") startMatchingFlow();
   if (route.name === "room" && state.room?.status === "playing") startRoomTimer();
@@ -310,10 +305,30 @@ function renderHomeFilterTags() {
   if (timeTitle) timeTitle.textContent = competitive ? "想打几局？" : "什么时候玩？";
   if (timeSub) timeSub.textContent = competitive ? "选择本次对局的局数。" : "确定本次匹配的启动时间。";
 }
+function renderHomeFilterConfirm() {
+  const wrap = document.getElementById("home-filter-confirm-summary");
+  if (!wrap) return;
+  const game = GAMES.find((g) => g.id === HOME_FILTER.game) || GAMES[0];
+  const flow = FLOW[game.id] || {};
+  const draft = {
+    game: game.id,
+    mode: HOME_FILTER.mode || game.modes[0] || "",
+    goal: flow.goalByMode?.[HOME_FILTER.mode] || "",
+    current: 1,
+    needed: Math.min(4, Math.max(1, Number(HOME_FILTER.team) || 1)),
+    time: HOME_FILTER.time || "现在就玩",
+    duration: homeFilterCompetitive(game.id) ? "不限" : "60",
+    voice: HOME_FILTER.voice !== "不需要",
+    voicePref: HOME_FILTER.voice || "都可以",
+    style: "",
+    selectedTags: [],
+  };
+  wrap.innerHTML = confirmSummary(draft);
+}
 
 function renderHomeFilterStep() {
-  const panels = ["game", "mode", "team", "time", "voice"];
-  const step = Math.max(1, Math.min(5, Number(HOME_FILTER.step) || 1));
+  const panels = ["game", "mode", "team", "time", "voice", "confirm"];
+  const step = Math.max(1, Math.min(6, Number(HOME_FILTER.step) || 1));
   HOME_FILTER.step = step;
   document.querySelectorAll("[data-home-panel]").forEach((panel) => {
     panel.classList.toggle("is-show", panel.dataset.homePanel === panels[step - 1]);
@@ -323,7 +338,7 @@ function renderHomeFilterStep() {
     el.classList.toggle("is-on", i === step - 1);
   });
   const hint = document.getElementById("home-filter-hint");
-  if (hint) hint.textContent = `${step} / 5`;
+  if (hint) hint.textContent = `${step} / 6`;
   const back = document.querySelector("[data-action='home-filter-back']");
   const disabled = step === 1;
   if (back) {
@@ -332,12 +347,12 @@ function renderHomeFilterStep() {
   }
   const next = document.querySelector("[data-action='home-filter-next']");
   if (next) {
-    const final = step === 5;
+    const final = step === 6;
     next.classList.toggle("is-final", final);
     next.innerHTML = final ? "开始匹配" : `下一步${icon("arrowRight", 16)}`;
   }
+  if (step === 6) renderHomeFilterConfirm();
 }
-
 function renderHomeFilterState() {
   renderHomeFilterGameState();
   renderHomeFilterTags();
@@ -352,8 +367,7 @@ function showHomeFilter(open) {
   diamond?.setAttribute("aria-expanded", String(open));
   if (open) renderHomeFilterState();
 }
-
-function startHomeFilter() {
+function syncHomeFilterToDraft() {
   prepareNeedDraft();
   const game = GAMES.find((g) => g.id === HOME_FILTER.game) || GAMES[0];
   DRAFT.game = game.id;
@@ -365,28 +379,13 @@ function startHomeFilter() {
   DRAFT.needed = Math.min(4, Math.max(1, Number(HOME_FILTER.team) || 1));
   DRAFT.voice = HOME_FILTER.voice !== "不需要";
   DRAFT.voicePref = HOME_FILTER.voice || "都可以";
-  DRAFT.wizardStep = "confirm";
   DRAFT.dirty = true;
-  navigate("#/need");
 }
 
-function restoreHomeFilterFromDraft() {
-  const game = GAMES.find((g) => g.id === DRAFT.game) || GAMES[0];
-  const modes = game.modes || [];
-  HOME_FILTER.game = game.id;
-  HOME_FILTER.mode = modes.includes(DRAFT.mode) ? DRAFT.mode : modes[0] || "";
-  const competitive = homeFilterCompetitive(game.id);
-  const times = competitive ? HOME_RANK_TIMES : HOME_CASUAL_TIMES;
-  HOME_FILTER.time = times.includes(DRAFT.time) ? DRAFT.time : times[0] || "现在就玩";
-  HOME_FILTER.team = String(Math.min(4, Math.max(1, Number(DRAFT.needed) || 1)));
-  HOME_FILTER.voice = ["需要", "不需要", "都可以"].includes(DRAFT.voicePref)
-    ? DRAFT.voicePref
-    : DRAFT.voice === false
-      ? "不需要"
-      : "需要";
-  HOME_FILTER.step = 5;
+function startHomeFilter() {
+  syncHomeFilterToDraft();
+  startMatch();
 }
-
 function findCandidate(id) {
   const fromRecent = state.recentConnections?.find((c) => c.id === id);
   if (fromRecent) {
@@ -1902,12 +1901,6 @@ document.addEventListener("click", (event) => {
 
   if (action === "wizard-back") {
     clearWizardAdvance();
-    if (DRAFT.wizardStep === "confirm") {
-      restoreHomeFilterFromDraft();
-      homeFilterReopen = true;
-      navigate("#/home");
-      return;
-    }
     const order = ["game", "activity", "people", "time", "team", "details", "confirm"];
     const idx = order.indexOf(DRAFT.wizardStep);
     if (DRAFT.wizardStep === "activity" && DRAFT.activityPos !== "mode") {
@@ -2000,7 +1993,7 @@ document.addEventListener("click", (event) => {
   }
 
   if (action === "home-filter-next") {
-    if (Number(HOME_FILTER.step) >= 5) {
+    if (Number(HOME_FILTER.step) >= 6) {
       startHomeFilter();
       return;
     }

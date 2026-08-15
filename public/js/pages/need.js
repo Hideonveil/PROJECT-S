@@ -10,6 +10,7 @@ const STEPS = [
   { id: "time", label: "TIME" },
   { id: "team", label: "TEAM" },
   { id: "details", label: "DETAILS" },
+  { id: "confirm", label: "CONFIRM" },
 ];
 
 const TITLES = {
@@ -58,7 +59,6 @@ function computePlayerType(draft) {
 }
 
 function activeIndex(step) {
-  if (step === "confirm") return STEPS.length;
   const idx = STEPS.findIndex((s) => s.id === step);
   return idx < 0 ? 0 : idx;
 }
@@ -295,7 +295,7 @@ function detailsStep(draft) {
   );
 }
 
-function confirmStep(draft) {
+export function confirmSummary(draft) {
   const game = gameById(draft.game);
   const extra = [];
   if (draft.modpack) extra.push(`整合包 ${draft.modpack}`);
@@ -320,46 +320,8 @@ function confirmStep(draft) {
   return `<div class="need-block home-filter-confirm-summary">${lines.join("")}</div>`;
 }
 
-function confirmDialog(draft) {
-  const steps = [
-    { label: "游戏" },
-    { label: "玩法" },
-    { label: "人数" },
-    { label: "时间" },
-    { label: "语音" },
-  ];
-  const progress = `<div class="home-filter-progress">${steps
-    .map((s, i) => {
-      const connector =
-        i < steps.length - 1
-          ? `<div class="home-filter-connector${i === steps.length - 2 ? " home-filter-connector--dash" : ""}"></div>`
-          : "";
-      return `<div class="home-filter-step is-done"><span class="home-filter-node"><i></i></span><span class="home-filter-label">${s.label}</span></div>${connector}`;
-    })
-    .join("")}</div>`;
-
-  return `<div class="prism-page prism-confirm-page">
-    <div class="home-filter-dialog">
-      <button type="button" class="home-filter-close" data-action="go-home" aria-label="关闭">${icon("x", 18)}</button>
-      ${progress}
-      <div class="home-filter-panel is-show" data-home-panel="confirm">
-        <div class="home-filter-eyebrow"><i></i>STEP 06 · CONFIRM</div>
-        <div class="home-filter-panel-title">确认本次需求</div>
-        <div class="home-filter-panel-sub">最后看一眼，点开始匹配就进入实时匹配池。</div>
-        ${confirmStep(draft)}
-      </div>
-      <div class="home-filter-actions">
-        <button type="button" class="home-filter-back" data-action="wizard-back">返回</button>
-        <span class="home-filter-hint">确认需求</span>
-        <button type="button" class="home-filter-next is-final" data-action="start-match">开始匹配${icon("arrowRight", 16)}</button>
-      </div>
-    </div>
-  </div>`;
-}
-
 export function needPage(state, draft) {
   const step = draft.wizardStep || "game";
-  if (step === "confirm") return homeShell(state, confirmDialog(draft), "home");
   let content = gameStep(draft);
   switch (step) {
     case "activity":
@@ -378,15 +340,17 @@ export function needPage(state, draft) {
       content = detailsStep(draft);
       break;
     case "confirm":
-      content = confirmStep(draft);
+      content = `<div class="flow-confirm">
+        ${confirmSummary(draft)}
+        <div class="flow-confirm-actions">
+          ${button({ label: "开始匹配", action: "start-match", kind: "primary", size: "lg", iconName: "zap", extra: "btn--block" })}
+        </div>
+      </div>`;
       break;
     default:
       content = gameStep(draft);
   }
-  const footer =
-    step === "confirm"
-      ? ""
-      : `<div class="flow-footer">${button({ label: step === "game" ? "返回首页" : "上一步", action: step === "game" ? "go-home" : "wizard-back", kind: "ghost", iconName: "chevronLeft" })}</div>`;
+  const footer = `<div class="flow-footer">${button({ label: step === "game" ? "返回首页" : "上一步", action: step === "game" ? "go-home" : "wizard-back", kind: "ghost", iconName: "chevronLeft" })}</div>`;
 
   return homeShell(
     state,

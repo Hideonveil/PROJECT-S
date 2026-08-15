@@ -60,6 +60,8 @@ export function homePage(state) {
               <div class="home-filter-step" data-home-step="time"><span class="home-filter-node"><i></i></span><span class="home-filter-label" id="home-filter-time-label">时间</span></div>
               <div class="home-filter-connector home-filter-connector--dash"></div>
               <div class="home-filter-step home-filter-step--voice" data-home-step="voice" data-action="home-filter-open-voice"><span class="home-filter-node"><span class="home-filter-plus">+</span></span><span class="home-filter-label">语音</span></div>
+              <div class="home-filter-connector"></div>
+              <div class="home-filter-step" data-home-step="confirm"><span class="home-filter-node"><i></i></span><span class="home-filter-label">确认</span></div>
             </div>
 
             <div class="home-filter-panel is-show" data-home-panel="game">
@@ -99,9 +101,16 @@ export function homePage(state) {
               <div class="home-filter-tag-group">${voiceChips}</div>
             </div>
 
+            <div class="home-filter-panel" data-home-panel="confirm">
+              <div class="home-filter-eyebrow"><i></i>STEP 06 · CONFIRM</div>
+              <div class="home-filter-panel-title">确认本次需求</div>
+              <div class="home-filter-panel-sub">最后看一眼，点开始匹配就进入实时匹配池。</div>
+              <div class="home-filter-confirm-summary" id="home-filter-confirm-summary"></div>
+            </div>
+
             <div class="home-filter-actions">
               <button type="button" class="home-filter-back is-disabled" data-action="home-filter-back" disabled>返回</button>
-              <span class="home-filter-hint" id="home-filter-hint">1 / 5</span>
+              <span class="home-filter-hint" id="home-filter-hint">1 / 6</span>
               <button type="button" class="home-filter-next" data-action="home-filter-next">下一步${icon("arrowRight", 16)}</button>
             </div>
           </div>
