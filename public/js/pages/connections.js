@@ -1,6 +1,6 @@
 import { icon } from "../icons.js";
 import { avatarWrap } from "../avatar.js";
-import { button, esc, shell } from "../ui.js";
+import { button, esc, homeShell } from "../ui.js";
 
 function timeLabel(value) {
   if (!value) return "刚刚一起玩";
@@ -20,16 +20,18 @@ function ratingLabel(value) {
 export function connectionsPage(state) {
   const list = state.recentConnections || [];
 
-  return shell(
+  return homeShell(
     state,
-    "connections",
-    `<div class="page">
-      <div class="page-head">
-        <div class="page-eyebrow">${icon("clock", 13)} 最近连接</div>
-        <h1 class="page-title">最近一起玩过的人</h1>
-        <p class="page-sub">这里只记录真实一起玩过的局，方便你再次找到对方。不是永久好友。</p>
+    `<div class="prism-page prism-connections">
+      <div class="prism-head">
+        <div>
+          <div class="prism-eyebrow"><i></i>最近连接</div>
+          <h1 class="prism-title">最近一起玩过的人</h1>
+          <p class="prism-sub">这里只记录真实一起玩过的局，方便你再次找到对方。不是永久好友。</p>
+        </div>
+        <span class="section-note">${list.length} 条记录</span>
       </div>
-      <section class="section">
+      <section class="prism-section">
         <div class="section-head">
           <h2 class="section-title">最近连接</h2>
           <span class="section-note">${list.length} 条记录</span>
@@ -62,6 +64,7 @@ export function connectionsPage(state) {
                 .join("")}
             </div>`}
       </section>
-    </div>`
+    </div>`,
+    "connections"
   );
 }

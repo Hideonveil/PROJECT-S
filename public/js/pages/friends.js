@@ -1,6 +1,6 @@
 import { icon } from "../icons.js";
 import { avatarWrap } from "../avatar.js";
-import { button, esc, shell, statusPill } from "../ui.js";
+import { button, esc, homeShell, statusPill } from "../ui.js";
 
 export function friendsPage(state) {
   const friends = state.friends || [];
@@ -8,18 +8,19 @@ export function friendsPage(state) {
   const searchResult = state.friendSearchResult;
   const alreadyFriend = searchResult && friends.some((f) => f.id === searchResult.id);
 
-  return shell(
+  return homeShell(
     state,
-    "friends",
-    `<div class="page">
-      <div class="page-head">
-        <div class="page-eyebrow">${icon("users", 13)} 好友与搭子</div>
-        <h1 class="page-title">一起玩过，还想再玩的人</h1>
-        <p class="page-sub">每条连接都来自一局真实的游戏和一次双向选择；也支持直接用好友代码添加。</p>
+    `<div class="prism-page prism-friends">
+      <div class="prism-head">
+        <div>
+          <div class="prism-eyebrow"><i></i>好友与搭子</div>
+          <h1 class="prism-title">一起玩过，还想再玩的人</h1>
+          <p class="prism-sub">每条连接都来自一局真实的游戏和一次双向选择；也支持直接用好友代码添加。</p>
+        </div>
       </div>
 
       <div class="grid-2">
-        <div class="card" style="display:flex;flex-direction:column;gap:12px">
+        <div class="prism-card" style="display:flex;flex-direction:column;gap:12px">
           <div class="card-title">我的好友代码</div>
           <div class="inline-actions">
             <span class="room-code" style="font-size:15px">${esc(myCode)}</span>
@@ -28,7 +29,7 @@ export function friendsPage(state) {
           <p class="muted" style="font-size:12px">把这个代码发给朋友，对方在搜索框输入后就能添加你。</p>
         </div>
 
-        <div class="card" style="display:flex;flex-direction:column;gap:12px">
+        <div class="prism-card" style="display:flex;flex-direction:column;gap:12px">
           <div class="card-title">按代码搜索</div>
           <div class="inline-actions" style="width:100%">
             <input class="input" id="friend-code-input" placeholder="NODE-XXXX-XXXX" style="flex:1;min-width:180px" />
@@ -39,7 +40,7 @@ export function friendsPage(state) {
 
       ${
         searchResult
-          ? `<div class="card" style="border-color:var(--signal-border);background:var(--signal-soft)">
+          ? `<div class="prism-card prism-search-result">
               <div class="friend-row" style="border:0;background:transparent;padding:0">
                 <div class="friend-main">
                   ${avatarWrap(searchResult.avatarKey, 56, searchResult.online)}
@@ -58,7 +59,7 @@ export function friendsPage(state) {
           : ""
       }
 
-      <section class="section">
+      <section class="prism-section">
         <div class="section-head">
           <h2 class="section-title">搭子列表</h2>
           <span class="section-note">${friends.length} 个连接</span>
@@ -92,6 +93,7 @@ export function friendsPage(state) {
               </div>`
         }
       </section>
-    </div>`
+    </div>`,
+    "friends"
   );
 }
