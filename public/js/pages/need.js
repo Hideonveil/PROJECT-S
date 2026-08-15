@@ -317,19 +317,49 @@ function confirmStep(draft) {
   if (playerType) {
     lines.push(`<div class="need-line"><span>${icon("footprints", 14)}</span><span>${esc(playerType)}</span></div>`);
   }
-  return `
-    <div class="flow-confirm">
-      <div class="need-block">${lines.join("")}</div>
-      <div class="flow-confirm-actions">
-        ${button({ label: "开始寻找", action: "start-match", kind: "primary", size: "lg", iconName: "zap", extra: "btn--block" })}
-        ${button({ label: "返回修改", action: "wizard-back", kind: "ghost", iconName: "chevronLeft" })}
+  return `<div class="need-block home-filter-confirm-summary">${lines.join("")}</div>`;
+}
+
+function confirmDialog(draft) {
+  const steps = [
+    { label: "游戏" },
+    { label: "玩法" },
+    { label: "人数" },
+    { label: "时间" },
+    { label: "语音" },
+  ];
+  const progress = `<div class="home-filter-progress">${steps
+    .map((s, i) => {
+      const connector =
+        i < steps.length - 1
+          ? `<div class="home-filter-connector${i === steps.length - 2 ? " home-filter-connector--dash" : ""}"></div>`
+          : "";
+      return `<div class="home-filter-step is-done"><span class="home-filter-node"><i></i></span><span class="home-filter-label">${s.label}</span></div>${connector}`;
+    })
+    .join("")}</div>`;
+
+  return `<div class="prism-page prism-confirm-page">
+    <div class="home-filter-dialog">
+      <button type="button" class="home-filter-close" data-action="go-home" aria-label="关闭">${icon("x", 18)}</button>
+      ${progress}
+      <div class="home-filter-panel is-show" data-home-panel="confirm">
+        <div class="home-filter-eyebrow"><i></i>STEP 06 · CONFIRM</div>
+        <div class="home-filter-panel-title">确认本次需求</div>
+        <div class="home-filter-panel-sub">最后看一眼，点开始匹配就进入实时匹配池。</div>
+        ${confirmStep(draft)}
+      </div>
+      <div class="home-filter-actions">
+        <button type="button" class="home-filter-back" data-action="wizard-back">返回</button>
+        <span class="home-filter-hint">确认需求</span>
+        <button type="button" class="home-filter-next is-final" data-action="start-match">开始匹配${icon("arrowRight", 16)}</button>
       </div>
     </div>
-  `;
+  </div>`;
 }
 
 export function needPage(state, draft) {
   const step = draft.wizardStep || "game";
+  if (step === "confirm") return homeShell(state, confirmDialog(draft), "home");
   let content = gameStep(draft);
   switch (step) {
     case "activity":

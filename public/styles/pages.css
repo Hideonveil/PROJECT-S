@@ -2583,3 +2583,42 @@
   border-color: var(--signal-border);
   background: var(--signal-soft);
 }
+
+/* confirm need page matches home filter dialog */
+.prism-confirm-page {
+  width: min(900px, calc(100vw - 72px));
+  min-height: calc(100vh - var(--header-h));
+  justify-content: center;
+  align-items: center;
+  padding-top: calc(var(--header-h) + 40px);
+}
+
+.prism-confirm-page .home-filter-dialog {
+  width: 100%;
+  animation: none;
+}
+
+.prism-confirm-page .home-filter-panel {
+  min-height: 300px;
+}
+
+.home-filter-confirm-summary {
+  margin-top: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 18px 20px;
+  border: 1px solid rgba(184, 160, 240, 0.14);
+  border-radius: 16px;
+  background: rgba(248, 246, 253, 0.72);
+}
+
+.home-filter-confirm-summary .need-line {
+  color: var(--dim);
+  font-size: 14px;
+}
+
+.home-filter-confirm-summary .need-line strong {
+  color: var(--paper);
+  font-size: 15px;
+}
