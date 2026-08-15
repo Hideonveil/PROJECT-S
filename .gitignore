@@ -8,3 +8,7 @@ out
 vercel
 .DS_Store
 *.log
+.playwright-browsers
+test-results
+playwright-report
+*.tsbuildinfo

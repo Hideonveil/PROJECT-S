@@ -3,12 +3,12 @@ import { getConfig, getState } from "./api.js";
 let client = null;
 let refreshTimer = 0;
 
-function debounceRefresh(token, handlers, ms = 300) {
+function debounceRefresh(handlers, ms = 300) {
   if (refreshTimer) return;
   refreshTimer = window.setTimeout(async () => {
     refreshTimer = 0;
     try {
-      const data = await getState(token);
+      const data = await getState();
       handlers.hello?.(data);
     } catch {
       // snapshot refresh is best-effort
@@ -26,14 +26,14 @@ async function getClient() {
   return client;
 }
 
-export async function openRealtime(token, handlers) {
+export async function openRealtime(handlers) {
   let closed = false;
   const sb = await getClient();
   if (!sb) {
     const timer = window.setInterval(async () => {
       if (closed) return;
       try {
-        const data = await getState(token);
+        const data = await getState();
         handlers.hello?.(data);
       } catch {
         // offline snapshot refresh is best-effort
@@ -49,14 +49,14 @@ export async function openRealtime(token, handlers) {
   if (!session) return () => {};
 
   const channel = sb.channel("node-events");
-  const schedule = () => debounceRefresh(token, handlers);
+  const schedule = () => debounceRefresh(handlers);
 
   channel
     .on("postgres_changes", { event: "*", schema: "public", table: "profiles" }, schedule)
     .on("postgres_changes", { event: "*", schema: "public", table: "match_requests" }, schedule)
     .on("postgres_changes", { event: "INSERT", schema: "public", table: "applications" }, async (payload) => {
       try {
-        const data = await getState(token);
+        const data = await getState();
         handlers.hello?.(data);
         const app = (data.applications || []).find((a) => a.id === payload.new?.id);
         if (app) handlers.application?.({ application: app });
@@ -66,7 +66,7 @@ export async function openRealtime(token, handlers) {
     })
     .on("postgres_changes", { event: "UPDATE", schema: "public", table: "applications" }, async (payload) => {
       try {
-        const data = await getState(token);
+        const data = await getState();
         handlers.hello?.(data);
         if (payload.new?.status === "declined") handlers.declined?.({ applicationId: payload.new.id });
         if (payload.new?.status === "accepted" && data.room) handlers.room?.({ room: data.room });
@@ -76,7 +76,7 @@ export async function openRealtime(token, handlers) {
     })
     .on("postgres_changes", { event: "*", schema: "public", table: "rooms" }, async () => {
       try {
-        const data = await getState(token);
+        const data = await getState();
         handlers.hello?.(data);
         if (data.room) handlers.room?.({ room: data.room });
         if (data.session) handlers["game-over"]?.({ session: data.session });
@@ -86,7 +86,7 @@ export async function openRealtime(token, handlers) {
     })
     .on("postgres_changes", { event: "INSERT", schema: "public", table: "sessions" }, async () => {
       try {
-        const data = await getState(token);
+        const data = await getState();
         handlers.hello?.(data);
         if (data.session) handlers["game-over"]?.({ session: data.session });
       } catch {
@@ -95,14 +95,14 @@ export async function openRealtime(token, handlers) {
     })
     .on("postgres_changes", { event: "UPDATE", schema: "public", table: "sessions" }, async () => {
       try {
-        const data = await getState(token);
+        const data = await getState();
         handlers.hello?.(data);
         const session = data.session;
         if (!session || !Array.isArray(session.players)) return;
         const decided = session.players.filter((p) => session.rematchBy?.[p]);
         if (decided.length === session.players.length) {
           const allYes = decided.every((p) => session.rematchBy[p] === "yes");
-          if (allYes) handlers.connected?.({ friends: data.friends || [] });
+          if (allYes && data.room) handlers.room?.({ room: data.room });
           else handlers["rematch-result"]?.({ ok: false, session });
         }
       } catch {

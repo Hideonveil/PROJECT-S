@@ -1,11 +1,18 @@
 let supabase = null;
-let authToken = null;
 let configCache = null;
 
-async function request(path, body) {
+async function request(path, body, token = null) {
+  const headers = {};
+  if (body !== undefined) {
+    headers["Content-Type"] = "application/json";
+    const mutationId = window.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    headers["X-Request-ID"] = mutationId;
+    headers["Idempotency-Key"] = mutationId;
+  }
+  if (token) headers.Authorization = `Bearer ${token}`;
   const res = await fetch(path, {
     method: body === undefined ? "GET" : "POST",
-    headers: body === undefined ? {} : { "Content-Type": "application/json" },
+    headers,
     body: body === undefined ? undefined : JSON.stringify(body),
     cache: "no-store",
   });
@@ -15,8 +22,18 @@ async function request(path, body) {
   } catch {
     // non-json response
   }
-  if (!res.ok) throw new Error(data.error || `请求失败 (${res.status})`);
+  if (!res.ok) {
+    const detail = typeof data.error === "object" ? data.error : { message: data.error };
+    const error = new Error(detail?.message || `请求失败 (${res.status})`);
+    error.code = detail?.code || "REQUEST_FAILED";
+    error.requestId = detail?.requestId || data?.meta?.requestId || "";
+    throw error;
+  }
   return data;
+}
+
+async function authedRequest(path, body) {
+  return request(path, body, await currentToken());
 }
 
 export const health = () => request("/api/health");
@@ -25,7 +42,7 @@ export const getConfig = async () => {
   configCache = await request("/api/config");
   return configCache;
 };
-export const getState = (token) => request(`/api/state?token=${encodeURIComponent(token)}`);
+export const getState = () => authedRequest("/api/state");
 
 async function getSupabase() {
   if (supabase) return supabase;
@@ -46,8 +63,7 @@ export async function getSession() {
 export async function currentToken() {
   const session = await getSession();
   if (!session?.access_token) throw new Error("请先登录");
-  authToken = session.access_token;
-  return authToken;
+  return session.access_token;
 }
 
 export async function registerAccount(username, password) {
@@ -74,32 +90,38 @@ export async function signOut() {
   }
 }
 
-export const sessionStatus = (token) => request(`/api/session?token=${encodeURIComponent(token)}`);
+export const sessionStatus = () => authedRequest("/api/session");
 
 export const register = async (profile) => {
-  const token = await currentToken();
-  return request("/api/register", { ...profile, token });
+  return authedRequest("/api/register", profile);
 };
 
-export const updateProfile = (token, profile) => request("/api/profile", { token, ...profile });
-export const postNeed = (token, need) => request("/api/need", { token, need });
-export const cancelNeed = (token) => request("/api/cancel-need", { token });
-export const goOffline = (token) => {
+export const updateProfile = (profile) => authedRequest("/api/profile", profile);
+export const postNeed = (need) => authedRequest("/api/need", { need });
+export const cancelNeed = () => authedRequest("/api/cancel-need", {});
+export const goOffline = async () => {
   try {
-    navigator.sendBeacon("/api/offline", new Blob([JSON.stringify({ token })], { type: "application/json" }));
+    await fetch("/api/offline", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${await currentToken()}` },
+      body: "{}",
+      keepalive: true,
+    });
   } catch {
     // best-effort offline signal
   }
 };
-export const applyTo = (token, toUserId) => request("/api/apply", { token, toUserId });
-export const acceptApplication = (token, applicationId) => request("/api/accept-application", { token, applicationId });
-export const declineApplication = (token, applicationId) => request("/api/decline-application", { token, applicationId });
-export const roomAction = (code, action, token) => request(`/api/room/${code}/${action}`, { token });
-export const roomFeedback = (code, payload, token) => request(`/api/room/${code}/feedback`, { token, ...payload });
-export const rematch = (code, choice, token) => request(`/api/room/${code}/rematch`, { token, choice });
-export const searchFriend = (token, code) => request("/api/friends/search", { token, code });
-export const addFriendByCode = (token, friendCode) => request("/api/friends/add", { token, friendCode });
-export const sendFeedback = (token, payload) => request("/api/feedback", { token, ...payload });
+export const applyTo = (toUserId) => authedRequest("/api/apply", { toUserId });
+export const acceptApplication = (applicationId) => authedRequest("/api/accept-application", { applicationId });
+export const declineApplication = (applicationId) => authedRequest("/api/decline-application", { applicationId });
+export const roomAction = (code, action) => authedRequest(`/api/room/${code}/${action}`, {});
+export const roomFeedback = (code, payload) => authedRequest(`/api/room/${code}/feedback`, payload);
+export const rematch = (code, choice) => authedRequest(`/api/room/${code}/rematch`, { choice });
+export const searchFriend = (code) => authedRequest("/api/friends/search", { code });
+export const addFriendByCode = (friendCode) => authedRequest("/api/friends/add", { friendCode });
+export const sendFeedback = (payload) => authedRequest("/api/feedback", payload);
+export const trackEvent = (eventName, properties = {}) =>
+  authedRequest("/api/events", { eventName, properties }).catch(() => null);
 
 export async function getSupabaseClient() {
   return getSupabase();
@@ -123,10 +145,10 @@ export async function sendRoomMessage(roomId, content, senderId) {
   if (error) throw error;
 }
 
-export function openEvents(token, handlers) {
+export function openEvents(handlers) {
   let closeFn = null;
   import("./realtime.js")
-    .then(({ openRealtime }) => openRealtime(token, handlers))
+    .then(({ openRealtime }) => openRealtime(handlers))
     .then((fn) => {
       closeFn = fn;
     })

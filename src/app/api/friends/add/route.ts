@@ -1,12 +1,14 @@
 import { NextResponse } from "next/server";
 import { authUserFromToken } from "@/lib/auth";
-import { friendsFor, profileWithGames } from "@/lib/api";
+import { bearerToken } from "@/lib/http";
+import { friendsFor } from "@/lib/api";
+import { publicProfilesFor } from "@/lib/data";
 import { supabaseAdmin } from "@/lib/supabase";
 
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const token = String(body.token || "");
+    const token = bearerToken(request, body);
     const authUser = await authUserFromToken(token);
     if (!authUser) return NextResponse.json({ error: "未登录" }, { status: 401 });
 
@@ -26,7 +28,8 @@ export async function POST(request: Request) {
       { onConflict: "user_id,friend_id", ignoreDuplicates: true }
     );
 
-    return NextResponse.json({ user: await profileWithGames(target), friends: await friendsFor(me.id) });
+    const [safeTarget] = await publicProfilesFor([target.id]);
+    return NextResponse.json({ user: safeTarget, friends: await friendsFor(me.id) });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "添加失败" }, { status: 500 });
   }

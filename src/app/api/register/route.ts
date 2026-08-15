@@ -2,11 +2,13 @@ import { NextResponse } from "next/server";
 import { authUserFromToken } from "@/lib/auth";
 import { generateFriendCode, profileWithGames } from "@/lib/api";
 import { supabaseAdmin } from "@/lib/supabase";
+import { bearerToken, idempotencyKey } from "@/lib/http";
+import { trackEvent } from "@/lib/metrics";
 
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const token = String(body.token || "");
+    const token = bearerToken(request, body);
     const authUser = await authUserFromToken(token);
     if (!authUser) return NextResponse.json({ error: "未登录" }, { status: 401 });
 
@@ -18,7 +20,7 @@ export async function POST(request: Request) {
       .maybeSingle();
     if (existing) {
       await admin.from("profiles").update({ online: true, last_seen: new Date().toISOString() }).eq("id", existing.id);
-      return NextResponse.json({ user: await profileWithGames(existing), token });
+      return NextResponse.json({ user: await profileWithGames(existing) });
     }
 
     const nickname = String(body.nickname || authUser.user_metadata?.username || "").trim().slice(0, 12);
@@ -58,7 +60,12 @@ export async function POST(request: Request) {
     }
 
     const { data: profile } = await admin.from("profiles").select("*").eq("id", profileId).single();
-    return NextResponse.json({ user: await profileWithGames(profile), token });
+    await trackEvent({
+      eventName: "profile_created",
+      userId: profileId,
+      requestId: idempotencyKey(request),
+    });
+    return NextResponse.json({ user: await profileWithGames(profile) });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "注册失败" }, { status: 500 });
   }

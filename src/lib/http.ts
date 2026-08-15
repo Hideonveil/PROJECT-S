@@ -1,0 +1,80 @@
+import { NextResponse } from "next/server";
+
+export class AppError extends Error {
+  constructor(
+    public code: string,
+    message: string,
+    public status = 400,
+    public retryable = false
+  ) {
+    super(message);
+  }
+}
+
+export function requestId(request: Request): string {
+  return request.headers.get("x-request-id") || crypto.randomUUID();
+}
+
+export function idempotencyKey(request: Request): string | null {
+  return request.headers.get("idempotency-key") || request.headers.get("x-request-id");
+}
+
+export function bearerToken(request: Request, legacyBody?: Record<string, unknown>): string {
+  const authorization = request.headers.get("authorization") || "";
+  if (authorization.toLowerCase().startsWith("bearer ")) {
+    return authorization.slice(7).trim();
+  }
+  // One-release compatibility path for cached clients. GET endpoints never
+  // pass a legacy body, so access tokens no longer appear in URLs.
+  return String(legacyBody?.token || "");
+}
+
+export function jsonOk(data: Record<string, unknown>, requestIdValue: string, status = 200) {
+  return NextResponse.json({ ...data, meta: { requestId: requestIdValue } }, { status });
+}
+
+export function errorResponse(error: unknown, requestIdValue: string, fallback = "操作失败") {
+  if (error instanceof AppError) {
+    return NextResponse.json(
+      {
+        error: {
+          code: error.code,
+          message: error.message,
+          requestId: requestIdValue,
+          retryable: error.retryable,
+        },
+      },
+      { status: error.status }
+    );
+  }
+
+  const raw = error instanceof Error ? error.message : "";
+  const mapped = mapDatabaseError(raw, fallback);
+  console.error(JSON.stringify({ level: "error", requestId: requestIdValue, code: mapped.code }));
+  return NextResponse.json(
+    {
+      error: {
+        code: mapped.code,
+        message: mapped.message,
+        requestId: requestIdValue,
+        retryable: mapped.retryable,
+      },
+    },
+    { status: mapped.status }
+  );
+}
+
+function mapDatabaseError(raw: string, fallback: string) {
+  const known: Record<string, { code: string; message: string; status: number; retryable: boolean }> = {
+    APPLICATION_FORBIDDEN: { code: "APPLICATION_FORBIDDEN", message: "这个申请不能由你处理", status: 403, retryable: false },
+    APPLICATION_ALREADY_RESOLVED: { code: "APPLICATION_ALREADY_RESOLVED", message: "这个申请已经处理过了", status: 409, retryable: false },
+    SESSION_FORBIDDEN: { code: "SESSION_FORBIDDEN", message: "你不是这个 Session 的成员", status: 403, retryable: false },
+    SESSION_STATE_CONFLICT: { code: "SESSION_STATE_CONFLICT", message: "当前 Session 状态不允许这个操作", status: 409, retryable: false },
+    SESSION_NOT_COMPLETED: { code: "SESSION_NOT_COMPLETED", message: "Session 结束后才能选择再玩一次", status: 409, retryable: false },
+    REMATCH_CHOICE_INVALID: { code: "REMATCH_CHOICE_INVALID", message: "再玩选择无效", status: 422, retryable: false },
+  };
+  const key = Object.keys(known).find((candidate) => raw.includes(candidate));
+  return key
+    ? known[key]
+    : { code: "INTERNAL_ERROR", message: fallback, status: 500, retryable: true };
+}

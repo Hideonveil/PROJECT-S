@@ -1,34 +1,28 @@
 import { NextResponse } from "next/server";
-import { authUserFromToken } from "@/lib/auth";
+import { requireRequestProfile } from "@/lib/auth";
 import { enrichRoom } from "@/lib/api";
 import { supabaseAdmin } from "@/lib/supabase";
+import { errorResponse, idempotencyKey, jsonOk, requestId } from "@/lib/http";
+import { sessionForRoomCode } from "@/lib/session";
 
 export async function POST(request: Request, { params }: { params: Promise<{ code: string }> }) {
+  const rid = requestId(request);
   try {
     const { code } = await params;
     const body = await request.json();
-    const token = String(body.token || "");
-    const authUser = await authUserFromToken(token);
-    if (!authUser) return NextResponse.json({ error: "未登录" }, { status: 401 });
-
+    const me = await requireRequestProfile(request, body);
     const admin = supabaseAdmin();
-    const { data: me } = await admin.from("profiles").select("id").eq("auth_user_id", authUser.id).maybeSingle();
-    if (!me) return NextResponse.json({ error: "未登录" }, { status: 401 });
-
+    const session = await sessionForRoomCode(code);
+    const { error: rpcError } = await admin.rpc("phase1_start_session", {
+      p_session_id: session.id,
+      p_actor_id: me.id,
+      p_request_id: idempotencyKey(request),
+    });
+    if (rpcError) throw rpcError;
     const { data: room } = await admin.from("rooms").select("*").eq("code", code).maybeSingle();
     if (!room) return NextResponse.json({ error: "房间不存在" }, { status: 404 });
-    const { data: member } = await admin.from("room_members").select("id").eq("room_id", room.id).eq("user_id", me.id).maybeSingle();
-    if (!member) return NextResponse.json({ error: "你不在这个房间" }, { status: 403 });
-
-    if (room.status !== "playing") {
-      await admin
-        .from("rooms")
-        .update({ status: "playing", started_at: new Date().toISOString() })
-        .eq("id", room.id);
-    }
-    const { data: updated } = await admin.from("rooms").select("*").eq("id", room.id).single();
-    return NextResponse.json({ room: await enrichRoom(updated) });
+    return jsonOk({ room: await enrichRoom(room) }, rid);
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "开始失败" }, { status: 500 });
+    return errorResponse(error, rid, "开始失败，请稍后重试");
   }
 }

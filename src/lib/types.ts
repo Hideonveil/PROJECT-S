@@ -121,6 +121,8 @@ export interface Room {
   startedAt: string | null;
   players: PublicProfile[];
   members: RoomMemberView[];
+  sessionId?: string | null;
+  sessionStatus?: string | null;
 }
 
 export interface RecentConnection {
@@ -129,6 +131,7 @@ export interface RecentConnection {
   friend_id: string;
   game_id: string;
   room_id: string | null;
+  session_id: string | null;
   played_at: string;
   play_count: number;
   rating: string | null;
@@ -147,12 +150,20 @@ export interface EnrichedRecentConnection {
 
 export interface Session {
   id: string;
+  room_id: string | null;
   room_code: string;
   players: string[];
   need: Record<string, unknown>;
   outcome_by: Record<string, string>;
   rematch_by: Record<string, string>;
   status: string;
+  started_at: string | null;
+  ended_at: string | null;
+  completed_by: string | null;
+  completion_reason: string | null;
+  source_session_id: string | null;
+  resolution: "waiting" | "accepted" | "declined";
+  version: number;
   created_at: string;
 }
 

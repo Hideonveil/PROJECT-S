@@ -1,20 +1,18 @@
 import { NextResponse } from "next/server";
-import { authUserFromToken } from "@/lib/auth";
+import { requireRequestProfile } from "@/lib/auth";
 import { activeRequest, candidatesFor, poolCounts } from "@/lib/api";
 import { needFromRequest } from "@/lib/data";
 import { supabaseAdmin } from "@/lib/supabase";
 import type { NeedInput } from "@/lib/types";
+import { errorResponse, idempotencyKey, jsonOk, requestId } from "@/lib/http";
+import { trackEvent } from "@/lib/metrics";
 
 export async function POST(request: Request) {
+  const rid = requestId(request);
   try {
     const body = await request.json();
-    const token = String(body.token || "");
-    const authUser = await authUserFromToken(token);
-    if (!authUser) return NextResponse.json({ error: "未登录" }, { status: 401 });
-
+    const profile = await requireRequestProfile(request, body);
     const admin = supabaseAdmin();
-    const { data: profile } = await admin.from("profiles").select("*").eq("auth_user_id", authUser.id).maybeSingle();
-    if (!profile) return NextResponse.json({ error: "请先创建游戏身份" }, { status: 400 });
 
     const need: NeedInput = {
       game: String(body.need?.game || ""),
@@ -62,12 +60,19 @@ export async function POST(request: Request) {
     const myNeed = needFromRequest(inserted);
     const candidates = await candidatesFor(profile, myNeed);
     const counts = await poolCounts();
-    return NextResponse.json({
+    await trackEvent({
+      eventName: "match_request_created",
+      userId: profile.id,
+      matchRequestId: inserted.id,
+      requestId: idempotencyKey(request),
+      properties: { game: need.game },
+    });
+    return jsonOk({
       requestId: inserted.id,
       candidates,
       ...counts,
-    });
+    }, rid);
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "匹配失败" }, { status: 500 });
+    return errorResponse(error, rid, "匹配失败，请稍后重试");
   }
 }

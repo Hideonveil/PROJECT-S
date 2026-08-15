@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { authUserFromToken } from "@/lib/auth";
+import { requireRequestProfile } from "@/lib/auth";
 import {
   activeRequest,
   activeRoomFor,
@@ -12,32 +12,14 @@ import {
   recentConnectionsFor,
 } from "@/lib/api";
 import { supabaseAdmin } from "@/lib/supabase";
-import type { Session } from "@/lib/types";
-
-function mapSession(s: Session | null) {
-  if (!s) return null;
-  return {
-    id: s.id,
-    roomCode: s.room_code,
-    players: s.players,
-    need: s.need,
-    outcomeBy: s.outcome_by,
-    rematchBy: s.rematch_by,
-    status: s.status,
-    createdAt: s.created_at,
-  };
-}
+import { errorResponse, requestId } from "@/lib/http";
+import { mapSession } from "@/lib/session";
 
 export async function GET(request: Request) {
+  const rid = requestId(request);
   try {
-    const url = new URL(request.url);
-    const token = url.searchParams.get("token") || "";
-    const authUser = await authUserFromToken(token);
-    if (!authUser) return NextResponse.json({ error: "未登录" }, { status: 401 });
-
+    const profile = await requireRequestProfile(request);
     const admin = supabaseAdmin();
-    const { data: profile } = await admin.from("profiles").select("*").eq("auth_user_id", authUser.id).maybeSingle();
-    if (!profile) return NextResponse.json({ error: "请先创建游戏身份" }, { status: 400 });
 
     const nowIso = new Date().toISOString();
     const lastSeenAt = profile.last_seen ? new Date(profile.last_seen).getTime() : 0;
@@ -77,6 +59,6 @@ export async function GET(request: Request) {
       recentConnections,
     });
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "状态获取失败" }, { status: 500 });
+    return errorResponse(error, rid, "状态获取失败，请稍后重试");
   }
 }

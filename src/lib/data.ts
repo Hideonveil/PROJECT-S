@@ -1,7 +1,11 @@
 import { supabaseAdmin } from "./supabase";
 import type { GameIdentity, MatchRequest, NeedInput, Profile, PublicProfile } from "./types";
 
-export function publicProfile(profile: Profile, games: GameIdentity[] = []): PublicProfile {
+export function publicProfile(
+  profile: Profile,
+  games: GameIdentity[] = [],
+  options: { includePrivate?: boolean; includeGameAccounts?: boolean } = {}
+): PublicProfile {
   return {
     id: profile.id,
     nickname: profile.nickname,
@@ -12,10 +16,12 @@ export function publicProfile(profile: Profile, games: GameIdentity[] = []): Pub
     playStyle: profile.play_style,
     voice: profile.voice,
     online: profile.online,
-    friendCode: profile.friend_code,
+    friendCode: options.includePrivate ? profile.friend_code : "",
     genres: Array.isArray(profile.genres) ? profile.genres : [],
     games,
-    gameAccounts: (profile.game_accounts || {}) as Record<string, Record<string, string>>,
+    gameAccounts: options.includePrivate || options.includeGameAccounts
+      ? ((profile.game_accounts || {}) as Record<string, Record<string, string>>)
+      : {},
   };
 }
 
@@ -36,7 +42,10 @@ export async function gamesForProfile(profileId: string): Promise<GameIdentity[]
   }));
 }
 
-export async function publicProfilesFor(ids: string[]): Promise<PublicProfile[]> {
+export async function publicProfilesFor(
+  ids: string[],
+  options: { includePrivateFor?: string[]; includeGameAccountsFor?: string[] } = {}
+): Promise<PublicProfile[]> {
   const unique = Array.from(new Set(ids));
   if (!unique.length) return [];
   const { data: profiles } = await supabaseAdmin()
@@ -61,8 +70,13 @@ export async function publicProfilesFor(ids: string[]): Promise<PublicProfile[]>
     });
     byProfile.set(g.user_id, list);
   }
+  const privateIds = new Set(options.includePrivateFor || []);
+  const accountIds = new Set(options.includeGameAccountsFor || []);
   return (profiles as Profile[])
-    .map((p) => publicProfile(p, byProfile.get(p.id) || []))
+    .map((p) => publicProfile(p, byProfile.get(p.id) || [], {
+      includePrivate: privateIds.has(p.id),
+      includeGameAccounts: accountIds.has(p.id),
+    }))
     .sort((a, b) => a.nickname.localeCompare(b.nickname, "zh-Hans-CN"));
 }
 

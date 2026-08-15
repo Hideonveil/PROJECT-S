@@ -1,19 +1,15 @@
 import { NextResponse } from "next/server";
-import { authUserFromToken } from "@/lib/auth";
+import { requireRequestProfile } from "@/lib/auth";
 import { createPlayingRoom } from "@/lib/room";
 import { supabaseAdmin } from "@/lib/supabase";
+import { errorResponse, idempotencyKey, jsonOk, requestId } from "@/lib/http";
 
 export async function POST(request: Request) {
+  const rid = requestId(request);
   try {
     const body = await request.json();
-    const token = String(body.token || "");
-    const authUser = await authUserFromToken(token);
-    if (!authUser) return NextResponse.json({ error: "未登录" }, { status: 401 });
-
+    const me = await requireRequestProfile(request, body);
     const admin = supabaseAdmin();
-    const { data: me } = await admin.from("profiles").select("*").eq("auth_user_id", authUser.id).maybeSingle();
-    if (!me) return NextResponse.json({ error: "请先创建游戏身份" }, { status: 400 });
-
     const { data: application } = await admin
       .from("applications")
       .select("*")
@@ -22,14 +18,13 @@ export async function POST(request: Request) {
     if (!application || application.to_user_id !== me.id) {
       return NextResponse.json({ error: "申请无效" }, { status: 400 });
     }
-    if (application.status !== "pending") {
+    if (!["pending", "accepted"].includes(application.status)) {
       return NextResponse.json({ error: "申请已处理" }, { status: 400 });
     }
 
-    const room = await createPlayingRoom(application);
-    await admin.from("applications").update({ status: "accepted" }).eq("id", application.id);
-    return NextResponse.json({ room });
+    const room = await createPlayingRoom(application, me.id, idempotencyKey(request));
+    return jsonOk({ room }, rid);
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "接受失败" }, { status: 500 });
+    return errorResponse(error, rid, "接受失败，请稍后重试");
   }
 }
