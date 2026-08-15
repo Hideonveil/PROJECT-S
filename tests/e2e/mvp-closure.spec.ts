@@ -42,7 +42,7 @@ test("two real users complete the MVP loop and create exactly one rematch room",
   const code = accepted.room.code as string;
 
   const started = await json(request, "POST", `/api/room/${code}/start`, {}, a.token);
-  expect(started.session.status).toBe("playing");
+  expect(started.room.sessionStatus).toBe("playing");
   const [finishedA, finishedB] = await Promise.all([
     json(request, "POST", `/api/room/${code}/finish`, {}, a.token),
     json(request, "POST", `/api/room/${code}/finish`, {}, b.token),
