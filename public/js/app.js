@@ -61,6 +61,7 @@ const HOME_FILTER = {
   voice: "需要",
   step: 1,
 };
+let homeFilterReopen = false;
 let activeField = null;
 let timers = [];
 let ONLINE = false;
@@ -220,6 +221,11 @@ function render() {
   paintAvatars(app);
   activeField = initNodeField(app);
 
+  if (route.name === "home" && homeFilterReopen) {
+    homeFilterReopen = false;
+    showHomeFilter(true);
+  }
+
   if (route.name === "matching") startMatchingFlow();
   if (route.name === "room" && state.room?.status === "playing") startRoomTimer();
   if (route.name === "room" && state.room?.id) {
@@ -362,6 +368,23 @@ function startHomeFilter() {
   DRAFT.wizardStep = "confirm";
   DRAFT.dirty = true;
   navigate("#/need");
+}
+
+function restoreHomeFilterFromDraft() {
+  const game = GAMES.find((g) => g.id === DRAFT.game) || GAMES[0];
+  const modes = game.modes || [];
+  HOME_FILTER.game = game.id;
+  HOME_FILTER.mode = modes.includes(DRAFT.mode) ? DRAFT.mode : modes[0] || "";
+  const competitive = homeFilterCompetitive(game.id);
+  const times = competitive ? HOME_RANK_TIMES : HOME_CASUAL_TIMES;
+  HOME_FILTER.time = times.includes(DRAFT.time) ? DRAFT.time : times[0] || "现在就玩";
+  HOME_FILTER.team = String(Math.min(4, Math.max(1, Number(DRAFT.needed) || 1)));
+  HOME_FILTER.voice = ["需要", "不需要", "都可以"].includes(DRAFT.voicePref)
+    ? DRAFT.voicePref
+    : DRAFT.voice === false
+      ? "不需要"
+      : "需要";
+  HOME_FILTER.step = 5;
 }
 
 function findCandidate(id) {
@@ -1879,6 +1902,12 @@ document.addEventListener("click", (event) => {
 
   if (action === "wizard-back") {
     clearWizardAdvance();
+    if (DRAFT.wizardStep === "confirm") {
+      restoreHomeFilterFromDraft();
+      homeFilterReopen = true;
+      navigate("#/home");
+      return;
+    }
     const order = ["game", "activity", "people", "time", "team", "details", "confirm"];
     const idx = order.indexOf(DRAFT.wizardStep);
     if (DRAFT.wizardStep === "activity" && DRAFT.activityPos !== "mode") {
