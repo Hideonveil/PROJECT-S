@@ -1,5 +1,5 @@
 import { icon } from "../icons.js";
-import { button, esc, shell } from "../ui.js";
+import { button, esc, homeShell } from "../ui.js";
 import { GAMES } from "../data.js";
 import { FLOW } from "../flow.js";
 
@@ -358,19 +358,23 @@ export function needPage(state, draft) {
       ? ""
       : `<div class="flow-footer">${button({ label: step === "game" ? "返回首页" : "上一步", action: step === "game" ? "go-home" : "wizard-back", kind: "ghost", iconName: "chevronLeft" })}</div>`;
 
-  return shell(
+  return homeShell(
     state,
-    "home",
-    `<div class="page flow-page">
-      <div class="page-head">
-        <div class="page-eyebrow">${icon("radio", 13)} 开始匹配 · 快速构建需求</div>
-        <h1 class="page-title">${TITLES[step] || "开始匹配"}</h1>
-        <p class="page-sub">${SUBS[step] || ""}</p>
+    `<div class="prism-page prism-flow">
+      <div class="prism-head">
+        <div>
+          <div class="prism-eyebrow"><i></i>开始匹配 · 快速构建需求</div>
+          <h1 class="prism-title">${TITLES[step] || "开始匹配"}</h1>
+          <p class="prism-sub">${SUBS[step] || ""}</p>
+        </div>
+        ${button({ label: "取消", action: "go-home", kind: "ghost", size: "sm", iconName: "x" })}
       </div>
       ${progress(step)}
-      <div class="flow-body">${content}</div>
-      ${footer}
+      <div class="prism-card prism-flow-card">
+        <div class="flow-body">${content}</div>
+        ${footer}
+      </div>
     </div>`,
-    { topRight: button({ label: "取消", action: "go-home", kind: "ghost", size: "sm", iconName: "x" }) }
+    "home"
   );
 }

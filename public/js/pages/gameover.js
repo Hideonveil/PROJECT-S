@@ -1,6 +1,6 @@
 import { icon } from "../icons.js";
 import { avatarWrap } from "../avatar.js";
-import { button, esc, shell, statusPill } from "../ui.js";
+import { button, esc, homeShell, statusPill } from "../ui.js";
 
 export function gameoverPage(state) {
   const session = state.session || {};
@@ -11,15 +11,14 @@ export function gameoverPage(state) {
     { id: "bad", label: "🙁 不太顺利" },
   ];
 
-  return shell(
+  return homeShell(
     state,
-    "gameover",
-    `<div class="gameover-page">
+    `<div class="gameover-page prism-page prism-over">
       <div class="gameover-panel">
         <div class="gameover-head">
-          <div class="page-eyebrow">${icon("flag", 13)} 本次游戏结束 · 最近连接</div>
-          <h1 class="page-title">玩完了，这次怎么样？</h1>
-          <p class="page-sub">回答两个小问题就好。最近连接会保留，但不会自动变成永久好友。</p>
+          <div class="prism-eyebrow"><i></i>本次游戏结束 · 最近连接</div>
+          <h1 class="prism-title">玩完了，这次怎么样？</h1>
+          <p class="prism-sub">回答两个小问题就好。最近连接会保留，但不会自动变成永久好友。</p>
         </div>
 
         <div class="card" style="display:flex;flex-direction:column;gap:14px">
@@ -59,6 +58,6 @@ export function gameoverPage(state) {
         </div>
       </div>
     </div>`,
-    { immersive: true }
+    "home"
   );
 }

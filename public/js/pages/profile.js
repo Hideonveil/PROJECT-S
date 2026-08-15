@@ -1,6 +1,6 @@
 import { icon } from "../icons.js";
 import { avatarWrap } from "../avatar.js";
-import { button, esc, needSummary, shell, statusPill } from "../ui.js";
+import { button, esc, homeShell, needSummary, statusPill } from "../ui.js";
 
 
 export function profilePage(state, candidate) {
@@ -19,13 +19,10 @@ export function profilePage(state, candidate) {
     )
     .join("");
 
-  return shell(
+  return homeShell(
     state,
-    "home",
-    `<div class="page">
-      <div class="page-head">
-        <div class="page-eyebrow"><a href="#/results" class="inline-link" style="color:var(--signal)">${icon("chevronLeft", 14)} 返回匹配结果</a></div>
-      </div>
+    `<div class="prism-page prism-profile">
+      <div class="prism-back"><a href="#/results" class="inline-link" style="color:var(--signal)">${icon("chevronLeft", 14)} 返回匹配结果</a></div>
       <section class="profile-hero">
         <div class="card card--pad-lg">
           <div class="profile-identity">
@@ -69,6 +66,7 @@ export function profilePage(state, candidate) {
           </div>
         </div>
       </section>
-    </div>`
+    </div>`,
+    "home"
   );
 }

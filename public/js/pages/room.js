@@ -1,6 +1,6 @@
 import { icon } from "../icons.js";
 import { avatarWrap } from "../avatar.js";
-import { button, esc, needSummary, shell, statusPill } from "../ui.js";
+import { button, esc, homeShell, needSummary, statusPill } from "../ui.js";
 import { GAME_BY_ID } from "../data.js";
 
 const ACCOUNT_FIELDS = {
@@ -94,17 +94,19 @@ export function roomPage(state) {
         <p class="dim" style="font-size:13px">先去游戏里添加对方，再把好友码填到下面，方便双方连接。</p>
       </div>`;
 
-  return shell(
+  return homeShell(
     state,
-    "room",
-    `<div class="room-page">
+    `<div class="room-page prism-page prism-room">
       <div class="room-panel">
         <div class="room-head">
           <div>
-            <div class="page-eyebrow">${icon("link2", 13)} 临时游戏连接空间</div>
+            <div class="prism-eyebrow"><i></i>临时游戏连接空间</div>
             <div class="room-code">${icon("copy", 16)} ${esc(room.code)}</div>
           </div>
-          ${statusPill(room.status === "completed" || partnerExited ? "DONE" : "PLAYING", room.status === "completed" || partnerExited ? "已结束" : "PLAYING")}
+          <div class="inline-actions">
+            ${statusPill(room.status === "completed" || partnerExited ? "DONE" : "PLAYING", room.status === "completed" || partnerExited ? "已结束" : "PLAYING")}
+            ${button({ label: "5s 后可以退出", action: "exit-room", kind: "danger", size: "sm", iconName: "logOut", disabled: true })}
+          </div>
         </div>
         ${needSummary(need, { compact: true })}
 
@@ -139,9 +141,6 @@ export function roomPage(state) {
         </form>
       </section>
     </div>`,
-    {
-      immersive: true,
-      topRight: button({ label: "5s 后可以退出", action: "exit-room", kind: "ghost", size: "sm", iconName: "logOut", disabled: true }),
-    }
+    "home"
   );
 }

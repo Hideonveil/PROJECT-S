@@ -1,17 +1,16 @@
-import { button, fragments, needSummary, shell, statusPill } from "../ui.js";
+import { button, fragments, homeShell, needSummary, statusPill } from "../ui.js";
 
 export function matchingPage(state) {
   const pool = Math.max(0, state.match.pool ?? 0);
-  return shell(
+  return homeShell(
     state,
-    "matching",
-    `<div class="matching-page">
+    `<div class="prism-page prism-matching">
       <div class="node-field-wrap"><canvas data-node-field></canvas></div>
       ${fragments()}
-      <div class="matching-panel">
+      <div class="prism-card matching-panel">
         <div class="matching-ring">${statusPill("MATCHING")}</div>
         <div class="matching-status">
-          <h2 id="match-title">Finding your people.</h2>
+          <h2 class="matching-title" id="match-title">Finding your people.</h2>
           <p id="match-desc">正在读取此刻的匹配池：同游戏、同目标、同时间窗口。</p>
         </div>
         ${needSummary(state.need, { compact: true })}
@@ -30,6 +29,6 @@ export function matchingPage(state) {
         </div>
       </div>
     </div>`,
-    { immersive: true, topRight: button({ label: "取消", action: "cancel-match", kind: "ghost", size: "sm", iconName: "x" }) }
+    "home"
   );
 }

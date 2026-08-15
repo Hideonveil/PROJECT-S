@@ -2268,3 +2268,266 @@
     position: static;
   }
 }
+
+/* ================= shared prism pages (new home visual) ================= */
+.prism-page {
+  position: relative;
+  z-index: 2;
+  width: min(940px, calc(100vw - 72px));
+  margin: 0 auto;
+  padding: calc(var(--header-h) + 86px) 0 64px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.prism-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.prism-head > div:first-child {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.prism-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  color: var(--signal-strong);
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.prism-eyebrow i {
+  width: 9px;
+  height: 9px;
+  transform: rotate(45deg);
+  border-radius: 2px;
+  background: linear-gradient(135deg, var(--signal), var(--prism-cyan));
+  box-shadow: 0 0 0 4px var(--signal-soft);
+}
+
+.prism-title {
+  font-size: 30px;
+  font-weight: 750;
+  color: var(--paper);
+  line-height: 1.16;
+}
+
+.prism-sub {
+  color: var(--dim);
+  font-size: 14px;
+  max-width: 620px;
+}
+
+.prism-back {
+  display: flex;
+}
+
+.prism-card {
+  position: relative;
+  border: 1px solid rgba(184, 160, 240, 0.12);
+  border-radius: var(--r-lg);
+  background: rgba(255, 255, 255, 0.74);
+  box-shadow: 0 30px 80px rgba(140, 120, 200, 0.14), 0 4px 16px rgba(140, 120, 200, 0.05);
+  backdrop-filter: blur(18px) saturate(1.1);
+  padding: 22px;
+  overflow: hidden;
+}
+
+.prism-card::before {
+  content: "";
+  position: absolute;
+  top: -1px;
+  right: 18px;
+  width: 54px;
+  height: 54px;
+  background: linear-gradient(135deg, var(--prism-lilac), var(--prism-cyan));
+  clip-path: polygon(50% 0, 100% 100%, 0 100%);
+  opacity: 0.16;
+  pointer-events: none;
+  border-radius: 0 0 0 12px;
+}
+
+.prism-section {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.card {
+  border-radius: var(--r-lg);
+  padding: 20px;
+}
+
+.need-block {
+  background: var(--signal-soft);
+  border-color: rgba(184, 160, 240, 0.18);
+}
+
+/* need flow */
+.prism-flow {
+  width: min(860px, calc(100vw - 72px));
+}
+
+.prism-flow-card {
+  padding: 26px;
+}
+
+.prism-flow .flow-progress {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding: 0;
+}
+
+.prism-flow .flow-progress__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+}
+
+.prism-flow .flow-progress__item:not(:last-child)::after {
+  content: "";
+  width: 18px;
+  height: 1px;
+  margin-left: 2px;
+  background: linear-gradient(90deg, rgba(184, 160, 240, 0.40), rgba(184, 160, 240, 0));
+}
+
+.prism-flow .flow-progress__dot {
+  width: 9px;
+  height: 9px;
+  flex: none;
+  transform: rotate(45deg);
+  border-radius: 2px;
+  border: 1px solid var(--muted);
+  background: transparent;
+  box-shadow: none;
+}
+
+.prism-flow .flow-progress__item--active {
+  color: var(--signal);
+}
+
+.prism-flow .flow-progress__item--active .flow-progress__dot {
+  border-color: transparent;
+  background: linear-gradient(135deg, var(--signal), var(--prism-cyan));
+  box-shadow: 0 0 0 4px var(--signal-soft);
+}
+
+.prism-flow .flow-progress__item--done {
+  color: var(--dim);
+}
+
+.prism-flow .flow-progress__item--done .flow-progress__dot {
+  border-color: transparent;
+  background: var(--live);
+}
+
+.prism-flow-card .flow-game-card {
+  border-radius: var(--r-md);
+}
+
+.prism-flow-card .flow-game-tile {
+  border-radius: var(--r-md) var(--r-md) 0 0;
+}
+
+/* matching */
+.prism-matching {
+  width: min(620px, calc(100vw - 72px));
+  min-height: calc(100vh - var(--header-h));
+  justify-content: center;
+  padding-top: calc(var(--header-h) + 40px);
+}
+
+.prism-matching .matching-panel {
+  width: 100%;
+  max-width: 100%;
+}
+
+.matching-title {
+  font-size: 26px;
+  font-weight: 750;
+}
+
+.prism-matching .matching-stats .card {
+  background: rgba(255, 255, 255, 0.86);
+}
+
+/* results */
+.prism-results {
+  width: min(1080px, calc(100vw - 72px));
+}
+
+.prism-invite-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  border-color: var(--signal-border);
+  background: var(--signal-soft);
+}
+
+/* room */
+.prism-room {
+  width: min(1080px, calc(100vw - 72px));
+  min-height: calc(100vh - var(--header-h));
+  padding-top: calc(var(--header-h) + 86px);
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.prism-room .room-chat-card {
+  position: sticky;
+  top: calc(var(--header-h) + 20px);
+}
+
+.prism-room .room-member,
+.prism-room .card {
+  border-radius: var(--r-md);
+}
+
+/* game over */
+.prism-over {
+  width: min(680px, calc(100vw - 72px));
+  min-height: calc(100vh - var(--header-h));
+  justify-content: flex-start;
+  padding-top: calc(var(--header-h) + 86px);
+}
+
+.prism-over .gameover-panel {
+  width: 100%;
+  max-width: 680px;
+}
+
+/* profile / me */
+.prism-profile,
+.prism-me {
+  width: min(1080px, calc(100vw - 72px));
+}
+
+.prism-me .me-stats .card {
+  border-radius: var(--r-md);
+}

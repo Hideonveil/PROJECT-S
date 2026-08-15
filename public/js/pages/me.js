@@ -1,6 +1,6 @@
 import { icon } from "../icons.js";
 import { avatarWrap } from "../avatar.js";
-import { button, esc, shell, statBlock, statusPill } from "../ui.js";
+import { button, esc, homeShell, statBlock, statusPill } from "../ui.js";
 
 
 export function mePage(state) {
@@ -12,14 +12,15 @@ export function mePage(state) {
     ? `<div class="chip-group">${genres.map((g) => `<span class="chip chip--on">${esc(g)}</span>`).join("")}</div>`
     : `<span class="dim" style="font-size:13px">未填写常玩游戏类型</span>`;
 
-  return shell(
+  return homeShell(
     state,
-    "me",
-    `<div class="page">
-      <div class="page-head">
-        <div class="page-eyebrow">${icon("user", 13)} 我的</div>
-        <h1 class="page-title">游戏身份</h1>
-        <p class="page-sub">这里只有匹配需要的信息：你是谁、玩什么、怎么玩。</p>
+    `<div class="prism-page prism-me">
+      <div class="prism-head">
+        <div>
+          <div class="prism-eyebrow"><i></i>我的</div>
+          <h1 class="prism-title">游戏身份</h1>
+          <p class="prism-sub">这里只有匹配需要的信息：你是谁、玩什么、怎么玩。</p>
+        </div>
       </div>
       <section class="me-profile">
         <div class="card card--pad-lg">
@@ -85,6 +86,7 @@ export function mePage(state) {
           </div>
         </div>
       </section>
-    </div>`
+    </div>`,
+    "me"
   );
 }
