@@ -110,7 +110,10 @@ export async function enrichRoom(room: Record<string, unknown>): Promise<Room> {
     .eq("room_id", room.id as string)
     .order("joined_at", { ascending: true });
   const rows = (members || []) as Array<{ user_id: string; status: string; exited_at: string | null }>;
-  const profiles = await publicProfilesFor(rows.map((m) => m.user_id));
+  // enrichRoom is only called after server-side room membership checks, so
+  // members may see each other's in-room game account exchange fields.
+  const memberIds = rows.map((m) => m.user_id);
+  const profiles = await publicProfilesFor(memberIds, { includeGameAccountsFor: memberIds });
   const byId = new Map(profiles.map((p) => [p.id, p]));
   const memberViews = rows
     .filter((m) => byId.has(m.user_id))
@@ -119,6 +122,13 @@ export async function enrichRoom(room: Record<string, unknown>): Promise<Room> {
       memberStatus: m.status || "active",
       exitedAt: m.exited_at || null,
     }));
+  const { data: session } = await supabaseAdmin()
+    .from("sessions")
+    .select("id,status")
+    .eq("room_id", room.id as string)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
   return {
     id: room.id as string,
     code: room.code as string,
@@ -128,6 +138,8 @@ export async function enrichRoom(room: Record<string, unknown>): Promise<Room> {
     startedAt: (room.started_at as string | null) || null,
     players: memberViews.filter((m) => m.memberStatus === "active"),
     members: memberViews,
+    sessionId: session?.id || null,
+    sessionStatus: session?.status || null,
   };
 }
 
@@ -158,6 +170,15 @@ export async function recentConnectionsFor(profileId: string): Promise<EnrichedR
     .eq("user_id", profileId)
     .order("played_at", { ascending: false });
   const rows = (data || []) as RecentConnection[];
+  const sessionIds = Array.from(new Set(rows.map((row) => row.session_id).filter(Boolean))) as string[];
+  const { data: responses } = sessionIds.length
+    ? await supabaseAdmin()
+        .from("session_responses")
+        .select("session_id,rating,want_again")
+        .eq("user_id", profileId)
+        .in("session_id", sessionIds)
+    : { data: [] };
+  const responseBySession = new Map((responses || []).map((row) => [row.session_id, row]));
   const grouped = new Map<string, { row: RecentConnection; playCount: number }>();
   for (const row of rows) {
     const current = grouped.get(row.friend_id);
@@ -181,8 +202,8 @@ export async function recentConnectionsFor(profileId: string): Promise<EnrichedR
         gameId: entry.row.game_id,
         playedAt: entry.row.played_at,
         playCount: entry.playCount,
-        rating: entry.row.rating,
-        wantAgain: entry.row.want_again,
+        rating: responseBySession.get(entry.row.session_id || "")?.rating ?? entry.row.rating,
+        wantAgain: responseBySession.get(entry.row.session_id || "")?.want_again ?? entry.row.want_again,
       };
     })
     .filter((entry): entry is EnrichedRecentConnection => entry !== null);
@@ -212,10 +233,22 @@ export async function recordRoomConnection(room: Record<string, unknown>): Promi
 }
 
 export async function activeSessionFor(profileId: string): Promise<Session | null> {
-  const { data } = await supabaseAdmin().from("sessions").select("*").order("created_at", { ascending: false });
-  const rows = (data || []) as Session[];
-  const mine = rows.find((s) => (s.players || []).includes(profileId) && s.status === "active");
-  return mine || null;
+  const { data: memberships } = await supabaseAdmin()
+    .from("room_members")
+    .select("room_id")
+    .eq("user_id", profileId)
+    .order("joined_at", { ascending: false });
+  const roomIds = (memberships || []).map((row) => row.room_id);
+  if (!roomIds.length) return null;
+  const { data } = await supabaseAdmin()
+    .from("sessions")
+    .select("*")
+    .in("room_id", roomIds)
+    .in("status", ["ready", "playing", "completed", "active"])
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  return (data as Session) || null;
 }
 
 export async function enrichedApplications(apps: Application[]) {
@@ -246,5 +279,5 @@ export async function friendsFor(profileId: string): Promise<PublicProfile[]> {
 
 export async function profileWithGames(profile: Profile): Promise<PublicProfile> {
   const games = await gamesForProfile(profile.id);
-  return publicProfile(profile, games);
+  return publicProfile(profile, games, { includePrivate: true });
 }

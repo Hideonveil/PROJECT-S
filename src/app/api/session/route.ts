@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
 import { authUserFromToken, profileByAuthId } from "@/lib/auth";
 import { profileWithGames } from "@/lib/api";
+import { bearerToken } from "@/lib/http";
 
 export async function GET(request: Request) {
   try {
-    const url = new URL(request.url);
-    const token = url.searchParams.get("token") || "";
+    const token = bearerToken(request);
     const authUser = await authUserFromToken(token);
     if (!authUser) {
       return NextResponse.json({ authenticated: false });

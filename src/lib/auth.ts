@@ -1,6 +1,7 @@
 import { User } from "@supabase/supabase-js";
 import { anonClient, supabaseAdmin } from "./supabase";
 import type { Profile } from "./types";
+import { AppError, bearerToken } from "./http";
 
 export async function authUserFromToken(token: string | null | undefined): Promise<User | null> {
   if (!token) return null;
@@ -27,4 +28,14 @@ export async function requireProfile(token: string | null | undefined): Promise<
   const user = await authUserFromToken(token);
   if (!user) return null;
   return profileByAuthId(user.id);
+}
+
+export async function requireRequestProfile(
+  request: Request,
+  legacyBody?: Record<string, unknown>
+): Promise<Profile> {
+  const token = bearerToken(request, legacyBody);
+  const profile = await requireProfile(token);
+  if (!profile) throw new AppError("AUTH_REQUIRED", "请先登录", 401);
+  return profile;
 }

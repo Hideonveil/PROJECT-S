@@ -577,7 +577,7 @@ function applyServerSnapshot(data) {
       wantAgain: c.wantAgain || null,
     }));
   }
-  if (data.session) {
+  if (data.session && ["completed", "cancelled", "active"].includes(data.session.status)) {
     const session = data.session;
     if (!state.session || state.session.roomCode !== session.roomCode) {
       update(patch);
@@ -672,6 +672,7 @@ function handleServerRoom(room) {
 }
 
 function handleServerGameOver(session) {
+  if (!["completed", "cancelled", "active"].includes(session?.status)) return;
   if (state.session && state.session.roomCode === session.roomCode) return;
   const partner = state.room?.partner || state.session?.partner || {};
   const now = new Date();
@@ -725,9 +726,9 @@ function handleServerConnected(friends) {
 }
 
 function connectEvents() {
-  if (!ONLINE || !state.token) return;
+  if (!ONLINE || !state.authenticated) return;
   if (eventSourceClose) eventSourceClose();
-  eventSourceClose = api.openEvents(state.token, {
+  eventSourceClose = api.openEvents({
     hello: applyServerSnapshot,
     online: (data) => {
       const pool = data.matching ?? data.online ?? state.match.pool;
@@ -770,7 +771,6 @@ function connectEvents() {
     application: (data) => handleIncomingApplication(data.application),
     room: (data) => handleServerRoom(data.room),
     "game-over": (data) => handleServerGameOver(data.session),
-    connected: (data) => handleServerConnected(data.friends || []),
     "rematch-result": () => {
       if (state.session) update({ session: { ...state.session, theirs: "no", connected: false } });
       render();
@@ -856,7 +856,7 @@ function initRoomExitCountdown() {
 
 async function initRoomChat() {
   const room = state.room;
-  if (!room?.id || !state.token) return;
+  if (!room?.id || !state.authenticated) return;
   try {
     const messages = await api.fetchRoomMessages(room.id);
     renderChatMessages(messages);
@@ -955,7 +955,6 @@ async function completeOnboard() {
       authenticated: true,
       onboarded: true,
       user: result.user,
-      token: result.token,
       match: { ...state.match, pool: 0 },
     });
     DRAFT.dirty = false;
@@ -1011,7 +1010,7 @@ async function startMatch() {
     },
   });
   try {
-    const data = await api.postNeed(state.token, need);
+    const data = await api.postNeed(need);
     const candidates = normalizeCandidates(data.candidates || []);
     update({
       match: {
@@ -1059,7 +1058,7 @@ async function applyPartner(id) {
     return;
   }
   try {
-    await api.applyTo(state.token, candidate.id);
+    await api.applyTo(candidate.id);
     update({ match: { ...state.match, pending: id } });
     render();
     toast("邀请已发送，等对方也邀请你");
@@ -1074,8 +1073,8 @@ async function startGame() {
     return;
   }
   try {
-    await api.roomAction(state.room.code, "start", state.token);
-    update({ room: { ...state.room, status: "playing", startedAt: Date.now() } });
+    const result = await api.roomAction(state.room.code, "start");
+    update({ room: normalizeServerRoom(result.room || { ...state.room, status: "playing", startedAt: Date.now() }) });
     render();
   } catch (err) {
     toast(err.message);
@@ -1104,7 +1103,11 @@ async function finishGame() {
     return;
   }
   try {
-    await api.roomAction(state.room.code, "finish", state.token);
+    const result = await api.roomAction(state.room.code, "finish");
+    if (result.session) {
+      handleServerGameOver(result.session);
+      return;
+    }
   } catch (err) {
     toast(err.message);
     return;
@@ -1176,7 +1179,13 @@ async function confirmExitRoom() {
   }
   const partner = room.partner || {};
   try {
-    await api.roomAction(room.code, "exit", state.token);
+    const result = await api.roomAction(room.code, "exit");
+    if (result.session && ["completed", "cancelled"].includes(result.session.status)) {
+      closeSheet();
+      handleServerGameOver(result.session);
+      toast("已退出，本次连接已记录");
+      return;
+    }
     const now = new Date();
     const time = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
     const game = GAME_BY_ID[room.need?.game || state.need.game] || {};
@@ -1194,8 +1203,8 @@ async function confirmExitRoom() {
         wantAgain: null,
       },
     });
-    navigate("#/gameover");
-    toast("已退出，本次连接已记录");
+    navigate("#/home");
+    toast("已退出房间；另一位玩家退出或结束后，本次连接会自动归档");
   } catch (err) {
     toast(err.message);
   }
@@ -1215,7 +1224,7 @@ async function saveRoomGameAccount() {
     next[gameId][key] = String(value || "").trim();
   }
   try {
-    const data = await api.updateProfile(state.token, { gameAccounts: next });
+    const data = await api.updateProfile({ gameAccounts: next });
     update({ user: { ...state.user, ...data.user } });
     render();
     toast("游戏账号已保存");
@@ -1228,7 +1237,7 @@ async function setRoomRating(rating) {
   const code = state.session?.roomCode || state.lastRoomCode;
   if (!code || !ONLINE) return;
   try {
-    await api.roomFeedback(code, { rating }, state.token);
+    await api.roomFeedback(code, { rating });
     update({ session: { ...state.session, rating } });
     render();
   } catch (err) {
@@ -1240,7 +1249,7 @@ async function setRoomWantAgain(wantAgain) {
   const code = state.session?.roomCode || state.lastRoomCode;
   if (!code || !ONLINE) return;
   try {
-    await api.roomFeedback(code, { wantAgain }, state.token);
+    await api.roomFeedback(code, { wantAgain });
     update({ session: { ...state.session, wantAgain } });
     render();
     if (wantAgain) toast("已记录，下次可以再来找 TA");
@@ -1263,7 +1272,7 @@ async function rematchRecent(id) {
     match: { status: "active", pool: state.match.pool ?? 0, playing: state.match.playing ?? 0, candidates: [], pending: null },
   });
   try {
-    const data = await api.postNeed(state.token, need);
+    const data = await api.postNeed(need);
     update({
       match: {
         ...state.match,
@@ -1296,7 +1305,14 @@ async function chooseRematch(value) {
     return;
   }
   try {
-    await api.rematch(roomCode, value, state.token);
+    const data = await api.rematch(roomCode, value);
+    if (data.room) {
+      handleServerRoom(data.room);
+      toast("双方都选择再玩一次，新房间已创建");
+    } else if (data.resolution === "declined") {
+      update({ session: { ...state.session, theirs: "no", connected: false } });
+      render();
+    }
   } catch (err) {
     toast(err.message);
   }
@@ -1328,7 +1344,7 @@ async function rematchFriend(id) {
     },
   });
   try {
-    const data = await api.postNeed(state.token, need);
+    const data = await api.postNeed(need);
     update({
       match: {
         ...state.match,
@@ -1354,7 +1370,7 @@ async function rematchNow() {
     match: { ...state.match, status: "active", candidates: [], pending: null, pool: state.match.pool ?? 0 },
   });
   try {
-    const data = await api.postNeed(state.token, state.need);
+    const data = await api.postNeed(state.need);
     update({
       match: {
         ...state.match,
@@ -1373,7 +1389,7 @@ async function rematchNow() {
 
 function cancelMatch() {
   clearTimers();
-  if (ONLINE) api.cancelNeed(state.token).catch(() => {});
+  if (ONLINE) api.cancelNeed().catch(() => {});
   update({ match: { ...state.match, status: "idle", candidates: [] } });
   navigate("#/home");
 }
@@ -1470,7 +1486,7 @@ async function saveProfile() {
     return;
   }
   try {
-    const data = await api.updateProfile(state.token, {
+    const data = await api.updateProfile({
       nickname,
       device,
       gender,
@@ -1503,7 +1519,7 @@ function mapServerFriends(friends) {
 }
 
 async function logout() {
-  if (ONLINE && state.token) { api.cancelNeed(state.token).catch(() => {}); api.goOffline(state.token); }
+  if (ONLINE && state.authenticated) { api.cancelNeed().catch(() => {}); api.goOffline(); }
   if (eventSourceClose) {
     eventSourceClose();
     eventSourceClose = null;
@@ -1545,7 +1561,7 @@ async function searchFriendByCode() {
     return;
   }
   try {
-    const data = await api.searchFriend(state.token, code);
+    const data = await api.searchFriend(code);
     update({ friendSearchResult: data.user });
     render();
   } catch (err) {
@@ -1559,7 +1575,7 @@ async function addFriendByCodeAction(code) {
     return;
   }
   try {
-    const data = await api.addFriendByCode(state.token, code);
+    const data = await api.addFriendByCode(code);
     update({
       friends: mapServerFriends(data.friends),
       friendSearchResult: null,
@@ -1623,7 +1639,7 @@ async function submitFeedback() {
       ? window.crypto.randomUUID()
       : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
     try {
-      await api.sendFeedback(state.token, {
+      await api.sendFeedback({
         category: fd.get("category") || "bug",
         message,
         contact: String(fd.get("contact") || "").trim(),
@@ -2037,14 +2053,20 @@ document.addEventListener("click", (event) => {
       update({ need: { ...state.need, game: game.id, mode: game.modes[0] } });
       navigate("#/need");
     },
-    "view-profile": (id) => navigate(`#/player/${id}`),
+    "view-profile": (id) => {
+      api.trackEvent("candidate_viewed", { candidateId: id, gameId: state.need?.game || null });
+      navigate(`#/player/${id}`);
+    },
     "apply-partner": (id) => applyPartner(id),
     "open-room": () => navigate("#/room"),
     "leave-room": exitRoomPrompt,
     "exit-room": exitRoomPrompt,
     "confirm-exit-room": confirmExitRoom,
     "save-room-account": saveRoomGameAccount,
-    "copy-room-account": (value) => copyText(value),
+    "copy-room-account": (value) => {
+      api.trackEvent("game_account_copied", { gameId: state.need?.game || null, roomId: state.room?.id || null });
+      copyText(value);
+    },
     "add-game-friend": (value) => {
       copyText(value);
       toast("已复制，请去游戏内添加好友");
@@ -2066,11 +2088,14 @@ document.addEventListener("click", (event) => {
     "search-friend": searchFriendByCode,
     "add-friend-by-code": (code) => addFriendByCodeAction(code),
     "copy-code": (code) => copyText(code),
-    "open-feedback": openFeedback,
+    "open-feedback": () => {
+      api.trackEvent("feedback_opened", { page: location.hash || "/" });
+      openFeedback();
+    },
     "submit-feedback": submitFeedback,
     "accept-application": async (id) => {
       try {
-        const result = await api.acceptApplication(state.token, id);
+        const result = await api.acceptApplication(id);
         closeSheet();
         update({ incomingRequest: null });
         if (result.room) {
@@ -2087,7 +2112,7 @@ document.addEventListener("click", (event) => {
     },
     "decline-application": async (id) => {
       try {
-        await api.declineApplication(state.token, id);
+        await api.declineApplication(id);
         closeSheet();
         update({ incomingRequest: null });
       } catch (err) {
@@ -2162,7 +2187,7 @@ window.addEventListener("beforeunload", () => {
   destroyField();
   if (chatClose) chatClose();
   if (eventSourceClose) eventSourceClose();
-  if (ONLINE && state.token) api.goOffline(state.token);
+  if (ONLINE && state.authenticated) api.goOffline();
 });
 
 async function detectOnline() {
@@ -2187,10 +2212,9 @@ function mapAuthError(err) {
 async function handleAuthSuccess() {
   const session = await api.getSession();
   if (!session?.access_token) throw new Error("登录状态失效，请重试");
-  const status = await api.sessionStatus(session.access_token);
+  const status = await api.sessionStatus();
   update({
     authenticated: true,
-    token: session.access_token,
     authUsername: String(session.user?.user_metadata?.username || ""),
     onboarded: !!status.profile,
     authError: "",
@@ -2199,7 +2223,7 @@ async function handleAuthSuccess() {
   if (status.profile) {
     update({ user: status.profile });
     try {
-      const snapshot = await api.getState(session.access_token);
+      const snapshot = await api.getState();
       update({ user: snapshot.user });
       applyServerSnapshot(snapshot);
     } catch {
@@ -2221,7 +2245,7 @@ async function restoreSession() {
       resetState();
       return;
     }
-    const status = await api.sessionStatus(session.access_token);
+    const status = await api.sessionStatus();
     if (!status.authenticated) {
       await api.signOut().catch(() => {});
       resetState();
@@ -2229,7 +2253,6 @@ async function restoreSession() {
     }
     update({
       authenticated: true,
-      token: session.access_token,
       authUsername: String(session.user?.user_metadata?.username || ""),
       onboarded: !!status.profile,
       authError: "",
@@ -2238,7 +2261,7 @@ async function restoreSession() {
     if (status.profile) {
       update({ user: status.profile });
       try {
-        const snapshot = await api.getState(session.access_token);
+        const snapshot = await api.getState();
         update({ user: snapshot.user });
         applyServerSnapshot(snapshot);
       } catch {
@@ -2302,5 +2325,5 @@ async function submitAuth() {
 render();
 ONLINE = await detectOnline();
 await restoreSession();
-if (ONLINE && state.authenticated && state.onboarded && state.token) connectEvents();
+if (ONLINE && state.authenticated && state.onboarded) connectEvents();
 render();

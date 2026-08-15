@@ -1,45 +1,37 @@
-import { NextResponse } from "next/server";
-import { authUserFromToken } from "@/lib/auth";
-import { recordRoomConnection } from "@/lib/api";
+import { requireRequestProfile } from "@/lib/auth";
 import { supabaseAdmin } from "@/lib/supabase";
+import { errorResponse, jsonOk, requestId } from "@/lib/http";
+import { sessionForRoomCode } from "@/lib/session";
 
 export async function POST(request: Request, { params }: { params: Promise<{ code: string }> }) {
+  const rid = requestId(request);
   try {
     const { code } = await params;
     const body = await request.json();
-    const token = String(body.token || "");
-    const authUser = await authUserFromToken(token);
-    if (!authUser) return NextResponse.json({ error: "未登录" }, { status: 401 });
-
+    const me = await requireRequestProfile(request, body);
     const admin = supabaseAdmin();
-    const { data: me } = await admin.from("profiles").select("id").eq("auth_user_id", authUser.id).maybeSingle();
-    if (!me) return NextResponse.json({ error: "未登录" }, { status: 401 });
-
-    const { data: room } = await admin.from("rooms").select("*").eq("code", code).maybeSingle();
-    if (!room) return NextResponse.json({ error: "房间不存在" }, { status: 404 });
-
-    const { count } = await admin
-      .from("recent_connections")
-      .select("id", { count: "exact", head: true })
-      .eq("room_id", room.id)
-      .limit(1);
-    if (count === 0) await recordRoomConnection(room);
+    const session = await sessionForRoomCode(code);
+    if (!(session.players || []).includes(me.id)) throw new Error("SESSION_FORBIDDEN");
+    if (!["completed", "active"].includes(session.status)) throw new Error("SESSION_NOT_COMPLETED");
 
     const rating = ["happy", "meh", "bad"].includes(String(body.rating || "")) ? String(body.rating) : null;
     const wantAgain = typeof body.wantAgain === "boolean" ? body.wantAgain : null;
-    const patch: Record<string, unknown> = {};
+    const patch: Record<string, unknown> = {
+      session_id: session.id,
+      user_id: me.id,
+      updated_at: new Date().toISOString(),
+    };
     if (rating) patch.rating = rating;
     if (wantAgain !== null) patch.want_again = wantAgain;
     if (Object.keys(patch).length) {
-      await admin
-        .from("recent_connections")
-        .update(patch)
-        .eq("user_id", me.id)
-        .eq("room_id", room.id);
+      const { error } = await admin.from("session_responses").upsert(patch, {
+        onConflict: "session_id,user_id",
+      });
+      if (error) throw error;
     }
 
-    return NextResponse.json({ ok: true });
+    return jsonOk({ ok: true }, rid);
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "保存失败" }, { status: 500 });
+    return errorResponse(error, rid, "保存失败，请稍后重试");
   }
 }

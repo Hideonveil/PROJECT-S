@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server";
 import { authUserFromToken } from "@/lib/auth";
+import { bearerToken } from "@/lib/http";
 import { poolCounts } from "@/lib/api";
 import { supabaseAdmin } from "@/lib/supabase";
 
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const token = String(body.token || "");
+    const token = bearerToken(request, body);
     const authUser = await authUserFromToken(token);
     if (!authUser) return NextResponse.json({ error: "未登录" }, { status: 401 });
 

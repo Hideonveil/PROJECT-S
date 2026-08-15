@@ -35,7 +35,6 @@ export function defaultState() {
     },
     incomingRequest: null,
     matchRequestId: null,
-    token: null,
     lastRoomCode: null,
     friendSearchResult: null,
     room: null,

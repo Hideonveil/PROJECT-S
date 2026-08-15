@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
 import { authUserFromToken, profileByAuthId } from "@/lib/auth";
+import { bearerToken } from "@/lib/http";
 import { saveFeedback, sendFeedbackEmail, updateEmailStatus } from "@/lib/feedback";
 
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const token = String(body.token || "");
+    const token = bearerToken(request, body);
     const authUser = await authUserFromToken(token);
     if (!authUser) return NextResponse.json({ error: "请先登录后再提交反馈" }, { status: 401 });
 

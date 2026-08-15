@@ -1,55 +1,41 @@
-import { NextResponse } from "next/server";
-import { authUserFromToken } from "@/lib/auth";
+import { requireRequestProfile } from "@/lib/auth";
+import { enrichRoom } from "@/lib/api";
 import { supabaseAdmin } from "@/lib/supabase";
+import { AppError, errorResponse, idempotencyKey, jsonOk, requestId } from "@/lib/http";
+import { mapSession, sessionForRoomCode } from "@/lib/session";
 import type { Session } from "@/lib/types";
 
-function mapSession(s: Session | null) {
-  if (!s) return null;
-  return {
-    id: s.id,
-    roomCode: s.room_code,
-    players: s.players,
-    need: s.need,
-    outcomeBy: s.outcome_by,
-    rematchBy: s.rematch_by,
-    status: s.status,
-    createdAt: s.created_at,
-  };
-}
-
 export async function POST(request: Request, { params }: { params: Promise<{ code: string }> }) {
+  const rid = requestId(request);
   try {
     const { code } = await params;
     const body = await request.json();
-    const token = String(body.token || "");
-    const authUser = await authUserFromToken(token);
-    if (!authUser) return NextResponse.json({ error: "未登录" }, { status: 401 });
-
+    const me = await requireRequestProfile(request, body);
     const admin = supabaseAdmin();
-    const { data: me } = await admin.from("profiles").select("id").eq("auth_user_id", authUser.id).maybeSingle();
-    if (!me) return NextResponse.json({ error: "未登录" }, { status: 401 });
-
-    const { data: session } = await admin.from("sessions").select("*").eq("room_code", code).maybeSingle();
-    if (!session || !(session.players || []).includes(me.id)) {
-      return NextResponse.json({ error: "对局不存在" }, { status: 404 });
+    const session = await sessionForRoomCode(code);
+    const choice = String(body.choice || "");
+    if (!["yes", "no"].includes(choice)) {
+      throw new AppError("REMATCH_CHOICE_INVALID", "请选择继续或结束", 422);
     }
-
-    const choice = body.choice === "yes" ? "yes" : "no";
-    const rematchBy = { ...(session.rematch_by || {}), [me.id]: choice };
-    await admin.from("sessions").update({ rematch_by: rematchBy }).eq("id", session.id);
+    const { data: result, error: rpcError } = await admin.rpc("phase1_submit_rematch", {
+      p_session_id: session.id,
+      p_actor_id: me.id,
+      p_choice: choice,
+      p_request_id: idempotencyKey(request),
+    });
+    if (rpcError) throw rpcError;
     const { data: updated } = await admin.from("sessions").select("*").eq("id", session.id).single();
-
-    const players: string[] = updated.players || [];
-    const decided = players.filter((p) => updated.rematch_by?.[p]);
-    let connected = false;
-    if (players.length && decided.length === players.length) {
-      const allYes = decided.every((p) => updated.rematch_by[p] === "yes");
-      connected = allYes;
-      // Recent connections stay non-permanent; friends are only added by choice.
+    let room = null;
+    if (result?.roomId) {
+      const { data: createdRoom } = await admin.from("rooms").select("*").eq("id", result.roomId).single();
+      if (createdRoom) room = await enrichRoom(createdRoom);
     }
-
-    return NextResponse.json({ session: mapSession(updated), connected });
+    return jsonOk({
+      session: mapSession(updated as Session),
+      resolution: result?.resolution || "waiting",
+      room,
+    }, rid);
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "操作失败" }, { status: 500 });
+    return errorResponse(error, rid, "操作失败，请稍后重试");
   }
 }
