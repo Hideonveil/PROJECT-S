@@ -69,6 +69,7 @@ let eventSourceClose = null;
 let chatClose = null;
 let wizardAdvanceTimer = null;
 let roomExitReadyAt = 0;
+let landingPanelHideTimer = null;
 
 function clearTimers() {
   timers.forEach((t) => {
@@ -1552,8 +1553,79 @@ async function logout() {
   await api.signOut().catch(() => {});
   resetState();
   DRAFT.dirty = false;
-  navigate("#/auth");
+  navigate("#/home");
   toast("已退出登录");
+}
+
+const LANDING_PANELS = {
+  match: {
+    openClass: "is-match-open",
+    layer: "[data-landing-match]",
+    surface: ".landing-match-surface",
+  },
+  community: {
+    openClass: "is-community-open",
+    layer: "[data-landing-community]",
+    surface: ".landing-community-surface",
+  },
+  mine: {
+    openClass: "is-mine-open",
+    layer: "[data-landing-mine]",
+    surface: ".landing-mine-surface",
+  },
+};
+
+function openLandingPanel(kind, trigger) {
+  const config = LANDING_PANELS[kind];
+  const page = document.querySelector('[data-page="landing"]');
+  if (!config || !page || !trigger) return;
+
+  if (landingPanelHideTimer) {
+    window.clearTimeout(landingPanelHideTimer);
+    landingPanelHideTimer = null;
+  }
+
+  Object.values(LANDING_PANELS).forEach((item) => {
+    page.classList.remove(item.openClass);
+    document.querySelector(item.layer)?.setAttribute("aria-hidden", "true");
+  });
+  page.classList.remove("is-visual-matching", "is-visual-matching-exit");
+
+  const layer = document.querySelector(config.layer);
+  const surface = document.querySelector(config.surface);
+  if (!layer || !surface) return;
+
+  const triggerRect = trigger.getBoundingClientRect();
+  const surfaceLeft = surface.offsetLeft;
+  const surfaceTop = surface.offsetTop;
+  const surfaceWidth = Math.max(1, surface.offsetWidth);
+  const surfaceHeight = Math.max(1, surface.offsetHeight);
+  surface.style.setProperty("--landing-panel-from-x", `${triggerRect.left - surfaceLeft}px`);
+  surface.style.setProperty("--landing-panel-from-y", `${triggerRect.top - surfaceTop}px`);
+  surface.style.setProperty("--landing-panel-from-scale-x", String(triggerRect.width / surfaceWidth));
+  surface.style.setProperty("--landing-panel-from-scale-y", String(triggerRect.height / surfaceHeight));
+
+  layer.setAttribute("aria-hidden", "false");
+  surface.getBoundingClientRect();
+  window.requestAnimationFrame(() => page.classList.add(config.openClass));
+}
+
+function closeLandingPanel(kind) {
+  const config = LANDING_PANELS[kind];
+  const page = document.querySelector('[data-page="landing"]');
+  const layer = config ? document.querySelector(config.layer) : null;
+  if (!config || !page || !layer) return;
+
+  page.classList.remove(config.openClass);
+  if (kind === "match") {
+    page.classList.remove("is-visual-matching", "is-visual-matching-exit");
+    document.querySelector("[data-landing-visual-match]")?.setAttribute("aria-hidden", "true");
+  }
+  if (landingPanelHideTimer) window.clearTimeout(landingPanelHideTimer);
+  landingPanelHideTimer = window.setTimeout(() => {
+    layer.setAttribute("aria-hidden", "true");
+    landingPanelHideTimer = null;
+  }, 640);
 }
 
 async function copyText(text) {
@@ -1690,6 +1762,12 @@ async function submitFeedback() {
 }
 
 document.addEventListener("click", (event) => {
+  const dismissLayer = event.target.closest("[data-landing-dismiss]");
+  if (dismissLayer && event.target === dismissLayer) {
+    closeLandingPanel(dismissLayer.dataset.landingDismiss);
+    return;
+  }
+
   const actionEl = event.target.closest("[data-action]");
   if (!actionEl) return;
   const action = actionEl.dataset.action;
@@ -2045,49 +2123,12 @@ document.addEventListener("click", (event) => {
 
   const actions = {
     "go-home": () => navigate("#/home"),
-    "open-landing-match": () => {
-      const page = document.querySelector('[data-page="landing"]');
-      const layer = document.querySelector("[data-landing-match]");
-      const visualMatch = document.querySelector("[data-landing-visual-match]");
-      page?.classList.remove("is-visual-matching", "is-visual-matching-exit");
-      page?.classList.add("is-match-open");
-      layer?.setAttribute("aria-hidden", "false");
-      visualMatch?.setAttribute("aria-hidden", "true");
-    },
-    "close-landing-match": () => {
-      const page = document.querySelector('[data-page="landing"]');
-      const layer = document.querySelector("[data-landing-match]");
-      const visualMatch = document.querySelector("[data-landing-visual-match]");
-      page?.classList.remove("is-match-open", "is-visual-matching", "is-visual-matching-exit");
-      layer?.setAttribute("aria-hidden", "true");
-      visualMatch?.setAttribute("aria-hidden", "true");
-    },
-    "open-landing-community": () => {
-      const page = document.querySelector('[data-page="landing"]');
-      const layer = document.querySelector("[data-landing-community]");
-      page?.classList.remove("is-match-open");
-      page?.classList.add("is-community-open");
-      layer?.setAttribute("aria-hidden", "false");
-    },
-    "close-landing-community": () => {
-      const page = document.querySelector('[data-page="landing"]');
-      const layer = document.querySelector("[data-landing-community]");
-      page?.classList.remove("is-community-open");
-      layer?.setAttribute("aria-hidden", "true");
-    },
-    "open-landing-mine": () => {
-      const page = document.querySelector('[data-page="landing"]');
-      const layer = document.querySelector("[data-landing-mine]");
-      page?.classList.remove("is-match-open", "is-community-open");
-      page?.classList.add("is-mine-open");
-      layer?.setAttribute("aria-hidden", "false");
-    },
-    "close-landing-mine": () => {
-      const page = document.querySelector('[data-page="landing"]');
-      const layer = document.querySelector("[data-landing-mine]");
-      page?.classList.remove("is-mine-open");
-      layer?.setAttribute("aria-hidden", "true");
-    },
+    "open-landing-match": () => openLandingPanel("match", actionEl),
+    "close-landing-match": () => closeLandingPanel("match"),
+    "open-landing-community": () => openLandingPanel("community", actionEl),
+    "close-landing-community": () => closeLandingPanel("community"),
+    "open-landing-mine": () => openLandingPanel("mine", actionEl),
+    "close-landing-mine": () => closeLandingPanel("mine"),
     "landing-match-option": () => {
       const group = actionEl.closest("[data-landing-filter-group]");
       group?.querySelectorAll("[data-action='landing-match-option']").forEach((option) => {

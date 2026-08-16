@@ -181,7 +181,7 @@ export function landingPage(state = {}) {
       </section>
     </section>
 
-    <section class="landing-match-layer" data-landing-match aria-hidden="true">
+    <section class="landing-match-layer" data-landing-match data-landing-dismiss="match" aria-hidden="true">
       <div class="landing-match-surface">
         <button type="button" class="landing-match-close" data-action="close-landing-match" aria-label="关闭匹配筛选">×</button>
         <div class="landing-match-content">
@@ -273,7 +273,7 @@ export function landingPage(state = {}) {
       </div>
     </section>
 
-    <section class="landing-community-layer" data-landing-community aria-hidden="true">
+    <section class="landing-community-layer" data-landing-community data-landing-dismiss="community" aria-hidden="true">
       <div class="landing-community-surface">
         <button type="button" class="landing-community-close" data-action="close-landing-community" aria-label="关闭社区">×</button>
         <div class="landing-community-copy">
@@ -283,7 +283,7 @@ export function landingPage(state = {}) {
       </div>
     </section>
 
-    <section class="landing-mine-layer" data-landing-mine aria-hidden="true">
+    <section class="landing-mine-layer" data-landing-mine data-landing-dismiss="mine" aria-hidden="true">
       <div class="landing-mine-surface">
         <svg class="landing-mine-outline landing-mine-outline--desktop" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true" focusable="false">
           <polygon points="0,39 39,0 100,0 100,61 61,100 0,100"></polygon>
