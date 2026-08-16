@@ -3161,10 +3161,13 @@
   display: flex;
   align-items: center;
   animation: landing-ribbon-flow 14s linear infinite;
+  animation-delay: var(--landing-ribbon-delay, 0ms);
   white-space: nowrap;
+  will-change: transform;
 }
 
 .landing-ribbon-segment {
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   gap: 30px;
@@ -3184,8 +3187,8 @@
 }
 
 @keyframes landing-ribbon-flow {
-  from { transform: translateX(0); }
-  to { transform: translateX(-50%); }
+  from { transform: translate3d(0, 0, 0); }
+  to { transform: translate3d(-50%, 0, 0); }
 }
 
 .landing-field-copy {
@@ -3885,6 +3888,27 @@
 
 .landing.is-mine-open .landing-mine-surface {
   clip-path: polygon(0 39%, 39% 0, 100% 0, 100% 61%, 61% 100%, 0 100%);
+}
+
+.landing-mine-outline {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.landing-mine-outline polygon {
+  fill: none;
+  stroke: #16151a;
+  stroke-width: 3;
+  vector-effect: non-scaling-stroke;
+}
+
+.landing-mine-outline--mobile {
+  display: none;
 }
 
 .landing-mine-surface::after {
@@ -4624,6 +4648,12 @@
 @media (max-width: 880px) {
   .landing.is-mine-open .landing-mine-surface {
     clip-path: polygon(0 22%, 22% 0, 100% 0, 100% 78%, 78% 100%, 0 100%);
+  }
+  .landing-mine-outline--desktop {
+    display: none;
+  }
+  .landing-mine-outline--mobile {
+    display: block;
   }
   .landing-mine-profile {
     left: 6vw;
