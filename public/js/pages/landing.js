@@ -12,6 +12,8 @@ export function landingPage(state = {}) {
   const playStyle = user.playStyle || "还没有填写游戏偏好";
   const pool = Math.max(0, Number(state.match?.pool) || 0);
   const playing = Math.max(0, Number(state.match?.playing) || 0);
+  const ribbonCycleMs = 14000;
+  const ribbonPhaseMs = Date.now() % ribbonCycleMs;
 
   return `<main class="landing" data-page="landing">
     <div class="landing-backdrop">
@@ -47,7 +49,7 @@ export function landingPage(state = {}) {
         </button>
       </div>
 
-      <div class="landing-ribbon" data-landing-ribbon aria-label="总有人想一起">
+      <div class="landing-ribbon" data-landing-ribbon aria-label="总有人想一起" style="--landing-ribbon-delay: -${ribbonPhaseMs}ms">
         <div class="landing-ribbon-track">
           <div class="landing-ribbon-segment"><span>总有人想一起</span><i>/</i><span>NEVER PLAY ALONE</span><i>/</i><span>总有人想一起</span><i>/</i><span>NEVER PLAY ALONE</span><i>/</i></div>
           <div class="landing-ribbon-segment" aria-hidden="true"><span>总有人想一起</span><i>/</i><span>NEVER PLAY ALONE</span><i>/</i><span>总有人想一起</span><i>/</i><span>NEVER PLAY ALONE</span><i>/</i></div>
@@ -283,6 +285,12 @@ export function landingPage(state = {}) {
 
     <section class="landing-mine-layer" data-landing-mine aria-hidden="true">
       <div class="landing-mine-surface">
+        <svg class="landing-mine-outline landing-mine-outline--desktop" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true" focusable="false">
+          <polygon points="0,39 39,0 100,0 100,61 61,100 0,100"></polygon>
+        </svg>
+        <svg class="landing-mine-outline landing-mine-outline--mobile" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true" focusable="false">
+          <polygon points="0,22 22,0 100,0 100,78 78,100 0,100"></polygon>
+        </svg>
         <button type="button" class="landing-mine-close" data-action="close-landing-mine" aria-label="关闭我的">×</button>
 
         <section class="landing-mine-profile">
