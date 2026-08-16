@@ -13,6 +13,7 @@ export function publicProfile(
     avatarKey: profile.avatar_key,
     device: profile.device,
     gender: profile.gender,
+    ageRange: profile.age_range || "保密",
     playStyle: profile.play_style,
     voice: profile.voice,
     online: profile.online,

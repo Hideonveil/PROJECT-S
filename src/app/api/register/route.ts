@@ -41,6 +41,7 @@ export async function POST(request: Request) {
           avatar_key: String(body.avatarKey || "me-1"),
           device: String(body.device || "PC"),
           gender: String(body.gender || "保密"),
+          age_range: String(body.ageRange || "保密"),
           genres,
           play_style: String(body.playStyle || ""),
           voice: body.voice !== false,
