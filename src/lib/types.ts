@@ -14,6 +14,7 @@ export interface Profile {
   avatar_key: string;
   device: string;
   gender: string;
+  age_range?: string;
   genres: string[];
   play_style: string;
   voice: boolean;
@@ -31,6 +32,7 @@ export interface PublicProfile {
   avatarKey: string;
   device: string;
   gender: string;
+  ageRange?: string;
   playStyle: string;
   voice: boolean;
   online: boolean;

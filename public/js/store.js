@@ -18,6 +18,7 @@ export function defaultState() {
       friendCode: "",
       device: "PC",
       gender: "保密",
+      ageRange: "保密",
       games: [],
       genres: [],
       playStyle: "",
