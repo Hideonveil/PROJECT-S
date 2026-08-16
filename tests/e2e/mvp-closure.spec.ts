@@ -137,7 +137,7 @@ test("first-time visitors see the public home before authentication", async ({ p
   await expect(page.getByRole("button", { name: "社区", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "我的", exact: true })).toBeVisible();
   await expect(page.getByText("联系我们", { exact: true })).toBeVisible();
-  await expect(page.getByText("总有人想一起", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText("总有人想一起玩", { exact: true }).first()).toBeVisible();
 
   await page.getByRole("button", { name: "注册", exact: true }).click();
   await expect(page).not.toHaveURL(/#\/auth$/);
@@ -145,10 +145,11 @@ test("first-time visitors see the public home before authentication", async ({ p
   await expect(page.locator(".landing")).toHaveClass(/is-auth-flow-open/);
 });
 
-test("landing uses same-color ticket stubs with a dashed half-tear", async ({ page }) => {
+test("landing uses clean solid action cards and a full-width seamless ribbon cycle", async ({ page }) => {
   await page.goto("/index.html");
 
   await expect(page.getByText("NEVER PLAY ALONE", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText("总有人想一起玩", { exact: true }).first()).toBeVisible();
   await expect(page.locator(".landing-block-arrow, .landing-block-mark")).toHaveCount(0);
 
   const expectedSizes = new Map([
@@ -159,28 +160,19 @@ test("landing uses same-color ticket stubs with a dashed half-tear", async ({ pa
 
   for (const [selector, expectedSize] of expectedSizes) {
     const tile = page.locator(selector);
-    const stub = tile.locator(".landing-ticket-stub");
     const bounds = await tile.boundingBox();
     expect(bounds?.width).toBe(expectedSize.width);
     expect(bounds?.height).toBe(expectedSize.height);
-    await expect(stub).toHaveCount(1);
-    const stubBefore = await stub.evaluate((element) => getComputedStyle(element).transform);
-    const tearBefore = await tile.evaluate((element) => getComputedStyle(element, "::after").clipPath);
+    await expect(tile.locator(".landing-ticket-stub")).toHaveCount(0);
     const bodyBackground = await tile.evaluate((element) => getComputedStyle(element, "::before").backgroundImage);
-    const stubBackground = await stub.evaluate((element) => getComputedStyle(element).backgroundImage);
-    const bodyColor = await tile.evaluate((element) => getComputedStyle(element, "::before").backgroundColor);
-    const stubColor = await stub.evaluate((element) => getComputedStyle(element).backgroundColor);
-    await tile.hover();
-    await page.waitForTimeout(220);
-    const stubAfter = await stub.evaluate((element) => getComputedStyle(element).transform);
-    const tearAfter = await tile.evaluate((element) => getComputedStyle(element, "::after").clipPath);
-    expect(stubAfter).not.toBe(stubBefore);
-    expect(tearAfter).not.toBe(tearBefore);
     expect(bodyBackground).toBe("none");
-    expect(stubBackground).toContain("radial-gradient");
-    expect(stubColor).toBe(bodyColor);
     await expect(tile).toHaveCSS("box-shadow", "none");
   }
+
+  const firstRibbonSegment = page.locator(".landing-ribbon-segment").first();
+  const segmentBounds = await firstRibbonSegment.boundingBox();
+  const viewport = page.viewportSize();
+  expect(segmentBounds?.width).toBeGreaterThanOrEqual(viewport?.width || 0);
 
   await page.locator(".landing-block--match").hover();
   await expect(page.locator(".landing-block--match")).toHaveCSS("animation-name", "landing-match-shake");
@@ -346,7 +338,7 @@ test("public shake becomes a visual full-screen matching state and exits home", 
     },
   });
 
-  await page.waitForTimeout(600);
+  await page.waitForTimeout(700);
   const clipPath = await page.locator(".landing-match-surface").evaluate((element) => getComputedStyle(element).clipPath);
   expect(clipPath.replaceAll(" ", "")).toBe("polygon(0px0px,100%0px,100%100%,0px100%)");
 

@@ -33,26 +33,23 @@ export function landingPage(state = {}) {
     <section class="landing-board">
       <div class="landing-menu" aria-label="主页入口">
         <button type="button" class="landing-block landing-block--match" data-action="open-landing-match" aria-label="摇人">
-          <span class="landing-ticket-stub" aria-hidden="true"></span>
           <span class="landing-block-no">01 / MATCH</span>
           <strong>摇人</strong>
         </button>
         <button type="button" class="landing-block landing-block--community" data-action="open-landing-community" aria-label="社区">
-          <span class="landing-ticket-stub" aria-hidden="true"></span>
           <span class="landing-block-no">02 / COMMUNITY</span>
           <strong>社区</strong>
         </button>
         <button type="button" class="landing-block landing-block--mine" data-action="open-landing-mine" aria-label="我的">
-          <span class="landing-ticket-stub" aria-hidden="true"></span>
           <span class="landing-block-no">03 / MINE</span>
           <strong>我的</strong>
         </button>
       </div>
 
-      <div class="landing-ribbon" data-landing-ribbon aria-label="总有人想一起" style="--landing-ribbon-delay: -${ribbonPhaseMs}ms">
+      <div class="landing-ribbon" data-landing-ribbon aria-label="总有人想一起玩" style="--landing-ribbon-delay: -${ribbonPhaseMs}ms">
         <div class="landing-ribbon-track">
-          <div class="landing-ribbon-segment"><span>总有人想一起</span><i>/</i><span>NEVER PLAY ALONE</span><i>/</i><span>总有人想一起</span><i>/</i><span>NEVER PLAY ALONE</span><i>/</i></div>
-          <div class="landing-ribbon-segment" aria-hidden="true"><span>总有人想一起</span><i>/</i><span>NEVER PLAY ALONE</span><i>/</i><span>总有人想一起</span><i>/</i><span>NEVER PLAY ALONE</span><i>/</i></div>
+          <div class="landing-ribbon-segment"><span>总有人想一起玩</span><i>/</i><span>NEVER PLAY ALONE</span><i>/</i><span>总有人想一起玩</span><i>/</i><span>NEVER PLAY ALONE</span><i>/</i></div>
+          <div class="landing-ribbon-segment" aria-hidden="true"><span>总有人想一起玩</span><i>/</i><span>NEVER PLAY ALONE</span><i>/</i><span>总有人想一起玩</span><i>/</i><span>NEVER PLAY ALONE</span><i>/</i></div>
         </div>
       </div>
 
