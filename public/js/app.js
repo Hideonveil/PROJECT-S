@@ -7,9 +7,9 @@ import { DEVICES, GAME_BY_ID, GAMES, GENRES, HOME_CASUAL_TIMES, HOME_COMPETITIVE
 import { FLOW } from "./flow.js";
 import * as api from "./api.js";
 import { authPage } from "./pages/auth.js";
-import { landingPage } from "./pages/landing.js";
 import { welcomePage } from "./pages/welcome.js";
 import { homePage } from "./pages/home.js";
+import { communityPage } from "./pages/community.js";
 import { needPage, confirmSummary } from "./pages/need.js";
 import { matchingPage } from "./pages/matching.js";
 import { resultsPage } from "./pages/results.js";
@@ -55,8 +55,8 @@ const DRAFT = {
 };
 
 const HOME_FILTER = {
-  game: GAMES[0].id,
-  mode: GAMES[0].modes[0] || "",
+  game: HOME_GAME_IDS[0],
+  mode: GAMES.find((game) => game.id === HOME_GAME_IDS[0])?.modes?.[0] || "",
   time: "现在就玩",
   team: "1",
   voice: "需要",
@@ -70,6 +70,7 @@ let chatClose = null;
 let wizardAdvanceTimer = null;
 let roomExitReadyAt = 0;
 let landingPanelHideTimer = null;
+let matchStartObserver = null;
 
 function clearTimers() {
   timers.forEach((t) => {
@@ -77,6 +78,37 @@ function clearTimers() {
     window.clearInterval(t);
   });
   timers = [];
+  if (matchStartObserver) {
+    matchStartObserver.disconnect();
+    matchStartObserver = null;
+  }
+}
+
+function initMatchStartDock() {
+  const dock = document.querySelector("[data-match-start-dock]");
+  const button = dock?.querySelector(".match-start");
+  if (!dock || !button) return;
+
+  const morph = (floating) => {
+    if (button.classList.contains("is-floating") === floating) return;
+    const before = button.getBoundingClientRect();
+    button.classList.toggle("is-floating", floating);
+    const after = button.getBoundingClientRect();
+    const dx = before.left - after.left;
+    const dy = before.top - after.top;
+    const sx = before.width / Math.max(after.width, 1);
+    const sy = before.height / Math.max(after.height, 1);
+    button.animate(
+      [{ transform: `translate(${dx}px, ${dy}px) scale(${sx}, ${sy})` }, { transform: "translate(0, 0) scale(1)" }],
+      { duration: 420, easing: "cubic-bezier(.2,.85,.25,1)", fill: "none" }
+    );
+  };
+
+  matchStartObserver = new IntersectionObserver(
+    ([entry]) => morph(!entry.isIntersecting),
+    { threshold: 0.72, rootMargin: "-8px 0px -8px 0px" }
+  );
+  matchStartObserver.observe(dock);
 }
 
 function clearWizardAdvance() {
@@ -128,8 +160,9 @@ function render() {
   if (route.name === "need" && DRAFT.game) document.body.dataset.gameTheme = DRAFT.game;
   else delete document.body.dataset.gameTheme;
 
-  if (!state.authenticated && !["auth", "home"].includes(route.name)) {
-    location.hash = "#/home";
+  const publicRoutes = new Set(["home", "community", "auth"]);
+  if (!state.authenticated && !publicRoutes.has(route.name)) {
+    location.hash = "#/auth";
     return;
   }
   if (state.authenticated && !state.onboarded && route.name !== "welcome") {
@@ -153,7 +186,10 @@ function render() {
       html = welcomePage(state, DRAFT);
       break;
     case "home":
-      html = landingPage(state);
+      html = homePage(state, HOME_FILTER);
+      break;
+    case "community":
+      html = communityPage(state);
       break;
     case "connections":
       html = connectionsPage(state);
@@ -222,7 +258,7 @@ function render() {
   paintAvatars(app);
   activeField = initNodeField(app);
 
-
+  if (route.name === "home") initMatchStartDock();
   if (route.name === "matching") startMatchingFlow();
   if (route.name === "room" && state.room?.status === "playing") startRoomTimer();
   if (route.name === "room" && state.room?.id) {
@@ -274,7 +310,9 @@ function homeFilterCompetitive(gameId) {
 
 function renderHomeFilterGameState() {
   document.querySelectorAll("[data-home-game]").forEach((row) => {
-    row.classList.toggle("is-on", row.dataset.homeGame === HOME_FILTER.game);
+    const on = row.dataset.homeGame === HOME_FILTER.game;
+    row.classList.toggle("is-on", on);
+    row.setAttribute("aria-pressed", String(on));
   });
 }
 
@@ -282,13 +320,13 @@ function renderHomeFilterTags() {
   const modeWrap = document.getElementById("home-filter-mode-tags");
   const timeWrap = document.getElementById("home-filter-time-tags");
   const game = GAMES.find((g) => g.id === HOME_FILTER.game) || GAMES[0];
-  const competitive = homeFilterCompetitive(game.id);
-  const times = competitive ? HOME_RANK_TIMES : HOME_CASUAL_TIMES;
+  const times = HOME_CASUAL_TIMES;
   if (modeWrap) {
     modeWrap.innerHTML = (game.modes || [])
+      .slice(0, 3)
       .map(
         (m) =>
-          `<button type="button" class="home-filter-tag ${m === HOME_FILTER.mode ? "is-on" : ""}" data-action="home-mode" data-value="${esc(m)}">${esc(m)}</button>`
+          `<button type="button" class="home-filter-tag match-option ${m === HOME_FILTER.mode ? "is-on" : ""}" data-action="home-mode" data-value="${esc(m)}" aria-pressed="${m === HOME_FILTER.mode}"><span>${esc(m.replace(" / ", ""))}</span><span class="match-option-check">${icon("check", 12)}</span></button>`
       )
       .join("");
   }
@@ -296,7 +334,7 @@ function renderHomeFilterTags() {
     timeWrap.innerHTML = times
       .map(
         (t) =>
-          `<button type="button" class="home-filter-tag ${t === HOME_FILTER.time ? "is-on" : ""}" data-action="home-time" data-value="${esc(t)}">${esc(t)}</button>`
+          `<button type="button" class="home-filter-tag match-option ${t === HOME_FILTER.time ? "is-on" : ""}" data-action="home-time" data-value="${esc(t)}" aria-pressed="${t === HOME_FILTER.time}"><span>${esc(t === "现在就玩" ? "尽快开始" : t)}</span><span class="match-option-check">${icon("check", 12)}</span></button>`
       )
       .join("");
   }
@@ -385,6 +423,11 @@ function syncHomeFilterToDraft() {
 }
 
 function startHomeFilter() {
+  if (!state.authenticated) {
+    update({ authMode: "login", authError: "", authNotice: "登录后即可开始摇人。" });
+    navigate("#/auth");
+    return;
+  }
   syncHomeFilterToDraft();
   startMatch();
 }
@@ -810,46 +853,16 @@ function connectEvents() {
   });
 }
 
-function renderAuthMode() {
-  const isLogin = state.authMode !== "register";
-  document.querySelectorAll(".auth-tab").forEach((tab) => {
-    const active = tab.dataset.value === (isLogin ? "login" : "register");
-    tab.classList.toggle("auth-tab--active", active);
-  });
-  const card = document.querySelector(".auth-card");
-  if (!card) return;
-  const title = card.querySelector(".card-title");
-  if (title) title.textContent = isLogin ? "欢迎回来" : "创建账号";
-  const sub = card.querySelector(".page-sub");
-  if (sub) sub.textContent = isLogin ? "登录后继续你的游戏身份和匹配。" : "用用户名注册，匹配到的每一步都是真人玩家。";
-  const submitLabel = card.querySelector('[data-action="auth-submit"] span');
-  if (submitLabel) submitLabel.textContent = isLogin ? "登录" : "注册";
-  const switchWrap = card.querySelector(".auth-switch");
-  const switchLink = card.querySelector(".auth-switch-link");
-  if (switchWrap) switchWrap.childNodes[0].textContent = isLogin ? "没有账号？" : "已有账号？";
-  if (switchLink) {
-    switchLink.textContent = isLogin ? "去注册" : "去登录";
-    switchLink.dataset.value = isLogin ? "register" : "login";
-  }
-  const pw = card.querySelector('[name="password"]');
-  if (pw) {
-    pw.placeholder = isLogin ? "输入密码" : "至少 6 位";
-    pw.autocomplete = isLogin ? "current-password" : "new-password";
-  }
-  card.querySelector("[data-auth-error]")?.remove();
-  card.querySelector("[data-auth-note]")?.remove();
-}
-
 function showAuthError(message) {
   update({ authError: message });
   const form = document.querySelector('[data-form="auth"]');
-  const card = form?.closest(".auth-card") || document.querySelector(".auth-card");
+  const card = form?.closest(".product-auth-panel") || form?.closest(".auth-card") || document.querySelector(".product-auth-panel, .auth-card");
   let errorEl = card?.querySelector("[data-auth-error]");
   if (!errorEl && card) {
     errorEl = document.createElement("div");
     errorEl.className = "auth-error";
     errorEl.dataset.authError = "";
-    const actions = card.querySelector(".form-actions");
+    const actions = card.querySelector(".product-auth-submit-row, .form-actions");
     if (actions) actions.insertAdjacentElement("beforebegin", errorEl);
     else card.appendChild(errorEl);
   }
@@ -2061,7 +2074,7 @@ document.addEventListener("click", (event) => {
     HOME_FILTER.game = value;
     const game = GAMES.find((g) => g.id === value);
     HOME_FILTER.mode = game?.modes?.[0] || "";
-    HOME_FILTER.time = homeFilterCompetitive(value) ? HOME_RANK_TIMES[0] : HOME_CASUAL_TIMES[0];
+    HOME_FILTER.time = HOME_CASUAL_TIMES[0];
     renderHomeFilterGameState();
     renderHomeFilterTags();
     return;
@@ -2072,6 +2085,7 @@ document.addEventListener("click", (event) => {
     const group = actionEl.closest(".home-filter-tag-group");
     group?.querySelectorAll(".home-filter-tag").forEach((c) => c.classList.remove("is-on"));
     actionEl.classList.add("is-on");
+    group?.querySelectorAll(".home-filter-tag").forEach((c) => c.setAttribute("aria-pressed", String(c === actionEl)));
     return;
   }
 
@@ -2080,6 +2094,7 @@ document.addEventListener("click", (event) => {
     const group = actionEl.closest(".home-filter-tag-group");
     group?.querySelectorAll(".home-filter-tag").forEach((c) => c.classList.remove("is-on"));
     actionEl.classList.add("is-on");
+    group?.querySelectorAll(".home-filter-tag").forEach((c) => c.setAttribute("aria-pressed", String(c === actionEl)));
     return;
   }
 
@@ -2096,6 +2111,7 @@ document.addEventListener("click", (event) => {
     const group = actionEl.closest(".home-filter-tag-group");
     group?.querySelectorAll(".home-filter-tag").forEach((c) => c.classList.remove("is-on"));
     actionEl.classList.add("is-on");
+    group?.querySelectorAll(".home-filter-tag").forEach((c) => c.setAttribute("aria-pressed", String(c === actionEl)));
     return;
   }
 
@@ -2118,6 +2134,11 @@ document.addEventListener("click", (event) => {
     }
     HOME_FILTER.step = Number(HOME_FILTER.step) + 1;
     renderHomeFilterStep();
+    return;
+  }
+
+  if (action === "home-start-match") {
+    startHomeFilter();
     return;
   }
 
@@ -2208,9 +2229,18 @@ document.addEventListener("click", (event) => {
       prepareNeedDraft();
       navigate("#/need");
     },
+    "open-auth-login": () => {
+      update({ authMode: "login", authError: "", authNotice: "" });
+      navigate("#/auth");
+    },
+    "open-auth-register": () => {
+      update({ authMode: "register", authError: "", authNotice: "" });
+      navigate("#/auth");
+    },
     "switch-auth-mode": (value) => {
-      update({ authMode: value === "register" ? "register" : "login", authError: "", authNotice: "" });
-      renderAuthMode();
+      const username = document.querySelector("#auth-username")?.value?.trim() || state.authUsername;
+      update({ authMode: value === "register" ? "register" : "login", authUsername: username, authError: "", authNotice: "" });
+      render();
     },
     "toggle-password": () => {
       const input = document.querySelector("#auth-password");
@@ -2749,7 +2779,8 @@ async function submitAuth() {
   }
   if (submitBtn) {
     submitBtn.disabled = true;
-    submitBtn.textContent = "提交中…";
+    const label = submitBtn.querySelector("span");
+    if (label) label.textContent = "提交中…";
   }
   update({ authError: "", authNotice: "" });
   document.querySelector("[data-auth-error]")?.remove();
@@ -2764,7 +2795,8 @@ async function submitAuth() {
   } finally {
     if (submitBtn) {
       submitBtn.disabled = false;
-      submitBtn.textContent = state.authMode === "register" ? "注册" : "登录";
+      const label = submitBtn.querySelector("span");
+      if (label) label.textContent = state.authMode === "register" ? "注册" : "登录";
     }
   }
 }

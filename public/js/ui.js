@@ -15,7 +15,7 @@ function escAttr(value) {
 }
 
 export function brandMark(size = 32) {
-  return `<svg class="brand-mark" width="${size}" height="${size}" viewBox="0 0 64 64" fill="none" aria-hidden="true"><defs><linearGradient id="ps-prism" x1="8" y1="56" x2="56" y2="8" gradientUnits="userSpaceOnUse"><stop stop-color="#b8a0f0" stop-opacity="0.88"/><stop offset="0.5" stop-color="#c8bcf6" stop-opacity="0.55"/><stop offset="1" stop-color="#b4d8f8" stop-opacity="0.82"/></linearGradient></defs><polygon points="32,3 59,32 32,61 5,32" fill="url(#ps-prism)" stroke="rgba(255,255,255,0.55)" stroke-width="1.4" stroke-linejoin="round"/><polygon points="32,3 59,32 32,34 5,32" fill="#ffffff" fill-opacity="0.16"/><polygon points="32,61 59,32 32,34 5,32" fill="#ffffff" fill-opacity="0.06"/><path d="M32 3 L32 61 M5 32 L59 32 M13 13 L51 51 M51 13 L13 51" stroke="#ffffff" stroke-opacity="0.22" stroke-width="1"/><rect x="50" y="2" width="7" height="7" rx="1.5" transform="rotate(45 53.5 5.5)" fill="#f8d8e8" fill-opacity="0.9"/><rect x="7" y="9" width="5" height="5" rx="1" fill="#222" fill-opacity="0.45"/></svg>`;
+  return `<img class="brand-mark" src="/assets/project-s-mark.svg" width="${size}" height="${size}" alt="" aria-hidden="true" />`;
 }
 
 /* floating game-world fragments: pure CSS shapes, cheap to render */
@@ -205,43 +205,38 @@ export function shell(state, route, content, { immersive = false, topRight = "" 
 }
 
 export function homeShell(state, content, active = "home") {
+  const resolvedActive = active === "community" ? "community" : active === "me" || active === "friends" || active === "connections" ? "me" : active === "home" ? "match" : "none";
+  const sectionLabel = resolvedActive === "match" ? "摇人" : resolvedActive === "community" ? "社区" : resolvedActive === "me" ? "我的" : active === "auth" ? "账号" : "玩家身份";
   const navItems = [
-    { id: "home", label: "首页", href: "#/home", icon: "house" },
-    { id: "connections", label: "最近", href: "#/connections", icon: "clock" },
-    { id: "friends", label: "好友", href: "#/friends", icon: "users" },
+    { id: "match", label: "摇人", href: "#/home", icon: "userPlus" },
+    { id: "community", label: "社区", href: "#/community", icon: "users" },
+    { id: "me", label: "我的", href: "#/me", icon: "user" },
   ];
-  return `<div class="home-shell">
-    ${mirrors()}
-    <header class="home-topbar">
-      <div class="home-top-left">
-        ${brand(40, false)}
-        <div class="home-brand-live">
-          <div class="home-brand-slogan">总有人想一起玩。</div>
-          <div class="home-brand-stat"><span class="home-brand-dot home-brand-dot--online"></span><b id="home-online-count">${Math.max(0, state.match.pool ?? 0)}</b> 人在线找队友</div>
-          <div class="home-brand-stat"><span class="home-brand-dot home-brand-dot--playing"></span><b id="home-playing-count">${Math.max(0, state.match.playing ?? 0)}</b> 人正在游玩中</div>
-        </div>
-      </div>
-      <div class="home-top-right">
-        <nav class="home-nav" aria-label="主导航">
-          ${navItems
-            .map(
-              (n) =>
-                `<a class="home-nav-link ${active === n.id ? "home-nav-link--active" : ""}" href="${n.href}" data-nav>${icon(n.icon, 16)}<span>${n.label}</span></a>`
-            )
-            .join("")}
-        </nav>
-        <div class="home-avatar">
-          ${avatarWrap(state.user.avatarKey, 38, state.user.online)}
-          <div class="home-avatar-pop">
-            <button type="button" data-action="go-me">${icon("user", 15)}<span>我的主页</span></button>
-            <button type="button" data-action="open-profile-edit">${icon("settings", 15)}<span>选项</span></button>
-            <button type="button" data-action="open-feedback">${icon("send", 15)}<span>反馈</span></button>
-          </div>
-        </div>
-      </div>
-    </header>
-    <main class="home-main">${content}</main>
-    <div class="home-note"><span class="home-note-dot"></span>仅支持桌面端</div>
+  const warningText = `<span>总有人想一起玩</span><i>/</i><b>NEVER PLAY ALONE</b><i>/</i>`;
+  const account = state.authenticated
+    ? `<button class="product-account product-account--signed" type="button" data-action="go-me">${avatarWrap(state.user.avatarKey, 34, state.user.online)}<span>${esc(state.user.nickname)}</span></button>`
+    : `<div class="product-account"><span class="product-account-icon">${icon("user", 18)}</span><div><b>未登录</b><span><button type="button" data-action="open-auth-login">登录</button> / <button type="button" data-action="open-auth-register">注册</button></span></div></div>`;
+
+  return `<div class="product-shell">
+    <aside class="product-rail">
+      <a class="product-brand" href="#/home" aria-label="PROJECT-S 首页">${brandMark(54)}<strong>PROJECT-S</strong></a>
+      <nav class="product-nav" aria-label="主导航">
+        ${navItems.map((n) => `<a class="product-nav-link ${resolvedActive === n.id ? "is-active" : ""}" href="${n.href}" data-nav>${icon(n.icon, 24)}<span>${n.label}</span></a>`).join("")}
+      </nav>
+      <div class="product-rail-footer">${account}</div>
+    </aside>
+    <div class="product-surface">
+      <header class="product-topbar">
+        <span class="product-topbar-kicker"><i>PROJECT-S /</i><b>${sectionLabel}</b></span>
+        ${state.authenticated
+          ? `<button type="button" class="product-topbar-user" data-action="go-me">${esc(state.user.nickname)}</button>`
+          : `<div class="product-auth-actions"><button type="button" data-action="open-auth-login">登录</button><button class="product-register" type="button" data-action="open-auth-register">注册</button></div>`}
+      </header>
+      <main class="home-main">${content}</main>
+    </div>
+    <div class="product-ticker" aria-label="总有人想一起玩">
+      <div class="product-ticker-track"><div class="product-ticker-group">${warningText.repeat(4)}</div><div class="product-ticker-group" aria-hidden="true">${warningText.repeat(4)}</div></div>
+    </div>
   </div>`;
 }
 

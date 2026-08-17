@@ -104,7 +104,7 @@ export const DEFAULT_USER = {
 };
 
 export const GAME_BY_ID = Object.fromEntries(GAMES.map((g) => [g.id, g]));
-export const HOME_GAME_IDS = ["minecraft", "stardew", "pubg", "deadlock"];
-export const HOME_COMPETITIVE_GAME_IDS = ["pubg", "deadlock"];
-export const HOME_CASUAL_TIMES = ["现在就玩", "30分钟后", "1小时后", "晚些时候"];
+export const HOME_GAME_IDS = ["hok", "valorant", "deadlock", "minecraft"];
+export const HOME_COMPETITIVE_GAME_IDS = ["hok", "valorant", "deadlock"];
+export const HOME_CASUAL_TIMES = ["现在就玩", "15分钟内", "30分钟内", "1小时内", "自定义时间"];
 export const HOME_RANK_TIMES = ["1局", "3局", "5局", "不限局数"];
