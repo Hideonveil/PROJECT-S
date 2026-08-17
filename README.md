@@ -1,13 +1,12 @@
-# project S beta · 实时游戏活动匹配平台（公网 Web MVP）
+# PROJECT-S · 找到马上能一起玩的真实玩家（公网 Web MVP）
 
-保留现有 project S beta 产品与 UI，把真实数据、账号与实时匹配放到 Supabase，部署到 Vercel 公网。
+当前版本使用 Supabase 承载账号、匹配、房间、关系与实时数据，通过 Vercel 部署。
 
 ## 当前产品流程
 
 用户名注册/登录
 → 创建游戏身份（昵称 / 头像 / 性别 / 设备 / 常玩游戏类型）
-→ 首页
-→ 填写当前需求
+→ 摇人首页（游戏 / 模式 / 开始时间 / 语音偏好）
 → 实时匹配池
 → 匹配结果
 → 玩家主页
@@ -33,20 +32,25 @@
 ## 项目结构
 
 ```text
-web-mvp/
+project-s/
 ├── public/                  # 前端页面、JS、样式
 │   ├── index.html
 │   ├── js/api.js            # API 客户端 + Supabase 用户名/密码会话
 │   ├── js/realtime.js       # Supabase Realtime 订阅
-│   ├── js/pages/            # 页面组件：首页/匹配/结果/主页/房间/好友/我的等
+│   ├── js/pages/            # 页面组件：摇人/社区/匹配/结果/房间/好友/我的等
 │   └── styles/
 ├── src/
 │   ├── app/api/             # Vercel Serverless API
 │   └── lib/                 # Supabase 客户端、鉴权、匹配、反馈邮件
 ├── supabase/migrations/
-│   ├── 0001_init.sql        # 全量表结构 + RLS + Realtime
+│   ├── 0001_init.sql        # 基础表结构 + RLS + Realtime
 │   ├── 0002_profiles_gender.sql
-│   └── 0003_profiles_genres.sql
+│   ├── 0003_profiles_genres.sql
+│   ├── 0004_deadlock_genshin_match_details.sql
+│   ├── 0005_room_lifecycle.sql
+│   ├── 0006_phase1_mvp_closure.sql
+│   ├── 0007_profiles_age_range.sql
+│   └── 0008_restrict_auth_helpers.sql
 ├── docs/DEPLOYMENT.md
 ├── .env.example
 └── README.md

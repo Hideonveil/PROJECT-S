@@ -512,7 +512,6 @@ body:has(.product-shell) {
   padding: 0;
   justify-content: center;
   border-radius: 12px;
-  animation: matchPetFloat 3.8s ease-in-out infinite;
 }
 
 .match-start > span {
@@ -524,8 +523,9 @@ body:has(.product-shell) {
 }
 
 .match-start.is-floating > span { max-width: 0; opacity: 0; }
-.match-start.is-floating:hover { animation-play-state: paused; }
-.match-start.is-floating:active { animation: none; }
+.match-start.is-floating svg { animation: matchPetFloat 3.8s ease-in-out infinite; }
+.match-start.is-floating:hover svg { animation-play-state: paused; }
+.match-start.is-floating:active svg { animation: none; }
 
 @keyframes matchPetFloat {
   0%, 100% { transform: translateY(0) rotate(0deg); }
@@ -879,5 +879,5 @@ body:has(.product-shell) {
 
 @media (prefers-reduced-motion: reduce) {
   .product-ticker-track { animation: none; }
-  .match-start { animation: none; }
+  .match-start svg { animation: none; }
 }

@@ -1,16 +1,16 @@
 import { icon } from "./icons.js";
 import { avatar, avatarWrap, paintAvatars } from "./avatar.js";
 import { initNodeField } from "./field.js";
-import { button, esc, needSummary, shell, toast } from "./ui.js";
+import { button, esc, needSummary, toast } from "./ui.js";
 import { state, update, resetState } from "./store.js";
-import { DEVICES, GAME_BY_ID, GAMES, GENRES, HOME_CASUAL_TIMES, HOME_COMPETITIVE_GAME_IDS, HOME_GAME_IDS, HOME_RANK_TIMES } from "./data.js";
+import { DEVICES, GAME_BY_ID, GAMES, GENRES, HOME_CASUAL_TIMES, HOME_GAME_IDS } from "./data.js";
 import { FLOW } from "./flow.js";
 import * as api from "./api.js";
 import { authPage } from "./pages/auth.js";
 import { welcomePage } from "./pages/welcome.js";
 import { homePage } from "./pages/home.js";
 import { communityPage } from "./pages/community.js";
-import { needPage, confirmSummary } from "./pages/need.js";
+import { needPage } from "./pages/need.js";
 import { matchingPage } from "./pages/matching.js";
 import { resultsPage } from "./pages/results.js";
 import { profilePage } from "./pages/profile.js";
@@ -60,7 +60,6 @@ const HOME_FILTER = {
   time: "现在就玩",
   team: "1",
   voice: "需要",
-  step: 1,
 };
 let activeField = null;
 let timers = [];
@@ -69,7 +68,6 @@ let eventSourceClose = null;
 let chatClose = null;
 let wizardAdvanceTimer = null;
 let roomExitReadyAt = 0;
-let landingPanelHideTimer = null;
 let matchStartObserver = null;
 
 function clearTimers() {
@@ -304,10 +302,6 @@ function prepareNeedDraft() {
   DRAFT.dirty = false;
 }
 
-function homeFilterCompetitive(gameId) {
-  return HOME_COMPETITIVE_GAME_IDS.includes(gameId);
-}
-
 function renderHomeFilterGameState() {
   document.querySelectorAll("[data-home-game]").forEach((row) => {
     const on = row.dataset.homeGame === HOME_FILTER.game;
@@ -338,74 +332,6 @@ function renderHomeFilterTags() {
       )
       .join("");
   }
-  const timeLabel = document.getElementById("home-filter-time-label");
-  const timeTitle = document.getElementById("home-filter-time-title");
-  const timeSub = document.getElementById("home-filter-time-sub");
-  if (timeLabel) timeLabel.textContent = competitive ? "局数" : "时间";
-  if (timeTitle) timeTitle.textContent = competitive ? "想打几局？" : "什么时候玩？";
-  if (timeSub) timeSub.textContent = competitive ? "选择本次对局的局数。" : "确定本次匹配的启动时间。";
-}
-function renderHomeFilterConfirm() {
-  const wrap = document.getElementById("home-filter-confirm-summary");
-  if (!wrap) return;
-  const game = GAMES.find((g) => g.id === HOME_FILTER.game) || GAMES[0];
-  const flow = FLOW[game.id] || {};
-  const draft = {
-    game: game.id,
-    mode: HOME_FILTER.mode || game.modes[0] || "",
-    goal: flow.goalByMode?.[HOME_FILTER.mode] || "",
-    current: 1,
-    needed: Math.min(4, Math.max(1, Number(HOME_FILTER.team) || 1)),
-    time: HOME_FILTER.time || "现在就玩",
-    duration: homeFilterCompetitive(game.id) ? "不限" : "60",
-    voice: HOME_FILTER.voice !== "不需要",
-    voicePref: HOME_FILTER.voice || "都可以",
-    style: "",
-    selectedTags: [],
-  };
-  wrap.innerHTML = confirmSummary(draft);
-}
-
-function renderHomeFilterStep() {
-  const panels = ["game", "mode", "team", "time", "voice", "confirm"];
-  const step = Math.max(1, Math.min(6, Number(HOME_FILTER.step) || 1));
-  HOME_FILTER.step = step;
-  document.querySelectorAll("[data-home-panel]").forEach((panel) => {
-    panel.classList.toggle("is-show", panel.dataset.homePanel === panels[step - 1]);
-  });
-  document.querySelectorAll("[data-home-step]").forEach((el, i) => {
-    el.classList.toggle("is-done", i < step - 1);
-    el.classList.toggle("is-on", i === step - 1);
-  });
-  const hint = document.getElementById("home-filter-hint");
-  if (hint) hint.textContent = `${step} / 6`;
-  const back = document.querySelector("[data-action='home-filter-back']");
-  const disabled = step === 1;
-  if (back) {
-    back.classList.toggle("is-disabled", disabled);
-    back.disabled = disabled;
-  }
-  const next = document.querySelector("[data-action='home-filter-next']");
-  if (next) {
-    const final = step === 6;
-    next.classList.toggle("is-final", final);
-    next.innerHTML = final ? "开始匹配" : `下一步${icon("arrowRight", 16)}`;
-  }
-  if (step === 6) renderHomeFilterConfirm();
-}
-function renderHomeFilterState() {
-  renderHomeFilterGameState();
-  renderHomeFilterTags();
-  renderHomeFilterStep();
-}
-
-function showHomeFilter(open) {
-  const overlay = document.querySelector("[data-home-filter]");
-  if (!overlay) return;
-  overlay.hidden = !open;
-  const diamond = document.querySelector(".home-diamond");
-  diamond?.setAttribute("aria-expanded", String(open));
-  if (open) renderHomeFilterState();
 }
 function syncHomeFilterToDraft() {
   prepareNeedDraft();
@@ -569,8 +495,7 @@ function normalizeServerRoom(room) {
 function snapshotCandidates(data) {
   if (!state.need) return null;
   const routeName = parseRoute().name;
-  const landingMatching = routeName === "home" && document.querySelector(".landing.is-visual-matching");
-  if (!["matching", "results"].includes(routeName) && !landingMatching) return null;
+  if (!["matching", "results"].includes(routeName)) return null;
   const list = (data.needs || []).filter(
     (n) => n.user.id !== state.user.id && n.need?.game === state.need.game
   );
@@ -654,12 +579,8 @@ function applyServerSnapshot(data) {
   if (routeName === "home") {
     const onlineEl = document.getElementById("home-online-count");
     const playingEl = document.getElementById("home-playing-count");
-    const landingPool = document.querySelector("[data-landing-visual-pool]");
-    const landingPlaying = document.querySelector("[data-landing-visual-playing]");
     if (onlineEl) onlineEl.textContent = String(Math.max(0, state.match.pool ?? 0));
     if (playingEl) playingEl.textContent = String(Math.max(0, state.match.playing ?? 0));
-    if (landingPool) landingPool.textContent = String(Math.max(0, state.match.pool ?? 0));
-    if (landingPlaying) landingPlaying.textContent = String(Math.max(0, state.match.playing ?? 0));
   }
   if (patch.room && routeName !== "room") {
     navigate("#/room");
@@ -759,22 +680,6 @@ function handleServerGameOver(session) {
   navigate("#/gameover");
 }
 
-function handleServerConnected(friends) {
-  const mapped = (friends || []).map((f) => ({
-    id: f.id,
-    name: f.nickname || f.name,
-    avatarKey: f.avatarKey,
-    online: f.online !== false,
-    lastGame: state.session?.title || f.lastGame || "",
-    lastTime: state.session?.time || f.lastTime || "",
-  }));
-  const patch = { friends: mapped };
-  if (state.session) patch.session = { ...state.session, connected: true, theirs: "yes" };
-  update(patch);
-  render();
-  toast("双方都愿意，已连接为搭子");
-}
-
 function connectEvents() {
   if (!ONLINE || !state.authenticated) return;
   if (eventSourceClose) eventSourceClose();
@@ -786,14 +691,7 @@ function connectEvents() {
       update({ match: { ...state.match, pool, playing } });
       const routeName = parseRoute().name;
       if (routeName === "home") {
-        const landingPool = document.querySelector("[data-landing-visual-pool]");
-        const landingPlaying = document.querySelector("[data-landing-visual-playing]");
-        if (landingPool || landingPlaying) {
-          if (landingPool) landingPool.textContent = String(Math.max(0, pool ?? 0));
-          if (landingPlaying) landingPlaying.textContent = String(Math.max(0, playing ?? 0));
-        } else {
-          render();
-        }
+        render();
       }
       if (routeName === "matching") {
         const poolEl = document.getElementById("pool-count");
@@ -803,8 +701,7 @@ function connectEvents() {
     needs: (data) => {
       const patch = { match: { ...state.match, pool: data.matching ?? data.online ?? state.match.pool, playing: data.playing ?? state.match.playing } };
       const routeName = parseRoute().name;
-      const landingMatching = routeName === "home" && document.querySelector(".landing.is-visual-matching");
-      if (state.need && (["matching", "results"].includes(routeName) || landingMatching)) {
+      if (state.need && ["matching", "results"].includes(routeName)) {
         const list = (data.needs || []).filter(
           (n) => n.user.id !== state.user.id && n.need?.game === state.need.game
         );
@@ -821,15 +718,6 @@ function connectEvents() {
           if (poolEl) poolEl.textContent = String(Math.max(0, patch.match.pool ?? 0));
           const foundEl = document.getElementById("match-found");
           if (foundEl) foundEl.textContent = "0";
-        }
-      } else if (routeName === "home" && landingMatching) {
-        if ((patch.match.candidates || []).length) {
-          navigate("#/results");
-        } else {
-          const landingPool = document.querySelector("[data-landing-visual-pool]");
-          const landingPlaying = document.querySelector("[data-landing-visual-playing]");
-          if (landingPool) landingPool.textContent = String(Math.max(0, patch.match.pool ?? 0));
-          if (landingPlaying) landingPlaying.textContent = String(Math.max(0, patch.match.playing ?? 0));
         }
       }
     },
@@ -1570,77 +1458,6 @@ async function logout() {
   toast("已退出登录");
 }
 
-const LANDING_PANELS = {
-  match: {
-    openClass: "is-match-open",
-    layer: "[data-landing-match]",
-    surface: ".landing-match-surface",
-  },
-  community: {
-    openClass: "is-community-open",
-    layer: "[data-landing-community]",
-    surface: ".landing-community-surface",
-  },
-  mine: {
-    openClass: "is-mine-open",
-    layer: "[data-landing-mine]",
-    surface: ".landing-mine-surface",
-  },
-};
-
-function openLandingPanel(kind, trigger) {
-  const config = LANDING_PANELS[kind];
-  const page = document.querySelector('[data-page="landing"]');
-  if (!config || !page || !trigger) return;
-
-  if (landingPanelHideTimer) {
-    window.clearTimeout(landingPanelHideTimer);
-    landingPanelHideTimer = null;
-  }
-
-  Object.values(LANDING_PANELS).forEach((item) => {
-    page.classList.remove(item.openClass);
-    document.querySelector(item.layer)?.setAttribute("aria-hidden", "true");
-  });
-  page.classList.remove("is-visual-matching", "is-visual-matching-exit");
-
-  const layer = document.querySelector(config.layer);
-  const surface = document.querySelector(config.surface);
-  if (!layer || !surface) return;
-
-  const triggerRect = trigger.getBoundingClientRect();
-  const surfaceLeft = surface.offsetLeft;
-  const surfaceTop = surface.offsetTop;
-  const surfaceWidth = Math.max(1, surface.offsetWidth);
-  const surfaceHeight = Math.max(1, surface.offsetHeight);
-  surface.style.setProperty("--landing-panel-from-x", `${triggerRect.left - surfaceLeft}px`);
-  surface.style.setProperty("--landing-panel-from-y", `${triggerRect.top - surfaceTop}px`);
-  surface.style.setProperty("--landing-panel-from-scale-x", String(triggerRect.width / surfaceWidth));
-  surface.style.setProperty("--landing-panel-from-scale-y", String(triggerRect.height / surfaceHeight));
-
-  layer.setAttribute("aria-hidden", "false");
-  surface.getBoundingClientRect();
-  window.requestAnimationFrame(() => page.classList.add(config.openClass));
-}
-
-function closeLandingPanel(kind) {
-  const config = LANDING_PANELS[kind];
-  const page = document.querySelector('[data-page="landing"]');
-  const layer = config ? document.querySelector(config.layer) : null;
-  if (!config || !page || !layer) return;
-
-  page.classList.remove(config.openClass);
-  if (kind === "match") {
-    page.classList.remove("is-visual-matching", "is-visual-matching-exit");
-    document.querySelector("[data-landing-visual-match]")?.setAttribute("aria-hidden", "true");
-  }
-  if (landingPanelHideTimer) window.clearTimeout(landingPanelHideTimer);
-  landingPanelHideTimer = window.setTimeout(() => {
-    layer.setAttribute("aria-hidden", "true");
-    landingPanelHideTimer = null;
-  }, 640);
-}
-
 async function copyText(text) {
   try {
     if (navigator.clipboard?.writeText) {
@@ -1775,12 +1592,6 @@ async function submitFeedback() {
 }
 
 document.addEventListener("click", (event) => {
-  const dismissLayer = event.target.closest("[data-landing-dismiss]");
-  if (dismissLayer && event.target === dismissLayer) {
-    closeLandingPanel(dismissLayer.dataset.landingDismiss);
-    return;
-  }
-
   const actionEl = event.target.closest("[data-action]");
   if (!actionEl) return;
   const action = actionEl.dataset.action;
@@ -2058,18 +1869,6 @@ document.addEventListener("click", (event) => {
     return;
   }
 
-  if (action === "toggle-home-filter") {
-    const overlay = document.querySelector("[data-home-filter]");
-    if (!overlay) return;
-    showHomeFilter(overlay.hidden);
-    return;
-  }
-
-  if (action === "close-home-filter") {
-    showHomeFilter(false);
-    return;
-  }
-
   if (action === "home-game") {
     HOME_FILTER.game = value;
     const game = GAMES.find((g) => g.id === value);
@@ -2098,42 +1897,12 @@ document.addEventListener("click", (event) => {
     return;
   }
 
-  if (action === "home-team") {
-    HOME_FILTER.team = value;
-    const group = actionEl.closest(".home-filter-tag-group");
-    group?.querySelectorAll(".home-filter-tag").forEach((c) => c.classList.remove("is-on"));
-    actionEl.classList.add("is-on");
-    return;
-  }
-
   if (action === "home-voice") {
     HOME_FILTER.voice = value;
     const group = actionEl.closest(".home-filter-tag-group");
     group?.querySelectorAll(".home-filter-tag").forEach((c) => c.classList.remove("is-on"));
     actionEl.classList.add("is-on");
     group?.querySelectorAll(".home-filter-tag").forEach((c) => c.setAttribute("aria-pressed", String(c === actionEl)));
-    return;
-  }
-
-  if (action === "home-filter-open-voice") {
-    HOME_FILTER.step = 5;
-    renderHomeFilterStep();
-    return;
-  }
-
-  if (action === "home-filter-back") {
-    HOME_FILTER.step = Math.max(1, Number(HOME_FILTER.step) - 1);
-    renderHomeFilterStep();
-    return;
-  }
-
-  if (action === "home-filter-next") {
-    if (Number(HOME_FILTER.step) >= 6) {
-      startHomeFilter();
-      return;
-    }
-    HOME_FILTER.step = Number(HOME_FILTER.step) + 1;
-    renderHomeFilterStep();
     return;
   }
 
@@ -2144,85 +1913,6 @@ document.addEventListener("click", (event) => {
 
   const actions = {
     "go-home": () => navigate("#/home"),
-    "open-landing-match": () => openLandingPanel("match", actionEl),
-    "close-landing-match": () => closeLandingPanel("match"),
-    "open-landing-community": () => openLandingPanel("community", actionEl),
-    "close-landing-community": () => closeLandingPanel("community"),
-    "open-landing-mine": () => openLandingPanel("mine", actionEl),
-    "close-landing-mine": () => closeLandingPanel("mine"),
-    "landing-match-option": () => {
-      const group = actionEl.closest("[data-landing-filter-group]");
-      group?.querySelectorAll("[data-action='landing-match-option']").forEach((option) => {
-        const selected = option === actionEl;
-        option.classList.toggle("is-selected", selected);
-        option.setAttribute("aria-pressed", String(selected));
-      });
-    },
-    "landing-match-submit": startLandingMatch,
-    "exit-landing-visual-match": () => exitLandingVisualMatch(true),
-    "open-public-auth": (value) => {
-      const page = document.querySelector('[data-page="landing"]');
-      const flow = document.querySelector("[data-landing-auth-flow]");
-      const authPanel = document.querySelector("[data-landing-auth-panel]");
-      if (!page || !flow || !authPanel) return;
-      page.classList.remove("is-match-open", "is-community-open", "is-mine-open", "is-identity-open");
-      page.dataset.landingAuthMode = value === "register" ? "register" : "login";
-      page.dataset.landingAuthMethod = "phone";
-      page.classList.add("is-auth-flow-open");
-      flow.setAttribute("aria-hidden", "false");
-      authPanel.setAttribute("aria-hidden", "false");
-      document.querySelector("[data-landing-identity-panel]")?.setAttribute("aria-hidden", "true");
-    },
-    "switch-landing-auth-mode": (value) => {
-      const page = document.querySelector('[data-page="landing"]');
-      if (!page) return;
-      page.dataset.landingAuthMode = value === "register" ? "register" : "login";
-    },
-    "submit-landing-auth": (value) => submitLandingAuth(value),
-    "switch-landing-auth-method": (value) => {
-      const page = document.querySelector('[data-page="landing"]');
-      if (!page) return;
-      page.dataset.landingAuthMethod = ["email", "wechat", "qq"].includes(value) ? value : "phone";
-      page.querySelectorAll("[data-action='switch-landing-auth-method']").forEach((option) => {
-        const selected = option.getAttribute("data-value") === page.dataset.landingAuthMethod;
-        option.classList.toggle("is-selected", selected);
-        option.setAttribute("aria-selected", String(selected));
-      });
-    },
-    "continue-landing-profile": () => {
-      const page = document.querySelector('[data-page="landing"]');
-      const authPanel = document.querySelector("[data-landing-auth-panel]");
-      const identityPanel = document.querySelector("[data-landing-identity-panel]");
-      if (!page || !identityPanel) return;
-      page.classList.add("is-identity-open");
-      authPanel?.setAttribute("aria-hidden", "true");
-      identityPanel.setAttribute("aria-hidden", "false");
-    },
-    "select-landing-profile-option": () => {
-      const group = actionEl.closest("[data-landing-profile-group]");
-      if (!group) return;
-      const multiple = group.getAttribute("data-multiple") === "true";
-      if (multiple) {
-        const selected = !actionEl.classList.contains("is-selected");
-        actionEl.classList.toggle("is-selected", selected);
-        actionEl.setAttribute("aria-pressed", String(selected));
-        return;
-      }
-      group.querySelectorAll("[data-action='select-landing-profile-option']").forEach((option) => {
-        const selected = option === actionEl;
-        option.classList.toggle("is-selected", selected);
-        option.setAttribute("aria-pressed", String(selected));
-      });
-    },
-    "complete-landing-profile": completeLandingProfile,
-    "close-landing-auth-flow": () => {
-      const page = document.querySelector('[data-page="landing"]');
-      const flow = document.querySelector("[data-landing-auth-flow]");
-      page?.classList.remove("is-auth-flow-open", "is-identity-open");
-      flow?.setAttribute("aria-hidden", "true");
-      document.querySelector("[data-landing-auth-panel]")?.setAttribute("aria-hidden", "true");
-      document.querySelector("[data-landing-identity-panel]")?.setAttribute("aria-hidden", "true");
-    },
     "go-me": () => navigate("#/me"),
     "go-friends": () => navigate("#/friends"),
     "go-need": () => {
@@ -2484,271 +2174,6 @@ async function restoreSession() {
     }
   } catch {
     resetState();
-  }
-}
-
-function setLandingFlowStatus(selector, message, tone = "") {
-  const element = document.querySelector(selector);
-  if (!element) return;
-  element.textContent = message;
-  if (tone) element.dataset.tone = tone;
-  else delete element.dataset.tone;
-}
-
-function selectedLandingMatchValue(groupName) {
-  return document
-    .querySelector(`[data-landing-filter-group="${groupName}"] .is-selected`)
-    ?.getAttribute("data-value") || "";
-}
-
-function landingNeedFromSelection() {
-  const game = selectedLandingMatchValue("game") || "minecraft";
-  const mode = selectedLandingMatchValue("mode") || "轻松玩";
-  const time = selectedLandingMatchValue("time") || "现在";
-  const needed = Math.max(1, Number(selectedLandingMatchValue("team")) || 1);
-  const voice = selectedLandingMatchValue("voice") || "需要";
-  return {
-    game,
-    mode,
-    goal: "从首页摇人，找到现在能一起玩的队友",
-    current: 1,
-    target: Math.min(5, 1 + needed),
-    time,
-    duration: time === "现在" ? "90" : "120",
-    voice: voice !== "不需要",
-    playerType: mode,
-    details: { source: "public_home", voicePreference: voice },
-  };
-}
-
-function showLandingVisualMatch() {
-  const page = document.querySelector('[data-page="landing"]');
-  const visualMatch = document.querySelector("[data-landing-visual-match]");
-  if (!page || !visualMatch) return;
-  document.querySelectorAll("[data-landing-filter-group]").forEach((group) => {
-    const key = group.dataset.landingFilterGroup;
-    const selected = group.querySelector("[data-action='landing-match-option'].is-selected");
-    const summary = key ? document.querySelector(`[data-landing-summary="${key}"]`) : null;
-    if (summary && selected) summary.textContent = selected.textContent.trim();
-  });
-  page.classList.remove("is-visual-matching-exit");
-  page.classList.add("is-visual-matching");
-  visualMatch.setAttribute("aria-hidden", "false");
-}
-
-async function startLandingMatch() {
-  const page = document.querySelector('[data-page="landing"]');
-  if (!page) return;
-  if (!state.authenticated || !state.onboarded) {
-    page.classList.remove("is-match-open");
-    document.querySelector("[data-landing-match]")?.setAttribute("aria-hidden", "true");
-    page.dataset.landingAuthMode = "login";
-    page.classList.add("is-auth-flow-open");
-    document.querySelector("[data-landing-auth-flow]")?.setAttribute("aria-hidden", "false");
-    document.querySelector("[data-landing-auth-panel]")?.setAttribute("aria-hidden", "false");
-    setLandingFlowStatus("[data-landing-auth-status]", "登录或注册后，才能进入真实匹配池。", "error");
-    return;
-  }
-  if (!ONLINE) {
-    toast("匹配服务暂不可用，请稍后重试");
-    return;
-  }
-
-  const need = landingNeedFromSelection();
-  update({
-    need,
-    match: { ...state.match, status: "active", candidates: [], pending: null },
-  });
-  showLandingVisualMatch();
-
-  try {
-    const data = await api.postNeed(need);
-    const candidates = normalizeCandidates(data.candidates || []);
-    update({
-      match: {
-        ...state.match,
-        status: candidates.length ? "matched" : "active",
-        pool: data.matching ?? data.online ?? state.match.pool,
-        playing: data.playing ?? state.match.playing,
-        candidates,
-      },
-      matchRequestId: data.requestId || null,
-    });
-    const pool = document.querySelector("[data-landing-visual-pool]");
-    const playing = document.querySelector("[data-landing-visual-playing]");
-    if (pool) pool.textContent = String(Math.max(0, state.match.pool || 0));
-    if (playing) playing.textContent = String(Math.max(0, state.match.playing || 0));
-    if (candidates.length) navigate("#/results");
-  } catch (error) {
-    update({ match: { ...state.match, status: "idle", candidates: [] }, matchRequestId: null });
-    toast(error.message || "匹配启动失败");
-    exitLandingVisualMatch(false);
-  }
-}
-
-async function exitLandingVisualMatch(cancelRemote = true) {
-  const page = document.querySelector('[data-page="landing"]');
-  const layer = document.querySelector("[data-landing-match]");
-  const visualMatch = document.querySelector("[data-landing-visual-match]");
-  const surface = layer?.querySelector(".landing-match-surface");
-  const matchButton = document.querySelector(".landing-block--match");
-  const backdrop = document.querySelector(".landing-backdrop");
-  if (!page || !layer || !visualMatch || !surface || !matchButton || !backdrop) return;
-
-  if (cancelRemote && state.authenticated && state.match.status !== "idle") {
-    await api.cancelNeed().catch((error) => toast(error.message || "退出匹配失败"));
-  }
-  update({ match: { ...state.match, status: "idle", candidates: [], pending: null }, matchRequestId: null });
-
-  const previousBackdropTransition = backdrop.style.transition;
-  const previousBackdropTransform = backdrop.style.transform;
-  backdrop.style.transition = "none";
-  backdrop.style.transform = "none";
-  const targetRect = matchButton.getBoundingClientRect();
-  backdrop.style.transition = previousBackdropTransition;
-  backdrop.style.transform = previousBackdropTransform;
-  layer.style.setProperty("--landing-match-exit-x", `${targetRect.left}px`);
-  layer.style.setProperty("--landing-match-exit-y", `${targetRect.top}px`);
-  layer.style.setProperty("--landing-match-exit-scale-x", `${targetRect.width / window.innerWidth}`);
-  layer.style.setProperty("--landing-match-exit-scale-y", `${targetRect.height / window.innerHeight}`);
-
-  page.classList.add("is-visual-matching-exit");
-  page.classList.remove("is-visual-matching");
-  visualMatch.setAttribute("aria-hidden", "true");
-
-  window.setTimeout(() => {
-    page.classList.remove("is-match-open");
-    layer.setAttribute("aria-hidden", "true");
-    window.setTimeout(() => {
-      page.classList.remove("is-visual-matching-exit");
-      layer.style.removeProperty("--landing-match-exit-x");
-      layer.style.removeProperty("--landing-match-exit-y");
-      layer.style.removeProperty("--landing-match-exit-scale-x");
-      layer.style.removeProperty("--landing-match-exit-scale-y");
-    }, 220);
-  }, 680);
-}
-
-function openLandingIdentity(username = "") {
-  const page = document.querySelector('[data-page="landing"]');
-  const authPanel = document.querySelector("[data-landing-auth-panel]");
-  const identityPanel = document.querySelector("[data-landing-identity-panel]");
-  if (!page || !identityPanel) return;
-  page.classList.add("is-auth-flow-open", "is-identity-open");
-  authPanel?.setAttribute("aria-hidden", "true");
-  identityPanel.setAttribute("aria-hidden", "false");
-  const nickname = document.querySelector("#landing-profile-nickname");
-  if (nickname && !nickname.value) nickname.value = username.slice(0, 12);
-}
-
-async function submitLandingAuth(mode) {
-  const isRegister = mode === "register";
-  const prefix = isRegister ? "landing-register" : "landing-login";
-  const username = String(document.querySelector(`#${prefix}-account`)?.value || "").trim();
-  const password = String(document.querySelector(`#${prefix}-password`)?.value || "");
-  const confirmPassword = isRegister
-    ? String(document.querySelector("#landing-register-password-confirm")?.value || "")
-    : password;
-  const button = document.querySelector(`.landing-auth-submit--${isRegister ? "register" : "login"}`);
-
-  if (!username || !password) {
-    setLandingFlowStatus("[data-landing-auth-status]", "请输入账号和密码。", "error");
-    return;
-  }
-  if (/\s/.test(username) || username.length < 2 || username.length > 24) {
-    setLandingFlowStatus("[data-landing-auth-status]", "账号需为 2–24 个字符，不能包含空格。", "error");
-    return;
-  }
-  if (password.length < 6) {
-    setLandingFlowStatus("[data-landing-auth-status]", "密码至少需要 6 位。", "error");
-    return;
-  }
-  if (isRegister && password !== confirmPassword) {
-    setLandingFlowStatus("[data-landing-auth-status]", "两次输入的密码不一致。", "error");
-    return;
-  }
-  if (button?.disabled) return;
-  if (button) button.disabled = true;
-  setLandingFlowStatus("[data-landing-auth-status]", isRegister ? "正在创建账号…" : "正在登录…");
-
-  try {
-    const account = isRegister
-      ? await api.registerAccount(username, password)
-      : await api.loginByUsername(username, password);
-    await api.signIn(account.email, password);
-    const status = await api.sessionStatus();
-    update({
-      authenticated: true,
-      authUsername: username,
-      onboarded: !!status.profile,
-      authError: "",
-      authNotice: "",
-    });
-
-    if (!status.profile) {
-      setLandingFlowStatus("[data-landing-profile-status]", "账号已创建，请完成玩家身份。", "success");
-      openLandingIdentity(username);
-      return;
-    }
-
-    update({ user: status.profile });
-    try {
-      const snapshot = await api.getState();
-      update({ user: snapshot.user });
-      applyServerSnapshot(snapshot);
-    } catch {
-      // A valid profile is enough to enter the product.
-    }
-    connectEvents();
-    navigate("#/home");
-    toast(`欢迎回来，${state.user.nickname}`);
-  } catch (error) {
-    setLandingFlowStatus("[data-landing-auth-status]", mapAuthError(error), "error");
-  } finally {
-    if (button) button.disabled = false;
-  }
-}
-
-function landingProfileValue(groupName) {
-  return document
-    .querySelector(`[data-landing-profile-group="${groupName}"] .is-selected`)
-    ?.getAttribute("data-value") || "";
-}
-
-async function completeLandingProfile() {
-  const nickname = String(document.querySelector("#landing-profile-nickname")?.value || "").trim();
-  const genres = Array.from(
-    document.querySelectorAll('[data-landing-profile-group="games"] .is-selected')
-  ).map((option) => option.getAttribute("data-value")).filter(Boolean);
-  const button = document.querySelector('[data-action="complete-landing-profile"]');
-
-  if (!nickname || !genres.length) {
-    setLandingFlowStatus("[data-landing-profile-status]", "请填写昵称，并至少选择一种爱好游戏类型。", "error");
-    return;
-  }
-  if (button?.disabled) return;
-  if (button) button.disabled = true;
-  setLandingFlowStatus("[data-landing-profile-status]", "正在保存玩家身份…");
-
-  try {
-    const result = await api.register({
-      nickname,
-      avatarKey: landingProfileValue("avatar") || "me-1",
-      gender: landingProfileValue("gender") || "保密",
-      ageRange: landingProfileValue("age") || "保密",
-      device: landingProfileValue("device") || "PC",
-      genres,
-      playStyle: "",
-      voice: true,
-    });
-    update({ authenticated: true, onboarded: true, user: result.user });
-    connectEvents();
-    navigate("#/home");
-    toast(`欢迎，${result.user.nickname}`);
-  } catch (error) {
-    setLandingFlowStatus("[data-landing-profile-status]", error.message || "玩家身份保存失败。", "error");
-  } finally {
-    if (button) button.disabled = false;
   }
 }
 

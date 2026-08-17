@@ -6,7 +6,22 @@ export function mePage(state) {
   const user = state.user;
   const stats = state.stats || { sessions: 0, connected: 0, hours: 0 };
   const friends = state.friends || [];
-  const history = state.history || [];
+  const recentConnections = state.recentConnections || [];
+  const localHistory = state.history || [];
+  const history = recentConnections.length
+    ? recentConnections.map((connection) => ({
+        partnerName: connection.name || "玩家",
+        title: `${connection.gameName || "一起玩过"} · ${connection.playCount || 1} 次`,
+        time: connection.playedAt
+          ? new Date(connection.playedAt).toLocaleDateString("zh-CN", { month: "numeric", day: "numeric" })
+          : "最近",
+      }))
+    : localHistory;
+  const completedSessions = Math.max(
+    Number(stats.sessions || 0),
+    recentConnections.reduce((total, connection) => total + Math.max(1, Number(connection.playCount || 1)), 0)
+  );
+  const connectedPlayers = Math.max(Number(stats.connected || 0), friends.length);
   const friendCode = user.friendCode || "NODE-XXXX-XXXX";
 
   return homeShell(
@@ -21,7 +36,7 @@ export function mePage(state) {
         <article class="product-me-card product-me-card--identity">
           <div class="product-me-card-label">PLAYER IDENTITY</div>
           <div class="product-me-identity">${avatarWrap(user.avatarKey, 82, user.online)}<div><h2>${esc(user.nickname)}</h2><p>${esc(user.handle)}</p><span>${esc(user.device)} · ${user.voice ? "语音开黑" : "文字交流"}</span></div></div>
-          <div class="product-me-stats"><div><b>${stats.sessions}</b><span>完成局数</span></div><div><b>${stats.connected}</b><span>保留连接</span></div><div><b>${stats.hours}h</b><span>累计时长</span></div></div>
+          <div class="product-me-stats"><div><b>${completedSessions}</b><span>完成局数</span></div><div><b>${connectedPlayers}</b><span>保留连接</span></div><div><b>${stats.hours}h</b><span>累计时长</span></div></div>
           <div class="product-code"><span>好友代码</span><b>${esc(friendCode)}</b><button type="button" data-action="copy-code" data-value="${esc(friendCode)}">${icon("copy", 16)}复制</button></div>
         </article>
 

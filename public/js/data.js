@@ -81,30 +81,7 @@ export const DEFAULT_NEED = {
   playerType: "稳定沟通，认真上分",
 };
 
-export const DEFAULT_USER = {
-  id: "me",
-  nickname: "夜航",
-  handle: "NIGHTRUN#0420",
-  avatarKey: "me-1",
-  friendCode: "NODE-DEMO-0001",
-  device: "PC",
-  gender: "保密",
-  games: [
-    {
-      gameId: "valorant",
-      role: "决斗者",
-      level: 42,
-      winRate: "53%",
-      note: "稳定沟通，认真上分",
-    },
-  ],
-  playStyle: "稳定沟通，认真上分",
-  voice: true,
-  online: true,
-};
-
 export const GAME_BY_ID = Object.fromEntries(GAMES.map((g) => [g.id, g]));
 export const HOME_GAME_IDS = ["hok", "valorant", "deadlock", "minecraft"];
-export const HOME_COMPETITIVE_GAME_IDS = ["hok", "valorant", "deadlock"];
 export const HOME_CASUAL_TIMES = ["现在就玩", "15分钟内", "30分钟内", "1小时内", "自定义时间"];
 export const HOME_RANK_TIMES = ["1局", "3局", "5局", "不限局数"];

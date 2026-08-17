@@ -30,22 +30,6 @@ export function fragments() {
   </div>`;
 }
 
-export function brand(size = 32, tag = true) {
-  return `<a class="brand" href="#/home" aria-label="Project-S beta 首页">${brandMark(size)}<span><span class="brand-name">Project-S <span class="brand-beta">beta</span></span>${tag ? `<span class="brand-tag">此刻，一起玩</span>` : ""}</span></a>`;
-}
-
-/* large translucent mirror / prism crystals for login atmosphere */
-export function mirrors() {
-  return `<div class="prism-mirrors" aria-hidden="true">
-    <span class="mirror mirror--a"></span>
-    <span class="mirror mirror--b"></span>
-    <span class="mirror mirror--c"></span>
-    <span class="mirror mirror--d"></span>
-    <span class="mirror-pixel mirror-pixel--1"></span>
-    <span class="mirror-pixel mirror-pixel--2"></span>
-  </div>`;
-}
-
 export function statusPill(status, text = null) {
   const map = {
     LIVE: ["live", "在线"],
@@ -137,71 +121,6 @@ export function playerCard(candidate, { pending = false } = {}) {
         : button({ label: isTeam ? "邀请加入" : "邀请一起玩", action: "apply-partner", value: candidate.id, kind: "primary", size: "sm", iconName: "send" })}
     </div>
   </article>`;
-}
-
-export function statBlock(label, value, { signal = false } = {}) {
-  return `<div class="stat"><span class="stat-value ${signal ? "stat-value--signal" : ""}">${esc(value)}</span><span class="stat-label">${esc(label)}</span></div>`;
-}
-
-export function shell(state, route, content, { immersive = false, topRight = "" } = {}) {
-  const navItems = [
-    { id: "home", label: "首页", href: "#/home", icon: "house" },
-    { id: "connections", label: "最近", href: "#/connections", icon: "clock" },
-    { id: "friends", label: "好友", href: "#/friends", icon: "users" },
-    { id: "me", label: "我的", href: "#/me", icon: "user" },
-  ];
-  const active = route;
-
-  const railNav = navItems
-    .map(
-      (n) =>
-        `<a class="rail-link ${active === n.id ? "rail-link--active" : ""}" href="${n.href}" data-nav>${icon(
-          n.icon,
-          18
-        )}<span>${n.label}</span></a>`
-    )
-    .join("");
-
-  const tabNav = `
-    ${navItems
-      .slice(0, 1)
-      .map((n) => `<a class="tabbar-item ${active === n.id ? "tabbar-item--active" : ""}" href="${n.href}">${icon(n.icon, 20)}<span>${n.label}</span></a>`)
-      .join("")}
-    <span class="tabbar-spacer" aria-hidden="true"></span>
-    <a class="tabbar-fab" href="#/need" aria-label="开始匹配" data-nav>${icon("gamepad2", 24)}</a>
-    ${navItems
-      .slice(1)
-      .map((n) => `<a class="tabbar-item ${active === n.id ? "tabbar-item--active" : ""}" href="${n.href}">${icon(n.icon, 20)}<span>${n.label}</span></a>`)
-      .join("")}
-  `;
-
-  return `<div class="shell">
-    <aside class="rail">
-      ${brand(34)}
-      <nav class="rail-nav" aria-label="主导航">
-        ${railNav}
-        <a class="rail-link" href="#/need" data-nav>${icon("gamepad2", 18)}<span>开始匹配</span></a>
-      </nav>
-      <div class="rail-footer">
-        <div class="live-strip">
-          <span class="status-pill status-pill--live"><span class="dot"></span>${state.match.status === "idle" ? "等待匹配" : "匹配中"}</span>
-          <span class="live-count">${esc(Math.max(0, state.match.pool ?? 0))} 人在线找队友</span>
-        </div>
-        <div class="rail-user">
-          ${avatarWrap(state.user.avatarKey, 34, state.user.online)}
-          <div class="rail-user-meta"><div class="rail-user-name">${esc(state.user.nickname)}</div><div class="rail-user-status">${esc(state.user.device)} · 在线</div></div>
-        </div>
-      </div>
-    </aside>
-    <div class="shell-main">
-      <header class="topbar">
-        ${brand(30)}
-        <div class="topbar-right">${topRight}</div>
-      </header>
-      <main id="view" class="view">${content}</main>
-      <nav class="tabbar" aria-label="移动导航">${tabNav}</nav>
-    </div>
-  </div>`;
 }
 
 export function homeShell(state, content, active = "home") {

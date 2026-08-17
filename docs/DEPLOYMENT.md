@@ -15,14 +15,19 @@
    - `supabase/migrations/0001_init.sql`
    - `supabase/migrations/0002_profiles_gender.sql`
    - `supabase/migrations/0003_profiles_genres.sql`
-   创建 `games / profiles / user_games / match_requests / matches / applications / rooms / room_members / messages / sessions / friendships / feedback`，并启用 RLS、索引、Realtime 发布。
+   - `supabase/migrations/0004_deadlock_genshin_match_details.sql`
+   - `supabase/migrations/0005_room_lifecycle.sql`
+   - `supabase/migrations/0006_phase1_mvp_closure.sql`
+   - `supabase/migrations/0007_profiles_age_range.sql`
+   - `supabase/migrations/0008_restrict_auth_helpers.sql`
+   创建并升级账号、匹配、房间、Session、最近连接、产品事件等数据结构，同时启用 RLS、索引与 Realtime 发布。
 4. 进入 **Project Settings → API**，记录：
    - `Project URL` → `NEXT_PUBLIC_SUPABASE_URL`
    - `anon public` → `NEXT_PUBLIC_SUPABASE_ANON_KEY`
    - `service_role` → `SUPABASE_SERVICE_ROLE_KEY`（只放服务端）
 
 Realtime 表已由 migration 加入 `supabase_realtime` publication。若在 Dashboard 检查：Database → Replication，确认这些表被选中：
-`profiles, match_requests, matches, applications, rooms, room_members, messages, sessions, friendships`
+`profiles, match_requests, matches, applications, rooms, room_members, messages, sessions, session_responses, friendships, recent_connections`
 
 ## 2. Resend
 
@@ -36,7 +41,7 @@ Realtime 表已由 migration 加入 `supabase_realtime` publication。若在 Das
 ## 3. 本地配置
 
 ```bash
-cd outputs/web-mvp
+cd project-s
 cp .env.example .env.local
 ```
 
@@ -63,7 +68,7 @@ pnpm dev
 当前仓库已连接：https://github.com/Hideonveil/PROJECT-S.git，分支 `main`。
 
 ```bash
-cd outputs/web-mvp
+cd project-s
 git add .
 git commit -m "update"
 git push origin main
@@ -75,7 +80,7 @@ git push origin main
 
 1. 打开 https://vercel.com ，用 GitHub 登录。
 2. **Add New → Project → Import** 选择 `PROJECT-S`。
-3. **Root Directory** 选择 `outputs/web-mvp`，Framework 自动识别为 Next.js。
+3. **Root Directory** 保持仓库根目录，Framework 自动识别为 Next.js。
 4. 在 Environment Variables 添加：
 
 | Name | Value |
@@ -94,8 +99,8 @@ git push origin main
 
 使用两台设备（或浏览器无痕窗口）打开公网地址：
 
-1. 设备 A：用用户名注册 → 创建游戏身份（昵称/头像/性别/设备/常玩游戏类型）→ 首页 → 开始匹配 → 填写需求。
-2. 设备 B：同样注册并创建游戏身份，选择相同游戏的需求。
+1. 设备 A：用用户名注册 → 创建游戏身份（昵称/头像/性别/设备/常玩游戏类型）→ 摇人首页 → 选择游戏、模式、时间和语音偏好 → 开始匹配。
+2. 设备 B：同样注册并创建游戏身份，选择相同或兼容的匹配需求。
 3. 双方都会看到匹配池人数实时变化，并互相出现在匹配结果。
 4. A 点“申请一起玩”，B 收到申请 → 接受 → 进入临时房间。
 5. 房间里可实时文字聊天；任一方结束游戏，双方选择是否再次一起玩。
@@ -125,4 +130,4 @@ git push origin main
 - 账号为“用户名 + 密码”；用户名会被映射成一个私有合成邮箱（`u<sha256>@mvp.local`），用户无需真实邮箱。
 - 头像支持预设与本地图片上传（Data URL 存 Supabase，MVP 足够用）。
 - 匹配候选按“同游戏 + 活动/时间/人数/语音/目标”加权排序，无复杂 AI。
-- 公网版本保留现有 UI 与功能，没有新增产品功能。
+- 社区当前为 Coming Soon；MVP 核心是摇人、房间、Session 结束和关系沉淀闭环。
