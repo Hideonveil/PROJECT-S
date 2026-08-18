@@ -554,6 +554,23 @@ async function enterMatchFromHero() {
   });
 }
 
+async function enterAuth(mode) {
+  const nextMode = mode === "register" ? "register" : "login";
+  update({ authMode: nextMode, authError: "", authNotice: "" });
+  if (parseRoute().name !== "hero") {
+    navigate("#/auth");
+    return;
+  }
+  await withProjectTransition(async () => {
+    await new Promise((resolve) => window.setTimeout(resolve, 90));
+    navigate("#/auth");
+  }, {
+    label: "正在进入账号页面",
+    immediate: true,
+    minDuration: 560,
+  });
+}
+
 function parseRoute() {
   const path = (location.hash || "#/hero").replace(/^#/, "") || "/hero";
   const parts = path.split("/").filter(Boolean);
@@ -2347,14 +2364,8 @@ document.addEventListener("click", (event) => {
     "go-home": () => navigate("#/home"),
     "go-me": () => navigate("#/me"),
     "go-friends": () => navigate("#/friends"),
-    "open-auth-login": () => {
-      update({ authMode: "login", authError: "", authNotice: "" });
-      navigate("#/auth");
-    },
-    "open-auth-register": () => {
-      update({ authMode: "register", authError: "", authNotice: "" });
-      navigate("#/auth");
-    },
+    "open-auth-login": () => enterAuth("login"),
+    "open-auth-register": () => enterAuth("register"),
     "switch-auth-mode": (value) => {
       const username = document.querySelector("#auth-username")?.value?.trim() || state.authUsername;
       const mode = value === "register" ? "register" : "login";
