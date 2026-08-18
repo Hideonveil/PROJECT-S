@@ -392,7 +392,11 @@ test("authenticated matching opens the new focused modal and removes the old pan
   await expect(transition).toBeVisible();
   await expect(transition).toHaveAttribute("aria-label", "正在进入匹配池");
   await expect(transition.locator(".project-transition-device")).toHaveCount(6);
+  await expect(transition.locator(".project-transition-device small, .project-transition-center p")).toHaveCount(0);
   await expect(transition.locator(".project-transition-tape-track")).toHaveCount(2);
+  const bottomTape = await transition.locator(".project-transition-tape--bottom").boundingBox();
+  expect(bottomTape).not.toBeNull();
+  expect((bottomTape?.y || 0) + (bottomTape?.height || 0)).toBeLessThanOrEqual(720);
   const tapeBefore = await transition.locator(".project-transition-tape-track").first().evaluate((element) => getComputedStyle(element).transform);
   await page.waitForTimeout(180);
   const tapeAfter = await transition.locator(".project-transition-tape-track").first().evaluate((element) => getComputedStyle(element).transform);

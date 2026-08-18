@@ -616,7 +616,11 @@ body.is-project-transitioning { overflow: hidden; }
   font-family: var(--font-mono);
   font-size: 12px;
   font-weight: 850;
-  line-height: 36px;
+  height: 38px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  line-height: 1;
   letter-spacing: .04em;
   white-space: nowrap;
 }
@@ -625,12 +629,13 @@ body.is-project-transitioning { overflow: hidden; }
   width: max-content;
   height: 100%;
   display: flex;
+  align-items: center;
   will-change: transform;
   animation: projectTape 13s linear infinite;
 }
 
 .project-transition-tape--bottom .project-transition-tape-track { animation-direction: reverse; animation-duration: 15s; }
-.project-transition-tape-track > span { flex: none; }
+.project-transition-tape-track > span { height: 100%; flex: none; display: flex; align-items: center; }
 
 .project-transition-center {
   position: relative;
@@ -639,17 +644,6 @@ body.is-project-transitioning { overflow: hidden; }
   isolation: isolate;
 }
 
-.project-transition-center::before,
-.project-transition-center::after {
-  content: "";
-  position: absolute;
-  width: min(46vw, 640px);
-  height: 1px;
-  background: rgba(23, 19, 31, .25);
-}
-
-.project-transition-center::before { transform: translateY(-112px); }
-.project-transition-center::after { transform: translateY(112px); }
 .project-transition-devices { position: relative; width: 120px; height: 120px; }
 
 .project-transition-device {
@@ -664,29 +658,6 @@ body.is-project-transitioning { overflow: hidden; }
 }
 
 .project-transition-device .icon { filter: drop-shadow(0 8px 0 rgba(23, 19, 31, .16)); }
-.project-transition-device small {
-  position: absolute;
-  top: calc(100% + 8px);
-  color: rgba(23, 19, 31, .82);
-  font-family: var(--font-mono);
-  font-size: 10px;
-  font-weight: 900;
-  letter-spacing: .2em;
-}
-
-.project-transition-center > p {
-  position: absolute;
-  top: calc(50% + 150px);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 7px;
-  color: rgba(23, 19, 31, .72);
-  font-size: 11px;
-  letter-spacing: .06em;
-}
-
-.project-transition-center > p b { color: var(--product-black); font-family: var(--font-mono); font-size: 10px; letter-spacing: .13em; }
 
 @keyframes projectDeviceCycle {
   0%, 1% { opacity: 1; transform: translateY(3px); }

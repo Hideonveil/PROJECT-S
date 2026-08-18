@@ -1,13 +1,6 @@
 import { icon } from "./icons.js";
 
-const DEVICE_ICONS = [
-  ["keyboard", "键盘"],
-  ["mouse", "鼠标"],
-  ["headphones", "耳机"],
-  ["pc", "主机"],
-  ["vr", "头显"],
-  ["monitor", "显示器"],
-];
+const DEVICE_ICONS = ["keyboard", "mouse", "headphones", "pc", "vr", "monitor"];
 
 const TAPE_COPY = "总有人想一起玩 / NEVER PLAY ALONE / CONNECTING PLAYERS / ".repeat(4);
 let activeTransition = null;
@@ -28,9 +21,8 @@ function transitionMarkup(label) {
     <div class="project-transition-tape project-transition-tape--top" aria-hidden="true"><div class="project-transition-tape-track">${tape}</div></div>
     <div class="project-transition-center">
       <div class="project-transition-devices" aria-hidden="true">
-        ${DEVICE_ICONS.map(([name, device], index) => `<span class="project-transition-device" style="--device-index:${index}">${deviceIcon(name)}<small>${device}</small></span>`).join("")}
+        ${DEVICE_ICONS.map((name, index) => `<span class="project-transition-device" style="--device-index:${index}">${deviceIcon(name)}</span>`).join("")}
       </div>
-      <p><b>PROJECT-S / CONNECTING</b><span>${label}</span></p>
     </div>
     <div class="project-transition-tape project-transition-tape--bottom" aria-hidden="true"><div class="project-transition-tape-track">${tape}</div></div>
   </div>`;
@@ -65,8 +57,8 @@ export async function withProjectTransition(task, options = {}) {
   const {
     label = "正在连接",
     immediate = false,
-    delay = immediate ? 0 : 280,
-    minDuration = immediate ? 1800 : 900,
+    delay = immediate ? 0 : 240,
+    minDuration = immediate ? 480 : 360,
   } = options;
   let overlay = null;
   let shownAt = 0;

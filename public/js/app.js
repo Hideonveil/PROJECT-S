@@ -1399,7 +1399,6 @@ async function startMatch() {
     }, {
       label: "正在进入匹配池",
       immediate: true,
-      minDuration: 1800,
     });
   } catch (err) {
     update({ match: previousMatch });
@@ -1439,10 +1438,12 @@ async function applyPartner(id) {
     return;
   }
   try {
-    await api.applyTo(candidate.id);
-    update({ match: { ...state.match, pending: id } });
-    render();
-    toast("邀请已发送，等对方也邀请你");
+    await withProjectTransition(async () => {
+      await api.applyTo(candidate.id);
+      update({ match: { ...state.match, pending: id } });
+      render();
+      toast("邀请已发送，等对方也邀请你");
+    }, { label: "正在发送邀请" });
   } catch (err) {
     toast(err.message);
   }
@@ -1454,9 +1455,11 @@ async function startGame() {
     return;
   }
   try {
-    const result = await api.roomAction(state.room.code, "start");
-    update({ room: normalizeServerRoom(result.room || { ...state.room, status: "playing", startedAt: Date.now() }) });
-    render();
+    await withProjectTransition(async () => {
+      const result = await api.roomAction(state.room.code, "start");
+      update({ room: normalizeServerRoom(result.room || { ...state.room, status: "playing", startedAt: Date.now() }) });
+      render();
+    }, { label: "正在开始 Session" });
   } catch (err) {
     toast(err.message);
   }
@@ -1484,7 +1487,10 @@ async function finishGame() {
     return;
   }
   try {
-    const result = await api.roomAction(state.room.code, "finish");
+    const result = await withProjectTransition(
+      () => api.roomAction(state.room.code, "finish"),
+      { label: "正在结束 Session" },
+    );
     if (result.session) {
       handleServerGameOver(result.session);
       return;
@@ -1560,7 +1566,10 @@ async function confirmExitRoom() {
   }
   const partner = room.partner || {};
   try {
-    const result = await api.roomAction(room.code, "exit");
+    const result = await withProjectTransition(
+      () => api.roomAction(room.code, "exit"),
+      { label: "正在退出 Session" },
+    );
     if (result.session && ["completed", "cancelled"].includes(result.session.status)) {
       closeSheet();
       handleServerGameOver(result.session);
@@ -1605,10 +1614,12 @@ async function saveRoomGameAccount() {
     next[gameId][key] = String(value || "").trim();
   }
   try {
-    const data = await api.updateProfile({ gameAccounts: next });
-    update({ user: { ...state.user, ...data.user } });
-    render();
-    toast("游戏账号已保存");
+    await withProjectTransition(async () => {
+      const data = await api.updateProfile({ gameAccounts: next });
+      update({ user: { ...state.user, ...data.user } });
+      render();
+      toast("游戏账号已保存");
+    }, { label: "正在保存游戏账号" });
   } catch (err) {
     toast(err.message);
   }
@@ -1697,14 +1708,16 @@ async function chooseRematch(value) {
     return;
   }
   try {
-    const data = await api.rematch(roomCode, value);
-    if (data.room) {
-      handleServerRoom(data.room);
-      toast("双方都选择再玩一次，新房间已创建");
-    } else if (data.resolution === "declined") {
-      update({ session: { ...state.session, theirs: "no", connected: false } });
-      render();
-    }
+    await withProjectTransition(async () => {
+      const data = await api.rematch(roomCode, value);
+      if (data.room) {
+        handleServerRoom(data.room);
+        toast("双方都选择再玩一次，新房间已创建");
+      } else if (data.resolution === "declined") {
+        update({ session: { ...state.session, theirs: "no", connected: false } });
+        render();
+      }
+    }, { label: "正在确认再玩一次" });
   } catch (err) {
     toast(err.message);
   }
@@ -1894,16 +1907,12 @@ async function saveProfile() {
     return;
   }
   try {
-    const data = await api.updateProfile({
-      nickname,
-      device,
-      gender,
-      playStyle,
-      avatarKey: DRAFT.avatarKey,
-      genres,
-      voice: state.user.voice,
-    });
-    update({ user: { ...state.user, ...data.user } });
+    await withProjectTransition(async () => {
+      const data = await api.updateProfile({
+        nickname, device, gender, playStyle, avatarKey: DRAFT.avatarKey, genres, voice: state.user.voice,
+      });
+      update({ user: { ...state.user, ...data.user } });
+    }, { label: "正在保存玩家资料" });
   } catch (err) {
     toast(err.message);
     closeSheet();
@@ -1932,7 +1941,7 @@ async function logout() {
     eventSourceClose();
     eventSourceClose = null;
   }
-  await api.signOut().catch(() => {});
+  await withProjectTransition(() => api.signOut().catch(() => {}), { label: "正在退出账号" });
   resetState();
   DRAFT.dirty = false;
   navigate("#/home");
@@ -1969,9 +1978,11 @@ async function searchFriendByCode() {
     return;
   }
   try {
-    const data = await api.searchFriend(code);
-    update({ friendSearchResult: data.user });
-    render();
+    await withProjectTransition(async () => {
+      const data = await api.searchFriend(code);
+      update({ friendSearchResult: data.user });
+      render();
+    }, { label: "正在查找玩家" });
   } catch (err) {
     toast(err.message);
   }
@@ -1983,13 +1994,12 @@ async function addFriendByCodeAction(code) {
     return;
   }
   try {
-    const data = await api.addFriendByCode(code);
-    update({
-      friends: mapServerFriends(data.friends),
-      friendSearchResult: null,
-    });
-    render();
-    toast(`已添加 ${data.user.nickname}`);
+    await withProjectTransition(async () => {
+      const data = await api.addFriendByCode(code);
+      update({ friends: mapServerFriends(data.friends), friendSearchResult: null });
+      render();
+      toast(`已添加 ${data.user.nickname}`);
+    }, { label: "正在添加好友" });
   } catch (err) {
     toast(err.message);
   }
@@ -2047,17 +2057,19 @@ async function submitFeedback() {
       ? window.crypto.randomUUID()
       : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
     try {
-      await api.sendFeedback({
-        category: fd.get("category") || "bug",
-        message,
-        contact: String(fd.get("contact") || "").trim(),
-        requestId,
-        currentPage: location.hash || "/",
-        currentGame: state.need?.game || state.user?.games?.[0]?.gameId || null,
-        currentMatchRequestId: state.matchRequestId || null,
-      });
-      closeSheet();
-      toast("反馈已收到，感谢你的反馈。");
+      await withProjectTransition(async () => {
+        await api.sendFeedback({
+          category: fd.get("category") || "bug",
+          message,
+          contact: String(fd.get("contact") || "").trim(),
+          requestId,
+          currentPage: location.hash || "/",
+          currentGame: state.need?.game || state.user?.games?.[0]?.gameId || null,
+          currentMatchRequestId: state.matchRequestId || null,
+        });
+        closeSheet();
+        toast("反馈已收到，感谢你的反馈。");
+      }, { label: "正在提交反馈" });
     } catch (err) {
       toast(err.message);
     } finally {
@@ -2548,26 +2560,26 @@ document.addEventListener("click", (event) => {
     "submit-feedback": submitFeedback,
     "accept-application": async (id) => {
       try {
-        const result = await api.acceptApplication(id);
-        closeSheet();
-        update({ incomingRequest: null });
-        if (result.room) {
-          update({
-            room: normalizeServerRoom(result.room),
-            need: result.room.need || state.need,
-            session: null,
-          });
-          navigate("#/room");
-        }
+        await withProjectTransition(async () => {
+          const result = await api.acceptApplication(id);
+          closeSheet();
+          update({ incomingRequest: null });
+          if (result.room) {
+            update({ room: normalizeServerRoom(result.room), need: result.room.need || state.need, session: null });
+            navigate("#/room");
+          }
+        }, { label: "正在建立 Session" });
       } catch (err) {
         toast(err.message);
       }
     },
     "decline-application": async (id) => {
       try {
-        await api.declineApplication(id);
-        closeSheet();
-        update({ incomingRequest: null });
+        await withProjectTransition(async () => {
+          await api.declineApplication(id);
+          closeSheet();
+          update({ incomingRequest: null });
+        }, { label: "正在处理邀请" });
       } catch (err) {
         toast(err.message);
       }
