@@ -7,6 +7,8 @@ export function friendsPage(state) {
   const myCode = state.user?.friendCode || "NODE-XXXX-XXXX";
   const searchResult = state.friendSearchResult;
   const alreadyFriend = searchResult && friends.some((f) => f.id === searchResult.id);
+  const searching = state.friendSearchStatus === "searching";
+  const adding = state.friendSearchStatus === "adding";
 
   return homeShell(
     state,
@@ -32,9 +34,10 @@ export function friendsPage(state) {
         <div class="prism-card" style="display:flex;flex-direction:column;gap:12px">
           <div class="card-title">按代码搜索</div>
           <div class="inline-actions" style="width:100%">
-            <input class="input" id="friend-code-input" placeholder="NODE-XXXX-XXXX" style="flex:1;min-width:180px" />
-            ${button({ label: "搜索", action: "search-friend", kind: "primary", iconName: "search" })}
+            <input class="input" id="friend-code-input" value="${esc(state.friendSearchCode || "")}" placeholder="NODE-XXXX-XXXX" style="flex:1;min-width:180px" ${searching || adding ? "disabled" : ""} />
+            ${button({ label: searching ? "搜索中…" : "搜索", action: "search-friend", kind: "primary", iconName: "search", disabled: searching || adding })}
           </div>
+          ${state.friendSearchError ? `<p class="form-error" role="alert">${esc(state.friendSearchError)}</p>` : ""}
         </div>
       </div>
 
@@ -52,7 +55,7 @@ export function friendsPage(state) {
                 ${
                   alreadyFriend
                     ? statusPill("CONNECTED")
-                    : button({ label: "添加好友", action: "add-friend-by-code", value: searchResult.friendCode, kind: "primary", iconName: "userPlus" })
+                    : button({ label: adding ? "添加中…" : "添加好友", action: "add-friend", value: searchResult.id, kind: "primary", iconName: "userPlus", disabled: adding })
                 }
               </div>
             </div>`
@@ -61,16 +64,15 @@ export function friendsPage(state) {
 
       <section class="prism-section">
         <div class="section-head">
-          <h2 class="section-title">搭子列表</h2>
+          <h2 class="section-title">朋友列表</h2>
           <span class="section-note">${friends.length} 个连接</span>
         </div>
         ${
           friends.length === 0
             ? `<div class="empty-state">
                 ${icon("users", 30)}
-                <strong>还没有搭子</strong>
-                <span>完成一次匹配，游戏结束后双方都选择「再玩一局」，或直接用好友代码添加。</span>
-                ${button({ label: "开始匹配", action: "go-need", kind: "primary", iconName: "gamepad2" })}
+                <strong>还没有朋友</strong>
+                <span>可以在上方输入好友代码，或在匹配房间中把对方添加为 PROJECT-S 好友。</span>
               </div>`
             : `<div class="friends-list">
                 ${friends
@@ -83,10 +85,7 @@ export function friendsPage(state) {
                           <div class="friend-last">上次一起 · ${esc(f.lastGame || "未知游戏")} · ${esc(f.lastTime || "")}</div>
                         </div>
                       </div>
-                      <div class="inline-actions">
-                        ${f.online ? statusPill("LIVE") : statusPill("OFFLINE")}
-                        ${button({ label: "再次一起玩", action: "rematch-friend", value: f.id, kind: "primary", size: "sm", iconName: "gamepad2" })}
-                      </div>
+                      <div class="inline-actions">${f.online ? statusPill("LIVE") : statusPill("OFFLINE")}</div>
                     </div>`
                   )
                   .join("")}

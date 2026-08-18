@@ -12,7 +12,6 @@ export async function trackEvent(input: {
   userId?: string | null;
   sessionId?: string | null;
   roomId?: string | null;
-  matchRequestId?: string | null;
   requestId?: string | null;
   properties?: Record<string, unknown>;
 }) {
@@ -21,7 +20,6 @@ export async function trackEvent(input: {
     user_id: input.userId || null,
     session_id: input.sessionId || null,
     room_id: input.roomId || null,
-    match_request_id: input.matchRequestId || null,
     request_id: input.requestId || null,
     properties: input.properties || {},
   });

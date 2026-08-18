@@ -19,7 +19,7 @@ export async function POST(request: Request) {
     const { data: target } = await admin.from("profiles").select("*").eq("friend_code", code).maybeSingle();
     if (!target || target.id === me.id) return NextResponse.json({ error: "没有找到这个代码" }, { status: 404 });
     const [safeTarget] = await publicProfilesFor([target.id]);
-    return NextResponse.json({ user: safeTarget });
+    return NextResponse.json({ user: { ...safeTarget, friendCode: target.friend_code } });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "搜索失败" }, { status: 500 });
   }

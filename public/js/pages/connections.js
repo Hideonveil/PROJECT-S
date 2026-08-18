@@ -41,7 +41,7 @@ export function connectionsPage(state) {
               ${icon("clock", 30)}
               <strong>还没有一起玩过的人</strong>
               <span>完成一次匹配并一起玩过，就会出现在这里。</span>
-              ${button({ label: "开始匹配", action: "go-need", kind: "primary", iconName: "gamepad2" })}
+              ${button({ label: "返回摇人", action: "go-home", kind: "primary", iconName: "gamepad2" })}
             </div>`
           : `<div class="friends-list">
               ${list
@@ -56,7 +56,6 @@ export function connectionsPage(state) {
                       </div>
                     </div>
                     <div class="inline-actions">
-                      ${button({ label: "查看主页", action: "view-profile", value: c.id, kind: "outline", size: "sm", iconName: "user" })}
                       ${button({ label: "再次匹配", action: "rematch-recent", value: c.id, kind: "primary", size: "sm", iconName: "refreshCw" })}
                     </div>
                   </div>`

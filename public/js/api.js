@@ -108,8 +108,6 @@ export const register = async (profile) => {
 };
 
 export const updateProfile = (profile) => authedRequest("/api/profile", profile);
-export const postNeed = (need) => authedRequest("/api/need", { need });
-export const cancelNeed = () => authedRequest("/api/cancel-need", {});
 export const startMatchmaking = (match) => authedRequest("/api/matchmaking/start", { match });
 export const getMatchmakingStatus = () => authedRequest("/api/matchmaking/status");
 export const cancelMatchmaking = (reason = "user_cancelled") => authedRequest("/api/matchmaking/cancel", { reason });
@@ -127,14 +125,10 @@ export const goOffline = async () => {
     // best-effort offline signal
   }
 };
-export const applyTo = (toUserId) => authedRequest("/api/apply", { toUserId });
-export const acceptApplication = (applicationId) => authedRequest("/api/accept-application", { applicationId });
-export const declineApplication = (applicationId) => authedRequest("/api/decline-application", { applicationId });
 export const roomAction = (code, action) => authedRequest(`/api/room/${code}/${action}`, {});
 export const roomFeedback = (code, payload) => authedRequest(`/api/room/${code}/feedback`, payload);
-export const rematch = (code, choice) => authedRequest(`/api/room/${code}/rematch`, { choice });
 export const searchFriend = (code) => authedRequest("/api/friends/search", { code });
-export const addFriendByCode = (friendCode) => authedRequest("/api/friends/add", { friendCode });
+export const addFriend = ({ friendCode, targetUserId } = {}) => authedRequest("/api/friends/add", { friendCode, targetUserId });
 export const sendFeedback = (payload) => authedRequest("/api/feedback", payload);
 export const trackEvent = (eventName, properties = {}) =>
   authedRequest("/api/events", { eventName, properties }).catch(() => null);

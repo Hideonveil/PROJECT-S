@@ -111,36 +111,6 @@ export function needSummary(need, { compact = false, title = "当前需求" } = 
   </div>`;
 }
 
-export function playerCard(candidate, { pending = false } = {}) {
-  const isTeam = candidate.kind === "team";
-  const reasons = (candidate.reasons || []).slice(0, 4);
-  return `<article class="player-card" data-card-id="${escAttr(candidate.id)}">
-    <div class="player-card-top">
-      ${avatarWrap(candidate.avatarKey, 66, candidate.online)}
-      <div class="player-card-meta">
-        <div class="player-card-kind">${isTeam ? "队伍 · " : "玩家 · "}${esc(candidate.device)}</div>
-        <div class="player-card-name">${esc(candidate.name)}</div>
-        <div class="player-card-handle">${esc(candidate.handle)}</div>
-        ${candidate.online ? statusPill("LIVE") : statusPill("OFFLINE")}
-      </div>
-      ${typeof candidate.matchScore === "number" ? `<div class="player-card-score"><strong>${Math.round(candidate.matchScore)}%</strong><span>匹配度</span></div>` : ""}
-    </div>
-    ${needSummary(candidate.need, { compact: true })}
-    <div class="section" style="gap:8px">
-      <div class="section-note">为什么推荐</div>
-      <div class="chip-group">
-        ${reasons.map((r) => `<span class="reason-tag">${icon("link2", 12)}${esc(r)}</span>`).join("")}
-      </div>
-    </div>
-    <div class="player-card-actions">
-      ${button({ label: "查看主页", action: "view-profile", value: candidate.id, kind: "outline", size: "sm", iconName: "user" })}
-      ${pending
-        ? `<span class="status-pill status-pill--live"><span class="dot"></span>已邀请</span>`
-        : button({ label: isTeam ? "邀请加入" : "邀请一起玩", action: "apply-partner", value: candidate.id, kind: "primary", size: "sm", iconName: "send" })}
-    </div>
-  </article>`;
-}
-
 export function homeShell(state, content, active = "home") {
   const resolvedActive = active === "community" ? "community" : active === "me" || active === "friends" || active === "connections" ? "me" : active === "home" ? "match" : "none";
   const sectionLabel = resolvedActive === "match" ? "摇人" : resolvedActive === "community" ? "社区" : resolvedActive === "me" ? "我的" : active === "auth" ? "账号" : "玩家身份";

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { mapSession } from "./session";
 import type { Session } from "./types";
 
-it("maps a legacy active session as completed during the compatibility window", () => {
+it("does not disguise a retired active session as a completed game", () => {
   const mapped = mapSession({
     id: "session-1",
     room_id: "room-1",
@@ -21,12 +21,12 @@ it("maps a legacy active session as completed during the compatibility window", 
     version: 1,
     created_at: new Date(0).toISOString(),
   } as Session);
-  expect(mapped?.status).toBe("completed");
+  expect(mapped?.status).toBe("active");
   expect(mapped?.roomId).toBe("room-1");
 });
 
 describe("session response shape", () => {
-  it("preserves rematch resolution and version for stale-update detection", () => {
+  it("keeps lifecycle version without exposing the retired direct-rematch state", () => {
     const mapped = mapSession({
       id: "session-2",
       room_id: "room-2",
@@ -38,6 +38,8 @@ describe("session response shape", () => {
       source_session_id: null, resolution: "waiting", version: 4,
       created_at: new Date(0).toISOString(),
     } as Session);
-    expect(mapped).toMatchObject({ resolution: "waiting", version: 4, rematchBy: { a: "yes" } });
+    expect(mapped).toMatchObject({ version: 4 });
+    expect(mapped).not.toHaveProperty("rematchBy");
+    expect(mapped).not.toHaveProperty("resolution");
   });
 });

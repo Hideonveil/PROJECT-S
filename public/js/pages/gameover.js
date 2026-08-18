@@ -33,6 +33,11 @@ export function gameoverPage(state) {
         </div>
 
         <div class="card" style="display:flex;flex-direction:column;gap:14px">
+          <div class="section-head"><h2 class="section-title">给这位玩家点个赞？</h2><span class="section-note">双方独立选择</span></div>
+          <div>${button({ label: session.liked ? "已点赞" : "点赞", action: "set-room-like", value: session.liked ? "no" : "yes", kind: session.liked ? "primary" : "outline", iconName: "heart" })}</div>
+        </div>
+
+        <div class="card" style="display:flex;flex-direction:column;gap:14px">
           <div class="section-head"><h2 class="section-title">这次游玩怎么样？</h2><span class="section-note">只用于改进匹配</span></div>
           <div class="outcome-grid">
             ${ratings

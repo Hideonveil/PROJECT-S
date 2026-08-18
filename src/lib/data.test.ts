@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { matchReasons, publicProfile, scoreMatch } from "./data";
-import type { NeedInput, Profile } from "./types";
+import { publicProfile } from "./data";
+import type { Profile } from "./types";
 
 const profile = {
   id: "00000000-0000-0000-0000-000000001234",
@@ -19,19 +19,6 @@ const profile = {
   created_at: new Date(0).toISOString(),
 } as Profile;
 
-const need: NeedInput = {
-  game: "minecraft",
-  mode: "生存联机",
-  goal: "开荒",
-  current: 1,
-  target: 2,
-  time: "现在开始",
-  duration: "90",
-  voice: true,
-  playerType: "轻松",
-  details: {},
-};
-
 describe("public player DTO", () => {
   it("does not expose friend code or game account outside an authorized private view", () => {
     const safe = publicProfile(profile);
@@ -49,12 +36,5 @@ describe("public player DTO", () => {
     const roomView = publicProfile(profile, [], { includeGameAccounts: true });
     expect(roomView.friendCode).toBe("");
     expect(roomView.gameAccounts.minecraft.id).toBe("private-account");
-  });
-});
-
-describe("matching rules", () => {
-  it("gives a full score and clear reasons to a fully compatible need", () => {
-    expect(scoreMatch(need, need)).toBe(100);
-    expect(matchReasons(need, need)).toContain("同一游戏");
   });
 });

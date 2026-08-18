@@ -14,7 +14,11 @@ export async function POST(request: Request) {
     const { data: profile } = await admin.from("profiles").select("id").eq("auth_user_id", authUser.id).maybeSingle();
     if (profile) {
       await admin.from("profiles").update({ online: false }).eq("id", profile.id);
-      await admin.from("match_requests").update({ status: "cancelled" }).eq("user_id", profile.id).in("status", ["matching", "matched"]);
+      await admin.rpc("matchmaking_cancel_ticket", {
+        p_user_id: profile.id,
+        p_reason: "went_offline",
+        p_request_id: null,
+      });
     }
     return NextResponse.json({ ok: true });
   } catch {

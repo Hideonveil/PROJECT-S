@@ -42,14 +42,12 @@ export function roomPage(state) {
   const fields = fieldsFor(need.game);
   const myAccounts = (me.gameAccounts || {})[need.game] || {};
   const partnerAccounts = (partner.gameAccounts || {})[need.game] || {};
-  const primaryValue = Object.values(partnerAccounts).find((v) => String(v || "").trim()) || "";
+  const partnerIsFriend = (state.friends || []).some((friend) => friend.id === partner.id);
 
   const memberRows = members
     .map((p) => {
       const exited = p.memberStatus === "exited";
-      const avatar = p.id === me.id
-        ? avatarWrap(p.avatarKey, 52, p.online !== false)
-        : `<a href="#/player/${p.id}" data-nav aria-label="查看玩家主页">${avatarWrap(p.avatarKey, 52, p.online !== false)}</a>`;
+      const avatar = avatarWrap(p.avatarKey, 52, p.online !== false);
       return `<div class="room-member ${p.id === me.id ? "room-member--host" : ""}">
         ${avatar}
         <div class="room-member-info">
@@ -85,13 +83,16 @@ export function roomPage(state) {
 
   const actionArea = partnerExited
     ? `<div class="card" style="border-color:var(--danger-border);background:var(--danger-dim);display:flex;flex-direction:column;gap:12px">
-        <div class="inline-actions">${statusPill("DONE")}<strong>其他玩家已离开</strong></div>
-        <p class="dim" style="font-size:13px">你可以继续留在房间，也可以返回匹配开始新的连接。</p>
+        <div class="inline-actions">${statusPill("DONE")}<strong>对方主动退出了游戏</strong></div>
+        <p class="dim" style="font-size:13px">这次属于异常离开，不计入正常对局。你可以返回摇人，开始新的连接。</p>
         <div>${button({ label: "返回匹配", action: "back-to-match", kind: "primary", iconName: "gamepad2" })}</div>
       </div>`
     : `<div class="card" style="display:flex;flex-direction:column;gap:12px">
-        <div class="inline-actions">${statusPill("PLAYING")}<strong>匹配成功，游戏已经开始</strong></div>
+        <div class="inline-actions">${statusPill(room.status === "ready" ? "READY" : "PLAYING")}<strong>${room.status === "ready" ? "双方已进入房间" : "游戏进行中"}</strong></div>
         <p class="dim" style="font-size:13px">先去游戏里添加对方，再把好友码填到下面，方便双方连接。</p>
+        <div class="inline-actions">
+          ${room.status === "ready" ? button({ label: "开始游戏", action: "start-game", kind: "primary", iconName: "play" }) : button({ label: "拜拜，结束本次匹配", action: "say-goodbye", kind: "primary", iconName: "check" })}
+        </div>
       </div>`;
 
   return homeShell(
@@ -105,7 +106,7 @@ export function roomPage(state) {
           </div>
           <div class="inline-actions">
             ${statusPill(room.status === "completed" || partnerExited ? "DONE" : "PLAYING", room.status === "completed" || partnerExited ? "已结束" : "PLAYING")}
-            ${button({ label: "5s 后可以退出", action: "exit-room", kind: "danger", size: "sm", iconName: "logOut", disabled: true })}
+            ${button({ label: "5s 后可以主动离开", action: "exit-room", kind: "danger", size: "sm", iconName: "logOut", disabled: true })}
           </div>
         </div>
         ${needSummary(need, { compact: true })}
@@ -113,7 +114,6 @@ export function roomPage(state) {
         <div class="card" style="display:flex;flex-direction:column;gap:14px">
           <div class="section-head"><h2 class="section-title">这次一起玩的人</h2><span class="section-note">${activeMembers.length}/${esc(need.target || 5)} 人</span></div>
           <div class="room-members">${memberRows}</div>
-          <p class="muted" style="font-size:12px">点击对方头像可以查看玩家主页</p>
         </div>
 
         ${actionArea}
@@ -129,7 +129,9 @@ export function roomPage(state) {
         <div class="card" style="display:flex;flex-direction:column;gap:12px">
           <div class="section-head"><h2 class="section-title">${esc(partner.name || "对方")} 的游戏账号</h2><span class="section-note">一键复制后去游戏内添加</span></div>
           ${partnerAccountRows}
-          ${primaryValue ? button({ label: "添加游戏好友", action: "add-game-friend", value: primaryValue, kind: "outline", iconName: "userPlus" }) : ""}
+          ${partner.id ? (partnerIsFriend
+            ? statusPill("CONNECTED", "已是 PROJECT-S 好友")
+            : button({ label: "添加为 PROJECT-S 好友", action: "add-project-friend", value: partner.id, kind: "outline", iconName: "userPlus" })) : ""}
         </div>
       </div>
       <section class="card room-chat-card">

@@ -1,4 +1,4 @@
-import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 const mockProfile = {
   id: "00000000-0000-0000-0000-000000000111",
   nickname: "测试玩家",
@@ -33,7 +33,7 @@ const mockRecentConnection = {
 
 async function mockProductBackend(
   page: Page,
-  capture: { profile?: Record<string, unknown>; need?: Record<string, unknown>; match?: Record<string, unknown> } = {}
+  capture: { profile?: Record<string, unknown>; match?: Record<string, unknown>; friendAdd?: Record<string, unknown> } = {}
 ) {
   let profileExists = true;
   const matchStartedAt = new Date().toISOString();
@@ -99,27 +99,13 @@ async function mockProductBackend(
         user: mockProfile,
         friends: [],
         recentConnections: [mockRecentConnection],
-        applications: [],
         room: null,
         session: null,
-        needs: [],
         matching: 8,
         playing: 3,
-        matchRequestId: null,
         matchmaking: { ticket: null, pair: null, candidate: null, matching: 8, matchable: 8 },
       }),
     })
-  );
-  await page.route("**/api/need", (route) => {
-    capture.need = route.request().postDataJSON();
-    return route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({ requestId: "match-request-1", candidates: [], matching: 8, playing: 3 }),
-    });
-  });
-  await page.route("**/api/cancel-need", (route) =>
-    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true }) })
   );
   await page.route("**/api/matchmaking/start", (route) => {
     capture.match = route.request().postDataJSON();
@@ -137,6 +123,38 @@ async function mockProductBackend(
   await page.route("**/api/matchmaking/cancel", (route) =>
     route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ticket: { state: "cancelled" } }) })
   );
+  await page.route("**/api/friends/search", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        user: {
+          id: "00000000-0000-0000-0000-000000000333",
+          nickname: "代码好友",
+          avatarKey: "",
+          online: true,
+          device: "PC",
+          friendCode: "NODE-ABCD-EFGH",
+        },
+      }),
+    })
+  );
+  await page.route("**/api/friends/add", (route) => {
+    capture.friendAdd = route.request().postDataJSON();
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        friends: [{
+          id: "00000000-0000-0000-0000-000000000333",
+          nickname: "代码好友",
+          avatarKey: "",
+          online: true,
+          device: "PC",
+        }],
+      }),
+    });
+  });
 }
 
 async function login(page: Page) {
@@ -522,6 +540,53 @@ test("candidate confirmation shows each player's independent ready state", async
   await expect(page.getByRole("button", { name: "确定是 TA", exact: true })).toBeVisible();
 });
 
+test("confirmation timeout updates the existing matching modal without resetting it", async ({ page }) => {
+  await mockProductBackend(page);
+  const startedAt = new Date(Date.now() - 4000).toISOString();
+  await page.unroute("**/api/matchmaking/start");
+  await page.unroute("**/api/matchmaking/status");
+  await page.route("**/api/matchmaking/start", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({
+      ticket: { id: "ticket-1", state: "waiting_confirmation", search_started_at: startedAt },
+      pair: {
+        id: "pair-1",
+        state: "waiting_confirmation",
+        confirmations: [
+          { user_id: mockProfile.id, decision: "accepted" },
+          { user_id: "00000000-0000-0000-0000-000000000222", decision: null },
+        ],
+      },
+      candidate: { id: "00000000-0000-0000-0000-000000000222", nickname: "超时玩家" },
+      matching: 0,
+      matchable: 0,
+    }),
+  }));
+  await page.route("**/api/matchmaking/status", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({
+      ticket: { id: "ticket-1", state: "searching", search_started_at: startedAt },
+      pair: null,
+      candidate: null,
+      matching: 1,
+      matchable: 1,
+    }),
+  }));
+
+  await page.goto("/index.html#/home");
+  await login(page);
+  await reachDeadlockCasualFinal(page);
+  await page.getByRole("button", { name: "开始匹配", exact: true }).click();
+  const modal = page.locator("[data-matching-modal]");
+  await modal.evaluate((element) => element.setAttribute("data-test-persisted", "yes"));
+  await expect(page.getByText("你已准备，正在等对方确定。", { exact: true })).toBeVisible();
+  await expect(page.locator("#match-desc")).toHaveText("对方没有接受，正在继续寻找其他玩家。", { timeout: 5000 });
+  await expect(modal).toHaveAttribute("data-test-persisted", "yes");
+  await expect(page.locator("#match-time")).not.toHaveText("0s");
+});
+
 test("mobile visitors see the PC-only gate in the same product language", async ({ browser }) => {
   const context = await browser.newContext({
     viewport: { width: 390, height: 844 },
@@ -574,6 +639,25 @@ test("my page renders backend recent connections instead of stale local history"
   await expect(page.getByText(/Deadlock · 3 次/)).toBeVisible();
 });
 
+test("friend code search adds the exact searched profile without a fullscreen transition", async ({ page }) => {
+  const capture: { friendAdd?: Record<string, unknown> } = {};
+  await mockProductBackend(page, capture);
+  await page.goto("/index.html#/home");
+  await login(page);
+  await page.goto("/index.html#/friends");
+
+  await page.locator("#friend-code-input").fill("NODE-ABCD-EFGH");
+  await page.getByRole("button", { name: "搜索", exact: true }).click();
+  await expect(page.locator("[data-project-transition]")).toHaveCount(0);
+  await expect(page.getByText("代码好友", { exact: true })).toBeVisible();
+  await expect(page.getByText("NODE-ABCD-EFGH", { exact: false })).toBeVisible();
+  await page.getByRole("button", { name: "添加好友", exact: true }).click();
+
+  expect(capture.friendAdd).toMatchObject({ targetUserId: "00000000-0000-0000-0000-000000000333" });
+  await expect(page.getByRole("heading", { name: "朋友列表", exact: true })).toBeVisible();
+  await expect(page.getByText("代码好友", { exact: true })).toBeVisible();
+});
+
 test("community is a separate clean route", async ({ page }) => {
   await page.goto("/index.html#/home");
   await page.getByRole("link", { name: "社区", exact: true }).click();
@@ -582,95 +666,3 @@ test("community is a separate clean route", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "社区", exact: true })).toBeVisible();
   await expect(page.getByText("COMING SOON", { exact: true })).toBeVisible();
 });
-
-test("two real users complete the MVP loop and create exactly one rematch room", async ({ request }) => {
-  test.skip(process.env.E2E_RUN_MUTATING !== "1", "Set E2E_RUN_MUTATING=1 against an isolated test deployment");
-  const suffix = `${Date.now()}${Math.floor(Math.random() * 1000)}`;
-  const password = `Phase1-${suffix}!`;
-  const config = await json(request, "GET", "/api/config");
-
-  async function createPlayer(label: string) {
-    const username = `p1${label}${suffix}`.slice(0, 24);
-    const account = await json(request, "POST", "/api/auth/register", { username, password });
-    const auth = await request.post(`${config.supabaseUrl}/auth/v1/token?grant_type=password`, {
-      headers: { apikey: config.supabaseAnonKey, "Content-Type": "application/json" },
-      data: { email: account.email, password },
-    });
-    expect(auth.ok()).toBeTruthy();
-    const token = (await auth.json()).access_token as string;
-    const profile = await json(request, "POST", "/api/register", {
-      nickname: `测试${label}`, genres: ["沙盒"], device: "PC", voice: true,
-    }, token);
-    return { token, id: profile.user.id };
-  }
-
-  const [a, b] = await Promise.all([createPlayer("A"), createPlayer("B")]);
-  const need = {
-    game: "minecraft", mode: "生存联机", goal: "E2E闭环", current: 1, target: 2,
-    time: "现在开始", duration: "30", voice: true, playerType: "轻松", details: {},
-  };
-  await Promise.all([
-    json(request, "POST", "/api/need", { need }, a.token),
-    json(request, "POST", "/api/need", { need }, b.token),
-  ]);
-  await json(request, "POST", "/api/apply", { toUserId: b.id }, a.token);
-  const accepted = await json(request, "POST", "/api/apply", { toUserId: a.id }, b.token);
-  expect(accepted.room.sessionStatus).toBe("ready");
-  const code = accepted.room.code as string;
-
-  const started = await json(request, "POST", `/api/room/${code}/start`, {}, a.token);
-  expect(started.room.sessionStatus).toBe("playing");
-  const [finishedA, finishedB] = await Promise.all([
-    json(request, "POST", `/api/room/${code}/finish`, {}, a.token),
-    json(request, "POST", `/api/room/${code}/finish`, {}, b.token),
-  ]);
-  expect(finishedA.session.status).toBe("completed");
-  expect(finishedB.session.status).toBe("completed");
-
-  const [stateA, stateB] = await Promise.all([
-    json(request, "GET", "/api/state", undefined, a.token),
-    json(request, "GET", "/api/state", undefined, b.token),
-  ]);
-  expect(stateA.recentConnections.some((c: { player: { id: string } }) => c.player.id === b.id)).toBeTruthy();
-  expect(stateB.recentConnections.some((c: { player: { id: string } }) => c.player.id === a.id)).toBeTruthy();
-  expect(stateA.recentConnections.filter((c: { player: { id: string } }) => c.player.id === b.id)).toHaveLength(1);
-
-  const directProfiles = await request.get(`${config.supabaseUrl}/rest/v1/profiles?select=id,friend_code,game_accounts`, {
-    headers: { apikey: config.supabaseAnonKey, Authorization: `Bearer ${a.token}` },
-  });
-  expect(directProfiles.ok()).toBeTruthy();
-  const visibleProfiles = await directProfiles.json();
-  expect(visibleProfiles).toHaveLength(1);
-  expect(visibleProfiles[0].id).toBe(a.id);
-
-  const directEvents = await request.get(`${config.supabaseUrl}/rest/v1/product_events?select=id`, {
-    headers: { apikey: config.supabaseAnonKey, Authorization: `Bearer ${a.token}` },
-  });
-  expect(directEvents.ok()).toBeTruthy();
-  expect(await directEvents.json()).toEqual([]);
-
-  const first = await json(request, "POST", `/api/room/${code}/rematch`, { choice: "yes" }, a.token);
-  expect(first.resolution).toBe("waiting");
-  const second = await json(request, "POST", `/api/room/${code}/rematch`, { choice: "yes" }, b.token);
-  expect(second.resolution).toBe("accepted");
-  expect(second.room.code).not.toBe(code);
-  const repeated = await json(request, "POST", `/api/room/${code}/rematch`, { choice: "yes" }, b.token);
-  expect(repeated.room.id).toBe(second.room.id);
-});
-
-async function json(
-  request: APIRequestContext,
-  method: "GET" | "POST",
-  path: string,
-  data?: unknown,
-  token?: string
-) {
-  const response = await request.fetch(path, {
-    method,
-    data,
-    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-  });
-  const body = await response.json();
-  expect(response.ok(), `${method} ${path}: ${JSON.stringify(body)}`).toBeTruthy();
-  return body;
-}

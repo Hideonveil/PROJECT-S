@@ -12,10 +12,18 @@ export async function POST(request: Request, { params }: { params: Promise<{ cod
     const admin = supabaseAdmin();
     const session = await sessionForRoomCode(code);
     if (!(session.players || []).includes(me.id)) throw new Error("SESSION_FORBIDDEN");
-    if (!["completed", "active"].includes(session.status)) throw new Error("SESSION_NOT_COMPLETED");
+    if (session.status !== "completed") throw new Error("SESSION_NOT_COMPLETED");
 
     const rating = ["happy", "meh", "bad"].includes(String(body.rating || "")) ? String(body.rating) : null;
     const wantAgain = typeof body.wantAgain === "boolean" ? body.wantAgain : null;
+    const liked = typeof body.liked === "boolean" ? body.liked : null;
+    const { data: existingResponse } = await admin
+      .from("session_responses")
+      .select("liked")
+      .eq("session_id", session.id)
+      .eq("user_id", me.id)
+      .maybeSingle();
+    const effectiveLiked = liked ?? existingResponse?.liked ?? false;
     const patch: Record<string, unknown> = {
       session_id: session.id,
       user_id: me.id,
@@ -23,6 +31,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ cod
     };
     if (rating) patch.rating = rating;
     if (wantAgain !== null) patch.want_again = wantAgain;
+    if (liked !== null) patch.liked = liked;
     if (Object.keys(patch).length) {
       const { error } = await admin.from("session_responses").upsert(patch, {
         onConflict: "session_id,user_id",
@@ -42,7 +51,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ cod
         p_did_play: true,
         p_rating: rating,
         p_want_again: wantAgain,
-        p_tags: [],
+        p_tags: effectiveLiked ? ["liked"] : [],
         p_note: "",
       });
       if (matchFeedbackError) throw matchFeedbackError;

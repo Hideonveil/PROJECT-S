@@ -16,7 +16,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ cod
     const { data: completed, error: rpcError } = await admin.rpc("phase1_complete_session", {
       p_session_id: current.id,
       p_actor_id: me.id,
-      p_reason: "explicit_finish",
+      p_reason: "normal_goodbye",
       p_request_id: idempotencyKey(request),
     });
     if (rpcError) throw rpcError;

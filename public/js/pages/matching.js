@@ -44,7 +44,7 @@ export function matchingPage(state) {
           <span class="matching-signal-ring matching-signal-ring--three"></span>
           <span class="matching-player-card matching-player-card--left">01</span>
           <span class="matching-player-card matching-player-card--center">${icon("gamepad2", 38)}</span>
-          <span class="matching-player-card matching-player-card--right">${awaiting ? esc((candidate.nickname || "玩家").slice(0, 1)) : "?"}</span>
+          <span class="matching-player-card matching-player-card--right" id="matching-candidate-mark">${awaiting ? esc((candidate.nickname || "玩家").slice(0, 1)) : "?"}</span>
         </div>
         <div class="matching-modal-copy">
           <div class="match-eyebrow">FINDING YOUR PEOPLE / 01</div>
@@ -52,10 +52,10 @@ export function matchingPage(state) {
           <p id="match-desc">${awaiting ? confirmationCopy : "先检查官方硬规则，再比较位置与麦克风偏好。"}</p>
         </div>
         <div class="matching-query" aria-label="本次匹配条件">${queryPills(state.need)}</div>
-        ${awaiting ? `<div class="matching-ready-state" aria-live="polite">
-          <span class="${mine === "accepted" ? "is-ready" : ""}">${mine === "accepted" ? icon("check", 15) : icon("clock", 15)}你：${mine === "accepted" ? "已确定" : "待确定"}</span>
-          <span class="${theirs === "accepted" ? "is-ready" : ""}">${theirs === "accepted" ? icon("check", 15) : icon("clock", 15)}对方：${theirs === "accepted" ? "已确定" : "待确定"}</span>
-        </div>` : ""}
+        <div class="matching-ready-state" id="matching-ready-state" aria-live="polite" ${awaiting ? "" : "hidden"}>
+          <span id="matching-ready-me" class="${mine === "accepted" ? "is-ready" : ""}">${mine === "accepted" ? icon("check", 15) : icon("clock", 15)}你：${mine === "accepted" ? "已确定" : "待确定"}</span>
+          <span id="matching-ready-them" class="${theirs === "accepted" ? "is-ready" : ""}">${theirs === "accepted" ? icon("check", 15) : icon("clock", 15)}对方：${theirs === "accepted" ? "已确定" : "待确定"}</span>
+        </div>
       </div>
 
       <div class="matching-modal-progress">
@@ -72,8 +72,8 @@ export function matchingPage(state) {
       </div>
 
       <footer class="matching-modal-footer">
-        <p><i></i>${awaiting ? "候选已暂时锁定，确认超时会自动回到匹配池。" : "匹配期间保持在线，我们会持续更新状态。"}</p>
-        <div class="matching-confirm-actions">
+        <p id="matching-footer-status"><i></i>${awaiting ? "候选已暂时锁定，确认超时会自动回到匹配池。" : "匹配期间保持在线，我们会持续更新状态。"}</p>
+        <div class="matching-confirm-actions" id="matching-confirm-actions">
           ${awaiting && mine !== "accepted" ? `<button type="button" data-action="reject-match"><span>不是这位</span>${icon("x", 16)}</button><button type="button" data-action="confirm-match"><span>确定是 TA</span>${icon("check", 16)}</button>` : ""}
           <button type="button" data-action="cancel-match"><span>退出匹配</span>${icon("x", 16)}</button>
         </div>

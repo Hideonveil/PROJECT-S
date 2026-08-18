@@ -1,16 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireRequestProfile } from "@/lib/auth";
-import {
-  activeRequest,
-  activeRoomFor,
-  activeSessionFor,
-  enrichedApplications,
-  friendsFor,
-  poolCounts,
-  profileWithGames,
-  publicNeeds,
-  recentConnectionsFor,
-} from "@/lib/api";
+import { activeRoomFor, activeSessionFor, friendsFor, poolCounts, profileWithGames, recentConnectionsFor } from "@/lib/api";
 import { supabaseAdmin } from "@/lib/supabase";
 import { errorResponse, requestId } from "@/lib/http";
 import { mapSession } from "@/lib/session";
@@ -28,21 +18,11 @@ export async function GET(request: Request) {
       await admin.from("profiles").update({ online: true, last_seen: nowIso }).eq("id", profile.id);
     }
 
-    const { data: pendingApps } = await admin
-      .from("applications")
-      .select("*")
-      .eq("to_user_id", profile.id)
-      .eq("status", "pending")
-      .order("created_at", { ascending: false });
-
-    const [counts, needs, friends, applications, room, session, activeReq, recentConnections, matchmaking] = await Promise.all([
+    const [counts, friends, room, session, recentConnections, matchmaking] = await Promise.all([
       poolCounts(),
-      publicNeeds(),
       friendsFor(profile.id),
-      enrichedApplications(pendingApps || []),
       activeRoomFor(profile.id),
       activeSessionFor(profile.id),
-      activeRequest(profile.id),
       recentConnectionsFor(profile.id),
       matchmakingStatus(profile.id),
     ]);
@@ -52,12 +32,9 @@ export async function GET(request: Request) {
       online: counts.online,
       matching: counts.matching,
       playing: counts.playing,
-      needs,
       friends,
-      applications,
       room,
       session: mapSession(session),
-      matchRequestId: activeReq?.id || null,
       recentConnections,
       matchmaking,
     });

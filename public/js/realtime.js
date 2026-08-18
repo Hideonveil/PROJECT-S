@@ -53,30 +53,9 @@ export async function openRealtime(handlers) {
 
   channel
     .on("postgres_changes", { event: "*", schema: "public", table: "profiles" }, schedule)
-    .on("postgres_changes", { event: "*", schema: "public", table: "match_requests" }, schedule)
     .on("postgres_changes", { event: "*", schema: "public", table: "matchmaking_tickets" }, schedule)
     .on("postgres_changes", { event: "*", schema: "public", table: "matchmaking_pairs" }, schedule)
     .on("postgres_changes", { event: "*", schema: "public", table: "matchmaking_confirmations" }, schedule)
-    .on("postgres_changes", { event: "INSERT", schema: "public", table: "applications" }, async (payload) => {
-      try {
-        const data = await getState();
-        handlers.hello?.(data);
-        const app = (data.applications || []).find((a) => a.id === payload.new?.id);
-        if (app) handlers.application?.({ application: app });
-      } catch {
-        // ignore
-      }
-    })
-    .on("postgres_changes", { event: "UPDATE", schema: "public", table: "applications" }, async (payload) => {
-      try {
-        const data = await getState();
-        handlers.hello?.(data);
-        if (payload.new?.status === "declined") handlers.declined?.({ applicationId: payload.new.id });
-        if (payload.new?.status === "accepted" && data.room) handlers.room?.({ room: data.room });
-      } catch {
-        // ignore
-      }
-    })
     .on("postgres_changes", { event: "*", schema: "public", table: "rooms" }, async () => {
       try {
         const data = await getState();
@@ -100,14 +79,6 @@ export async function openRealtime(handlers) {
       try {
         const data = await getState();
         handlers.hello?.(data);
-        const session = data.session;
-        if (!session || !Array.isArray(session.players)) return;
-        const decided = session.players.filter((p) => session.rematchBy?.[p]);
-        if (decided.length === session.players.length) {
-          const allYes = decided.every((p) => session.rematchBy[p] === "yes");
-          if (allYes && data.room) handlers.room?.({ room: data.room });
-          else handlers["rematch-result"]?.({ ok: false, session });
-        }
       } catch {
         // ignore
       }

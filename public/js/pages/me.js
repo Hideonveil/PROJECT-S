@@ -7,16 +7,13 @@ export function mePage(state) {
   const stats = state.stats || { sessions: 0, connected: 0, hours: 0 };
   const friends = state.friends || [];
   const recentConnections = state.recentConnections || [];
-  const localHistory = state.history || [];
-  const history = recentConnections.length
-    ? recentConnections.map((connection) => ({
+  const history = recentConnections.map((connection) => ({
         partnerName: connection.name || "玩家",
         title: `${connection.gameName || "一起玩过"} · ${connection.playCount || 1} 次`,
         time: connection.playedAt
           ? new Date(connection.playedAt).toLocaleDateString("zh-CN", { month: "numeric", day: "numeric" })
           : "最近",
-      }))
-    : localHistory;
+      }));
   const completedSessions = Math.max(
     Number(stats.sessions || 0),
     recentConnections.reduce((total, connection) => total + Math.max(1, Number(connection.playCount || 1)), 0)

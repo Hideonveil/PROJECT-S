@@ -16,8 +16,11 @@ export async function POST(request: Request) {
     const { data: me } = await admin.from("profiles").select("id").eq("auth_user_id", authUser.id).maybeSingle();
     if (!me) return NextResponse.json({ error: "未登录" }, { status: 401 });
 
+    const targetUserId = String(body.targetUserId || "").trim();
     const code = String(body.friendCode || "").trim().toUpperCase();
-    const { data: target } = await admin.from("profiles").select("*").eq("friend_code", code).maybeSingle();
+    let targetQuery = admin.from("profiles").select("*");
+    targetQuery = targetUserId ? targetQuery.eq("id", targetUserId) : targetQuery.eq("friend_code", code);
+    const { data: target } = await targetQuery.maybeSingle();
     if (!target || target.id === me.id) return NextResponse.json({ error: "没有找到这个代码" }, { status: 404 });
 
     await admin.from("friendships").upsert(
