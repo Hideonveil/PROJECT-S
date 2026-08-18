@@ -4,11 +4,25 @@ import { GAMES, HOME_GAME_IDS } from "../data.js";
 
 const GAME_ICONS = { hok: "trophy", valorant: "target", deadlock: "swords", minecraft: "gamepad2" };
 const DEADLOCK_ROLES = ["1号位", "2号位", "3号位", "4号位", "5号位", "6号位"];
+const DEADLOCK_RANKS = [
+  ["新人", "砖石"],
+  ["行者", "岩砾"],
+  ["侍从", "镔铁"],
+  ["近卫", "青铜"],
+  ["秘士", "白银"],
+  ["侍祭", "黄金"],
+  ["蜜使", "铂金"],
+  ["神谕者", "钻石"],
+  ["幽虚影", ""],
+  ["凌世君", ""],
+  ["不朽之星", ""],
+];
 const DEADLOCK_TIMES = ["现在", "30分钟后", "1小时后"];
 
 const DEADLOCK_PATHS = {
   rank: [
     { key: "goal", label: "游戏目的" },
+    { key: "rank", label: "段位" },
     { key: "ownRoles", label: "我的位置" },
     { key: "teammateRoles", label: "队友位置" },
     { key: "voice", label: "是否开麦" },
@@ -59,6 +73,16 @@ function roleOptions(values, selected, action) {
   return `<div class="match-options match-options--roles" role="group">${values.map((value) => option(value, value, selected.includes(value), action, "circleDot", true)).join("")}</div>`;
 }
 
+function rankOptions(selected) {
+  return `<div class="match-options match-options--ranks" role="group" aria-label="当前段位">${DEADLOCK_RANKS.map(([name, material]) => {
+    const value = material ? `${name}（${material}）` : name;
+    const on = selected === value;
+    return `<button type="button" class="cursor-target home-filter-tag match-option match-rank-option ${on ? "is-on" : ""}" data-action="home-rank" data-value="${esc(value)}" aria-pressed="${on}">
+      <span class="match-rank-name">${esc(name)}</span>${material ? `<small>${esc(material)}</small>` : ""}<span class="match-option-check">${icon("check", 12)}</span>
+    </button>`;
+  }).join("")}</div>`;
+}
+
 function wizardContent(filter, stepKey) {
   if (stepKey === "goal") {
     return `<div class="match-options match-options--goal" role="group" aria-label="游戏目的">
@@ -66,6 +90,7 @@ function wizardContent(filter, stepKey) {
       ${option("casual", "娱乐", filter.goal === "casual", "home-goal", "dices")}
     </div>`;
   }
+  if (stepKey === "rank") return rankOptions(filter.rank);
   if (stepKey === "ownRoles") return roleOptions(DEADLOCK_ROLES, filter.ownRoles, "home-own-role");
   if (stepKey === "teammateRoles") return roleOptions(DEADLOCK_ROLES, filter.teammateRoles, "home-teammate-role");
   if (stepKey === "voice") {
@@ -86,6 +111,7 @@ function wizardContent(filter, stepKey) {
 function wizardCopy(stepKey, goal) {
   const copy = {
     goal: ["先决定这局为了什么。", "选择上分会进入位置配置；选择娱乐则直接寻找轻松开黑的玩家。"],
+    rank: ["你现在是什么段位？", "选择当前段位，后续用于寻找进度更接近的队友。"],
     ownRoles: ["你通常玩哪个位置？", "可多选。让队友先知道你能承担哪些位置。"],
     teammateRoles: ["希望队友补哪个位置？", "可多选。这里只记录你的队伍偏好。"],
     voice: ["这局要不要开麦？", goal === "rank" ? "上分默认开麦，你仍然可以改成不开麦。" : "娱乐局默认开麦，不做额外要求。"],

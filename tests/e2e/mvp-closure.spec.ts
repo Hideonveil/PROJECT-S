@@ -196,10 +196,16 @@ test("Deadlock rank and casual paths expose different step systems", async ({ pa
   await page.getByRole("button", { name: "上分", exact: true }).click();
   await expect(stage).toHaveAttribute("data-test-persisted", "yes");
   const stepper = page.locator("[data-home-stepper]");
-  await expect(stepper).toHaveAttribute("aria-label", "Deadlock 配置进度：第 1 步，共 5 步");
+  await expect(stepper).toHaveAttribute("aria-label", "Deadlock 配置进度：第 1 步，共 6 步");
   await stepper.evaluate((element) => element.setAttribute("data-test-persisted", "yes"));
   await page.getByRole("button", { name: "下一步", exact: true }).click();
   await expect(stepper).toHaveAttribute("data-test-persisted", "yes");
+  await expect(page.getByRole("button", { name: /新人/ })).toBeVisible();
+  await page.getByRole("button", { name: "下一步", exact: true }).click();
+  await expect(page.getByText("请选择当前段位", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: /近卫/ }).click();
+  await expect(page.getByRole("button", { name: /近卫/ })).toHaveAttribute("aria-pressed", "true");
+  await page.getByRole("button", { name: "下一步", exact: true }).click();
   await expect(page.getByRole("button", { name: /1号位/ })).toBeVisible();
   await page.getByRole("button", { name: /1号位/ }).click();
   await page.getByRole("button", { name: /2号位/ }).click();

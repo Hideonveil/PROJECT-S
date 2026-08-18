@@ -537,12 +537,17 @@ body:has(.product-shell) {
 .match-wizard-options { min-width: 0; padding: 46px 0 46px 42px; display: flex; align-items: center; }
 .match-wizard-options > * { width: 100%; }
 .match-options--goal, .match-options--voice { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.match-options--ranks { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .match-options--roles { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .match-options--team { grid-template-columns: repeat(5, minmax(0, 1fr)); }
 .match-options--roles .match-option, .match-options--team .match-option { min-height: 92px; }
 .match-option > small { color: rgba(18, 17, 24, 0.42); font-size: 9px; }
 .match-options--roles .match-option > small { margin-top: 2px; padding: 4px 8px; align-self: flex-start; border: 1px dashed rgba(118, 89, 223, .58); border-radius: 999px; background: rgba(118, 89, 223, .08); color: var(--product-violet); font-family: var(--font-mono); font-size: 10px; font-weight: 850; letter-spacing: .06em; }
 .match-options--roles .match-option.is-on > small { border-style: solid; background: var(--product-violet); color: #fff; }
+.match-rank-option { min-height: 68px; align-content: center; }
+.match-rank-option .match-rank-name { font-weight: 760; }
+.match-rank-option > small { margin-top: 3px; font-family: var(--font-mono); font-size: 9px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+.match-rank-option.is-on > small { color: var(--product-violet); }
 .match-choice-stack { display: flex; flex-direction: column; gap: 18px; }
 
 .match-rank-note {
@@ -1413,6 +1418,7 @@ body:has(.product-shell) {
   .match-wizard-marker em { display: none; }
   .match-wizard-actions { grid-column: 1; }
   .match-options--roles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .match-options--ranks { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .match-options--team { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .match-wizard-actions .match-start-dock { width: 58%; }
   .matching-modal-page { bottom: calc(var(--product-ticker) + 70px); padding: 12px; }

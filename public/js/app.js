@@ -59,6 +59,7 @@ const DRAFT = {
 const HOME_FILTER = {
   game: "",
   goal: "",
+  rank: "",
   step: 0,
   direction: 1,
   ownRoles: [],
@@ -688,7 +689,7 @@ function prepareNeedDraft() {
 function homeWizardPath() {
   return HOME_FILTER.goal === "casual"
     ? ["goal", "voice", "team", "time"]
-    : ["goal", "ownRoles", "teammateRoles", "voice", "time"];
+    : ["goal", "rank", "ownRoles", "teammateRoles", "voice", "time"];
 }
 
 function homeWizardStepKey() {
@@ -750,6 +751,7 @@ function syncHomeFilterToDraft() {
   DRAFT.game = "deadlock";
   DRAFT.mode = HOME_FILTER.goal === "casual" ? "娱乐" : "排位 / 上分";
   DRAFT.goal = HOME_FILTER.goal === "casual" ? "娱乐" : "上分";
+  DRAFT.rank = HOME_FILTER.rank;
   DRAFT.time = HOME_FILTER.time || "现在";
   DRAFT.current = 1;
   DRAFT.needed = HOME_FILTER.goal === "casual" ? Math.min(5, Math.max(1, Number(HOME_FILTER.team) || 1)) : 1;
@@ -2321,6 +2323,7 @@ document.addEventListener("click", (event) => {
   if (action === "home-game") {
     HOME_FILTER.game = value;
     HOME_FILTER.goal = "";
+    HOME_FILTER.rank = "";
     HOME_FILTER.step = 0;
     HOME_FILTER.direction = 1;
     HOME_FILTER.ownRoles = [];
@@ -2342,7 +2345,9 @@ document.addEventListener("click", (event) => {
   }
 
   if (action === "home-goal") {
-    HOME_FILTER.goal = value === "casual" ? "casual" : "rank";
+    const nextGoal = value === "casual" ? "casual" : "rank";
+    if (HOME_FILTER.goal !== nextGoal) HOME_FILTER.rank = "";
+    HOME_FILTER.goal = nextGoal;
     HOME_FILTER.step = 0;
     HOME_FILTER.direction = 1;
     selectHomeChoice(actionEl);
@@ -2359,7 +2364,8 @@ document.addEventListener("click", (event) => {
     return;
   }
 
-  if (action === "home-voice" || action === "home-team" || action === "home-time") {
+  if (action === "home-rank" || action === "home-voice" || action === "home-team" || action === "home-time") {
+    if (action === "home-rank") HOME_FILTER.rank = value;
     if (action === "home-voice") HOME_FILTER.voice = value === "off" ? "off" : "on";
     if (action === "home-team") HOME_FILTER.team = value;
     if (action === "home-time") HOME_FILTER.time = value;
@@ -2371,6 +2377,7 @@ document.addEventListener("click", (event) => {
     const stepKey = homeWizardStepKey();
     const error =
       stepKey === "goal" && !HOME_FILTER.goal ? "请选择游戏目的" :
+      stepKey === "rank" && !HOME_FILTER.rank ? "请选择当前段位" :
       stepKey === "ownRoles" && !HOME_FILTER.ownRoles.length ? "请至少选择一个自己能玩的位置" :
       stepKey === "teammateRoles" && !HOME_FILTER.teammateRoles.length ? "请至少选择一个希望队友玩的位置" : "";
     if (error) {
