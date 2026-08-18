@@ -27,6 +27,15 @@ describe("mutual goodbye and friend request migration", () => {
     expect(sql).toContain("FRIEND_DECISION_INVALID");
   });
 
+  it("lets both friendship participants receive request changes without granting browser writes", () => {
+    expect(sql).toContain('create policy "friendships_select_participant"');
+    expect(sql).toContain("user_id = public.current_profile_id()");
+    expect(sql).toContain("friend_id = public.current_profile_id()");
+    expect(sql).toContain('drop policy if exists "friendships_insert_own"');
+    expect(sql).toContain('drop policy if exists "friendships_update_own"');
+    expect(sql).toContain('drop policy if exists "friendships_delete_own"');
+  });
+
   it("starts the room immediately after both candidates confirm", () => {
     expect(sql).toContain("create or replace function public.matchmaking_confirm_pair");
     expect(sql).toContain("values(v_code,v_need,'playing',now())");

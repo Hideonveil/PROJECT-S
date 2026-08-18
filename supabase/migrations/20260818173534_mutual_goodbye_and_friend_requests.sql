@@ -30,6 +30,15 @@ create policy "session_goodbye_requests_read_session_member"
 
 -- Earlier schema versions allowed a signed-in browser to mutate its own
 -- directed friendship row. Requests now go through the transaction RPCs.
+drop policy if exists "friendships_select_own" on public.friendships;
+create policy "friendships_select_participant"
+  on public.friendships
+  for select to authenticated
+  using (
+    user_id = public.current_profile_id()
+    or friend_id = public.current_profile_id()
+  );
+
 drop policy if exists "friendships_insert_own" on public.friendships;
 drop policy if exists "friendships_update_own" on public.friendships;
 drop policy if exists "friendships_delete_own" on public.friendships;
