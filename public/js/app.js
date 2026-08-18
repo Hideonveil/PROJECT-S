@@ -90,115 +90,172 @@ function clearTimers() {
 
 function initProductTicker() {
   const root = document.querySelector("[data-product-ticker]");
-  const path = root?.querySelector("[data-ticker-path]");
+  const track = root?.querySelector("[data-ticker-track]");
   const head = root?.querySelector("[data-ticker-head]");
   const tail = root?.querySelector("[data-ticker-tail]");
-  if (!root || !path || !head || !tail) return;
+  if (!root || !track || !head || !tail) return;
 
-  const svg = root.querySelector("svg");
-  const width = Math.max(root.clientWidth, 960);
-  svg?.setAttribute("viewBox", `0 0 ${width} 42`);
-
-  // Keep two natural-width copies on one long curved path. The second starts
-  // exactly where the first ends, so there is never a blank reset frame.
-  const span = Math.max(head.getComputedTextLength(), width + 320);
-  const pathLength = span * 2 + width;
-  const segments = Math.ceil(pathLength / 280);
-  let d = "M 0 22";
-  for (let index = 1; index <= segments; index += 1) {
-    const end = Math.min(index * 280, pathLength);
-    const start = (index - 1) * 280;
-    const midpoint = start + (end - start) / 2;
-    const bend = index % 2 ? 14 : 30;
-    d += ` Q ${midpoint} ${bend} ${end} 22`;
-  }
-  path.setAttribute("d", d);
-
-  const apply = (offset) => {
-    head.setAttribute("startOffset", String(offset));
-    tail.setAttribute("startOffset", String(offset + span));
+  let span = head.getBoundingClientRect().width;
+  let offset = 0;
+  const measure = () => {
+    span = head.getBoundingClientRect().width;
+    offset = span ? offset % span : 0;
   };
-  apply(0);
+  measure();
 
   if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-  const startedAt = performance.now();
   const speed = 74;
   let frame = 0;
+  let previous = performance.now();
   const tick = (now) => {
-    const offset = -(((now - startedAt) / 1000) * speed % span);
-    apply(offset);
+    if (span) {
+      offset = (offset + ((now - previous) / 1000) * speed) % span;
+      track.style.transform = `translate3d(${-offset}px, 0, 0)`;
+    }
+    previous = now;
     frame = window.requestAnimationFrame(tick);
   };
+  const observer = new ResizeObserver(measure);
+  observer.observe(root);
   frame = window.requestAnimationFrame(tick);
-  productTickerCleanup = () => window.cancelAnimationFrame(frame);
+  productTickerCleanup = () => {
+    window.cancelAnimationFrame(frame);
+    observer.disconnect();
+  };
 }
 
 function initTargetCursor() {
   const workspace = document.querySelector(".match-workspace");
-  if (!workspace || !window.matchMedia("(pointer: fine)").matches) return;
+  const gsap = window.gsap;
+  const hasTouch = "ontouchstart" in window || navigator.maxTouchPoints > 0;
+  const mobileUa = /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini/i.test(navigator.userAgent.toLowerCase());
+  const isMobile = (hasTouch && window.innerWidth <= 768) || mobileUa;
+  if (!workspace || !gsap || isMobile || !window.matchMedia("(pointer: fine)").matches) return;
 
   const cursor = document.createElement("div");
-  cursor.className = "target-cursor";
+  cursor.className = "target-cursor target-cursor-wrapper";
   cursor.setAttribute("aria-hidden", "true");
   cursor.innerHTML = `<i class="target-cursor-dot"></i><i class="target-cursor-corner is-tl"></i><i class="target-cursor-corner is-tr"></i><i class="target-cursor-corner is-br"></i><i class="target-cursor-corner is-bl"></i>`;
   document.body.appendChild(cursor);
+  const dot = cursor.querySelector(".target-cursor-dot");
   const corners = [...cursor.querySelectorAll(".target-cursor-corner")];
-  const home = [[-18, -18], [6, -18], [6, 6], [-18, 6]];
-  let lastX = 0;
-  let lastY = 0;
-  let target = null;
+  const home = [
+    { x: -18, y: -18 },
+    { x: 6, y: -18 },
+    { x: 6, y: 6 },
+    { x: -18, y: 6 },
+  ];
+  let activeTarget = null;
+  let resumeTimer = 0;
+  let spinTween = null;
+  let pointerX = window.innerWidth / 2;
+  let pointerY = window.innerHeight / 2;
 
-  const placeCorners = () => {
-    const rect = target?.getBoundingClientRect();
-    corners.forEach((corner, index) => {
-      let [x, y] = home[index];
-      if (rect) {
-        const positions = [
-          [rect.left - lastX - 3, rect.top - lastY - 3],
-          [rect.right - lastX - 9, rect.top - lastY - 3],
-          [rect.right - lastX - 9, rect.bottom - lastY - 9],
-          [rect.left - lastX - 3, rect.bottom - lastY - 9],
-        ];
-        [x, y] = positions[index];
-      }
-      corner.style.transform = `translate3d(${x}px, ${y}px, 0)`;
-    });
+  gsap.set(cursor, { xPercent: -50, yPercent: -50, x: pointerX, y: pointerY });
+  corners.forEach((corner, index) => gsap.set(corner, home[index]));
+
+  const startSpin = () => {
+    spinTween?.kill();
+    spinTween = gsap.to(cursor, { rotation: "+=360", duration: 5, repeat: -1, ease: "none" });
+  };
+  startSpin();
+
+  const targetPositions = (target) => {
+    const rect = target.getBoundingClientRect();
+    const cursorX = Number(gsap.getProperty(cursor, "x")) || pointerX;
+    const cursorY = Number(gsap.getProperty(cursor, "y")) || pointerY;
+    return [
+      { x: rect.left - 3 - cursorX, y: rect.top - 3 - cursorY },
+      { x: rect.right + 3 - 12 - cursorX, y: rect.top - 3 - cursorY },
+      { x: rect.right + 3 - 12 - cursorX, y: rect.bottom + 3 - 12 - cursorY },
+      { x: rect.left - 3 - cursorX, y: rect.bottom + 3 - 12 - cursorY },
+    ];
+  };
+
+  const trackTarget = () => {
+    if (!activeTarget) return;
+    const positions = targetPositions(activeTarget);
+    corners.forEach((corner, index) =>
+      gsap.to(corner, { ...positions[index], duration: 0.2, ease: "power1.out", overwrite: "auto" }),
+    );
+  };
+
+  const releaseTarget = () => {
+    if (!activeTarget) return;
+    gsap.ticker.remove(trackTarget);
+    activeTarget = null;
+    cursor.classList.remove("is-locked");
+    gsap.killTweensOf(corners);
+    corners.forEach((corner, index) => gsap.to(corner, { ...home[index], duration: 0.3, ease: "power3.out" }));
+    window.clearTimeout(resumeTimer);
+    resumeTimer = window.setTimeout(startSpin, 50);
+  };
+
+  const lockTarget = (target) => {
+    if (target === activeTarget) return;
+    releaseTarget();
+    activeTarget = target;
+    gsap.ticker.add(trackTarget);
+    window.clearTimeout(resumeTimer);
+    spinTween?.kill();
+    gsap.killTweensOf(cursor, "rotation");
+    gsap.set(cursor, { rotation: 0 });
+    cursor.classList.add("is-locked");
+    const positions = targetPositions(target);
+    corners.forEach((corner, index) => gsap.to(corner, { ...positions[index], duration: 0.25, ease: "power2.out", overwrite: "auto" }));
   };
 
   const move = (event) => {
-    lastX = event.clientX;
-    lastY = event.clientY;
+    pointerX = event.clientX;
+    pointerY = event.clientY;
     const overStart = event.target.closest?.(".match-start");
     if (overStart) {
+      releaseTarget();
       workspace.classList.remove("is-target-cursor-active");
-      cursor.classList.remove("is-visible", "is-locked");
-      target = null;
+      cursor.classList.remove("is-visible");
+      gsap.to(cursor, { opacity: 0, duration: 0.12, overwrite: "auto" });
       return;
     }
+
     workspace.classList.add("is-target-cursor-active");
     cursor.classList.add("is-visible");
-    cursor.style.left = `${lastX}px`;
-    cursor.style.top = `${lastY}px`;
+    gsap.to(cursor, { x: pointerX, y: pointerY, opacity: 1, duration: 0.1, ease: "power3.out", overwrite: "auto" });
     const nextTarget = event.target.closest?.(".cursor-target") || null;
-    if (nextTarget !== target) target = nextTarget;
-    cursor.classList.toggle("is-locked", Boolean(target));
-    placeCorners();
+    if (nextTarget) lockTarget(nextTarget);
+    else releaseTarget();
+
   };
+
   const leave = () => {
-    target = null;
+    releaseTarget();
     workspace.classList.remove("is-target-cursor-active");
-    cursor.classList.remove("is-visible", "is-locked", "is-down");
-    placeCorners();
+    cursor.classList.remove("is-visible", "is-down");
+    gsap.to(cursor, { opacity: 0, duration: 0.12, overwrite: "auto" });
   };
-  const down = () => cursor.classList.add("is-down");
-  const up = () => cursor.classList.remove("is-down");
-  const scroll = () => target && placeCorners();
+  const down = () => {
+    cursor.classList.add("is-down");
+    gsap.to(dot, { scale: 0.7, duration: 0.3 });
+    gsap.to(cursor, { scale: 0.9, duration: 0.2 });
+  };
+  const up = () => {
+    cursor.classList.remove("is-down");
+    gsap.to(dot, { scale: 1, duration: 0.3 });
+    gsap.to(cursor, { scale: 1, duration: 0.2 });
+  };
+  const scroll = () => {
+    if (!activeTarget) return;
+    const element = document.elementFromPoint(pointerX, pointerY);
+    if (!element || (element !== activeTarget && element.closest?.(".cursor-target") !== activeTarget)) releaseTarget();
+    else {
+      const positions = targetPositions(activeTarget);
+      corners.forEach((corner, index) => gsap.to(corner, { ...positions[index], duration: 0.2, ease: "power1.out", overwrite: "auto" }));
+    }
+  };
   workspace.addEventListener("pointermove", move);
   workspace.addEventListener("pointerleave", leave);
   workspace.addEventListener("pointerdown", down);
   window.addEventListener("pointerup", up);
   window.addEventListener("scroll", scroll, { passive: true });
-  placeCorners();
 
   targetCursorCleanup = () => {
     workspace.removeEventListener("pointermove", move);
@@ -206,6 +263,12 @@ function initTargetCursor() {
     workspace.removeEventListener("pointerdown", down);
     window.removeEventListener("pointerup", up);
     window.removeEventListener("scroll", scroll);
+    window.clearTimeout(resumeTimer);
+    gsap.ticker.remove(trackTarget);
+    spinTween?.kill();
+    gsap.killTweensOf(cursor);
+    gsap.killTweensOf(corners);
+    gsap.killTweensOf(dot);
     workspace.classList.remove("is-target-cursor-active");
     cursor.remove();
   };

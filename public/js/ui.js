@@ -144,7 +144,7 @@ export function homeShell(state, content, active = "home") {
     { id: "community", label: "社区", href: "#/community", icon: "users" },
     { id: "me", label: "我的", href: "#/me", icon: "user" },
   ];
-  const warningText = "总有人想一起玩　/　NEVER PLAY ALONE　/　".repeat(10);
+  const warningText = "总有人想一起玩　/　NEVER PLAY ALONE　/　".repeat(8);
   const account = state.authenticated
     ? `<button class="product-account product-account--signed" type="button" data-action="go-me">${avatarWrap(state.user.avatarKey, 34, state.user.online)}<span>${esc(state.user.nickname)}</span></button>`
     : `<div class="product-account"><span class="product-account-icon">${icon("user", 18)}</span><div><b>未登录</b><span><button type="button" data-action="open-auth-login">登录</button> / <button type="button" data-action="open-auth-register">注册</button></span></div></div>`;
@@ -167,11 +167,10 @@ export function homeShell(state, content, active = "home") {
       <main class="home-main">${content}</main>
     </div>
     <div class="product-ticker" data-product-ticker aria-label="总有人想一起玩">
-      <svg class="product-ticker-svg" viewBox="0 0 1200 42" aria-hidden="true">
-        <path id="product-ticker-path" data-ticker-path d="M 0 22 Q 150 14 300 22 T 600 22 T 900 22 T 1200 22 T 2400 22 T 4800 22" fill="none" />
-        <text class="product-ticker-text" dominant-baseline="middle"><textPath data-ticker-head href="#product-ticker-path">${warningText}</textPath></text>
-        <text class="product-ticker-text" dominant-baseline="middle"><textPath data-ticker-tail href="#product-ticker-path">${warningText}</textPath></text>
-      </svg>
+      <div class="product-ticker-track" data-ticker-track aria-hidden="true">
+        <span class="product-ticker-text" data-ticker-head>${warningText}</span>
+        <span class="product-ticker-text" data-ticker-tail>${warningText}</span>
+      </div>
     </div>
     <section class="pc-only-gate" role="dialog" aria-modal="true" aria-labelledby="pc-only-title">
       <div class="pc-only-card"><div class="pc-only-mark">${brandMark(58)}</div><div class="match-eyebrow">PC EXPERIENCE / PROJECT-S</div><h1 id="pc-only-title">请使用电脑打开</h1><p>PROJECT-S 当前只开放 PC 版。用电脑浏览器进入，才能完整使用摇人、匹配与 Session 房间。</p><div class="pc-only-device">${icon("monitor", 30)}<span><b>推荐设备</b><small>Windows / macOS · Chrome / Edge</small></span></div></div>

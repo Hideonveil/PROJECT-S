@@ -464,33 +464,26 @@ body:has(.product-shell) {
 .match-workspace.is-target-cursor-active .cursor-target { cursor: none; }
 .match-workspace .match-start { cursor: pointer; }
 
-.target-cursor {
+.target-cursor-wrapper {
   position: fixed;
-  z-index: 999;
+  z-index: 9999;
   left: 0;
   top: 0;
   width: 0;
   height: 0;
   pointer-events: none;
   opacity: 0;
-  translate: -50% -50%;
-  scale: 1;
-  transition: opacity 120ms ease, scale 180ms ease;
-  animation: targetCursorSpin 5s linear infinite;
   mix-blend-mode: difference;
+  will-change: transform, opacity;
 }
 
 .target-cursor.is-visible { opacity: 1; }
-.target-cursor.is-locked { animation-play-state: paused; rotate: 0deg; }
-.target-cursor.is-down { scale: 0.86; }
-.target-cursor-dot { position: absolute; left: -2px; top: -2px; width: 4px; height: 4px; border-radius: 50%; background: #fff; }
-.target-cursor-corner { position: absolute; left: 0; top: 0; width: 12px; height: 12px; border: 3px solid #fff; transition: transform 250ms cubic-bezier(.2,.8,.2,1); }
+.target-cursor-dot { position: absolute; left: 50%; top: 50%; width: 4px; height: 4px; border-radius: 50%; background: #fff; transform: translate(-50%, -50%); will-change: transform; }
+.target-cursor-corner { position: absolute; left: 50%; top: 50%; width: 12px; height: 12px; border: 3px solid #fff; will-change: transform; }
 .target-cursor-corner.is-tl { border-right: 0; border-bottom: 0; }
 .target-cursor-corner.is-tr { border-left: 0; border-bottom: 0; }
 .target-cursor-corner.is-br { border-left: 0; border-top: 0; }
 .target-cursor-corner.is-bl { border-right: 0; border-top: 0; }
-
-@keyframes targetCursorSpin { to { rotate: 360deg; } }
 
 .product-shell .match-option.is-on,
 .product-shell .home-filter-game-row.is-on,
@@ -900,17 +893,23 @@ body:has(.product-shell) {
   color: var(--product-black);
 }
 
-.product-ticker-svg {
-  display: block;
-  width: 100%;
+.product-ticker-track {
+  display: flex;
+  align-items: center;
+  width: max-content;
   height: 100%;
+  will-change: transform;
 }
 
 .product-ticker-text {
-  fill: var(--product-black);
+  display: block;
+  flex: 0 0 auto;
+  white-space: nowrap;
+  color: var(--product-black);
   font-family: var(--font-sans);
   font-size: 15px;
   font-weight: 750;
+  line-height: var(--product-ticker);
   letter-spacing: 0.02em;
   user-select: none;
 }

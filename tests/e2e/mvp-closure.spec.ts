@@ -143,6 +143,24 @@ test("first-time visitors land on the real matching home", async ({ page }) => {
   await expect(page.locator(".match-head p")).toHaveText("总有人想一起玩");
   await expect(page.locator("[data-ticker-head]")).toHaveCount(1);
   await expect(page.locator("[data-ticker-tail]")).toHaveCount(1);
+  const tickerMetrics = await page.evaluate(() => {
+    const head = document.querySelector<HTMLElement>("[data-ticker-head]");
+    const tail = document.querySelector<HTMLElement>("[data-ticker-tail]");
+    const track = document.querySelector<HTMLElement>("[data-ticker-track]");
+    return {
+      head: head?.getBoundingClientRect().width || 0,
+      tail: tail?.getBoundingClientRect().width || 0,
+      track: track?.getBoundingClientRect().width || 0,
+      viewport: window.innerWidth,
+    };
+  });
+  expect(tickerMetrics.head).toBeGreaterThan(tickerMetrics.viewport);
+  expect(Math.abs(tickerMetrics.head - tickerMetrics.tail)).toBeLessThan(1);
+  expect(Math.abs(tickerMetrics.track - tickerMetrics.head * 2)).toBeLessThan(2);
+  const tickerBefore = await page.locator("[data-ticker-track]").getAttribute("style");
+  await page.waitForTimeout(180);
+  const tickerAfter = await page.locator("[data-ticker-track]").getAttribute("style");
+  expect(tickerAfter).not.toBe(tickerBefore);
 });
 
 test("game selection updates modes without runtime errors", async ({ page }) => {
