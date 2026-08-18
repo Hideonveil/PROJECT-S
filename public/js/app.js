@@ -73,6 +73,7 @@ let matchStartObserver = null;
 let productTickerCleanup = null;
 let targetCursorCleanup = null;
 let staggeredRailCleanup = null;
+let staggeredRailHoldOpen = false;
 
 function clearTimers() {
   timers.forEach((t) => {
@@ -306,12 +307,24 @@ function initStaggeredRail() {
   };
 
   const close = () => {
+    staggeredRailHoldOpen = false;
     openTimeline?.kill();
     rail.classList.remove("is-staggered-open");
     closeTween?.kill();
     closeTween = gsap.to(layers, { xPercent: -112, duration: 0.3, ease: "power3.in", stagger: 0.035, overwrite: "auto" });
     gsap.to(labels, { yPercent: 55, opacity: 0, duration: 0.2, ease: "power2.in", stagger: { each: 0.025, from: "end" }, overwrite: "auto" });
     gsap.to(secondary, { y: 8, opacity: 0, duration: 0.18, ease: "power2.in", overwrite: "auto" });
+  };
+
+  const restoreOpen = () => {
+    rail.classList.add("is-staggered-open");
+    gsap.set(layers, { xPercent: 0, opacity: 1 });
+    gsap.set(labels, { yPercent: 0, rotate: 0, opacity: 1 });
+    gsap.set(secondary, { y: 0, opacity: 1 });
+  };
+
+  const holdOpenOnNavigation = (event) => {
+    if (event.target.closest("[data-nav]")) staggeredRailHoldOpen = true;
   };
 
   const focusOut = () => window.setTimeout(() => {
@@ -321,12 +334,15 @@ function initStaggeredRail() {
   rail.addEventListener("pointerleave", close);
   rail.addEventListener("focusin", open);
   rail.addEventListener("focusout", focusOut);
+  rail.addEventListener("click", holdOpenOnNavigation);
+  if (staggeredRailHoldOpen) restoreOpen();
 
   staggeredRailCleanup = () => {
     rail.removeEventListener("pointerenter", open);
     rail.removeEventListener("pointerleave", close);
     rail.removeEventListener("focusin", open);
     rail.removeEventListener("focusout", focusOut);
+    rail.removeEventListener("click", holdOpenOnNavigation);
     openTimeline?.kill();
     closeTween?.kill();
     gsap.killTweensOf([...layers, ...labels, ...secondary]);
@@ -2224,13 +2240,14 @@ document.addEventListener("click", (event) => {
       render();
     },
     "toggle-password": () => {
-      const input = document.querySelector("#auth-password");
-      const toggle = document.querySelector("[data-action='toggle-password']");
+      const toggle = actionEl;
+      const input = document.getElementById(toggle.dataset.target || "auth-password");
       if (!input || !toggle) return;
       const show = input.type === "password";
       input.type = show ? "text" : "password";
       toggle.classList.toggle("is-show", show);
       toggle.setAttribute("aria-label", show ? "隐藏密码" : "显示密码");
+      toggle.setAttribute("aria-pressed", String(show));
     },
     "auth-submit": () => submitAuth(),
     "onboard-next": () => moveOnboardStep(1),

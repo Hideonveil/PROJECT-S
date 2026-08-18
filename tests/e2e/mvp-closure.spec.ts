@@ -183,7 +183,11 @@ test("navigation keeps icon-only rest state and staggers open on hover", async (
   await expect(rail).toHaveClass(/is-staggered-open/);
   await expect.poll(() => rail.evaluate((el) => el.getBoundingClientRect().width)).toBeGreaterThan(150);
   await expect(page.locator(".product-nav-link > span").first()).toHaveCSS("opacity", "1");
-  await page.locator(".match-head").hover();
+  await rail.getByRole("link", { name: "社区", exact: true }).click();
+  await expect(page).toHaveURL(/#\/community$/);
+  await expect(rail).toHaveClass(/is-staggered-open/);
+  await expect.poll(() => rail.evaluate((el) => el.getBoundingClientRect().width)).toBeGreaterThan(150);
+  await page.locator(".community-workspace").hover();
   await expect(rail).not.toHaveClass(/is-staggered-open/);
   await expect.poll(() => rail.evaluate((el) => el.getBoundingClientRect().width)).toBeLessThan(100);
 });
@@ -206,7 +210,15 @@ test("registration continues to player identity and stores the real profile payl
   await expect(page.locator("[data-registration-stepper]")).toHaveCount(0);
   await page.locator("#auth-username").fill("testplayer");
   await page.locator("#auth-password").fill("Phase1-test!");
+  const passwordEye = page.locator('[data-action="toggle-password"][data-target="auth-password"]');
+  await passwordEye.click();
+  await expect(page.locator("#auth-password")).toHaveAttribute("type", "text");
+  await expect(passwordEye).toHaveAttribute("aria-label", "隐藏密码");
+  await passwordEye.click();
+  await expect(page.locator("#auth-password")).toHaveAttribute("type", "password");
   await page.locator("#auth-password-confirm").fill("not-the-same");
+  await page.locator('[data-action="toggle-password"][data-target="auth-password-confirm"]').click();
+  await expect(page.locator("#auth-password-confirm")).toHaveAttribute("type", "text");
   await page.locator(".product-auth-submit").click();
   await expect(page.getByText("两次输入的密码不一致", { exact: true })).toBeVisible();
   await page.locator("#auth-password-confirm").fill("Phase1-test!");

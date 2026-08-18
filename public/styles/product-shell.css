@@ -42,7 +42,8 @@ body:has(.product-shell) {
 }
 
 .product-rail:hover,
-.product-rail:focus-within {
+.product-rail:focus-within,
+.product-rail.is-staggered-open {
   width: var(--product-rail-expanded);
   box-shadow: 16px 0 34px rgba(18, 17, 24, 0.16);
 }
@@ -95,7 +96,8 @@ body:has(.product-shell) {
 }
 
 .product-rail:hover .product-brand strong,
-.product-rail:focus-within .product-brand strong { max-height: 28px; opacity: 1; }
+.product-rail:focus-within .product-brand strong,
+.product-rail.is-staggered-open .product-brand strong { max-height: 28px; opacity: 1; }
 
 .product-nav {
   display: flex;
@@ -128,9 +130,11 @@ body:has(.product-shell) {
 }
 
 .product-rail:hover .product-nav-link,
-.product-rail:focus-within .product-nav-link { justify-content: flex-start; gap: 20px; padding: 0 20px; }
+.product-rail:focus-within .product-nav-link,
+.product-rail.is-staggered-open .product-nav-link { justify-content: flex-start; gap: 20px; padding: 0 20px; }
 .product-rail:hover .product-nav-link > span,
-.product-rail:focus-within .product-nav-link > span { max-width: 100px; opacity: 1; }
+.product-rail:focus-within .product-nav-link > span,
+.product-rail.is-staggered-open .product-nav-link > span { max-width: 100px; opacity: 1; }
 
 .product-nav-link::before {
   content: "";
@@ -213,11 +217,14 @@ body:has(.product-shell) {
 }
 
 .product-rail:hover .product-account,
-.product-rail:focus-within .product-account { justify-content: flex-start; }
+.product-rail:focus-within .product-account,
+.product-rail.is-staggered-open .product-account { justify-content: flex-start; }
 .product-rail:hover .product-account > div,
 .product-rail:focus-within .product-account > div,
+.product-rail.is-staggered-open .product-account > div,
 .product-rail:hover .product-account--signed > span:last-child,
-.product-rail:focus-within .product-account--signed > span:last-child { max-width: 110px; opacity: 1; }
+.product-rail:focus-within .product-account--signed > span:last-child,
+.product-rail.is-staggered-open .product-account--signed > span:last-child { max-width: 110px; opacity: 1; }
 
 .product-account--signed {
   color: #fff;
@@ -829,7 +836,24 @@ body:has(.product-shell) {
 
 .product-auth-field input { min-width: 0; flex: 1; border: 0; outline: 0; background: transparent; color: var(--product-black); }
 .product-auth-field .icon { color: rgba(18, 17, 24, 0.4); }
-.product-auth-field .auth-password-toggle { position: static; transform: none; color: rgba(18, 17, 24, 0.45); }
+.product-auth-field .auth-password-toggle {
+  position: relative;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
+  display: grid;
+  place-items: center;
+  color: rgba(18, 17, 24, 0.48);
+  border-radius: 50%;
+  transform: none;
+  transition: color 160ms ease, background 160ms ease;
+}
+.product-auth-field .auth-password-toggle:hover { color: var(--product-violet); background: var(--product-violet-soft); }
+.password-eye { grid-area: 1 / 1; transition: opacity 180ms ease, transform 240ms cubic-bezier(.2,.8,.2,1); }
+.password-eye--open { opacity: 0; transform: scale(.68) rotate(-8deg); }
+.password-eye--closed { opacity: 1; transform: scale(1) rotate(0); }
+.auth-password-toggle.is-show .password-eye--open { opacity: 1; transform: scale(1) rotate(0); }
+.auth-password-toggle.is-show .password-eye--closed { opacity: 0; transform: scale(.7) rotate(8deg); }
 
 .product-auth-submit-row { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-top: 8px; }
 .product-auth-submit-row p { color: rgba(18, 17, 24, 0.5); font-size: 13px; }
