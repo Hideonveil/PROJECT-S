@@ -141,12 +141,22 @@ async function reachDeadlockCasualFinal(page: Page) {
   await expect(page.getByRole("button", { name: "现在", exact: true })).toHaveAttribute("aria-pressed", "true");
 }
 
-test("first-time visitors land on the real matching home", async ({ page }) => {
+test("first-time visitors land on the hero and enter the matching workspace", async ({ page }) => {
   await page.goto("/index.html");
 
   await expect(page).toHaveTitle(/project S beta/);
+  await expect(page.locator(".landing-shell")).toBeVisible();
+  await expect(page.locator(".product-rail")).toHaveCount(0);
+  await expect(page.locator(".landing-brand")).toHaveAttribute("href", "#/hero");
+  await expect(page.locator(".landing-auth").getByRole("button", { name: "登录", exact: true })).toBeVisible();
+  await expect(page.locator(".landing-auth").getByRole("button", { name: "注册", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "进入摇人匹配" })).toBeVisible();
+  await expect(page.locator("#landing-title")).toContainText("总有人想一起玩");
+  const pageHeight = await page.evaluate(() => document.documentElement.scrollHeight / window.innerHeight);
+  expect(pageHeight).toBeGreaterThan(1.3);
+  expect(pageHeight).toBeLessThan(1.8);
+  await page.getByRole("button", { name: "进入摇人匹配" }).click();
   await expect(page.locator(".product-shell")).toBeVisible();
-  await expect(page.locator('[data-page="landing"]')).toHaveCount(0);
   await expect(page.getByRole("link", { name: "摇人", exact: true })).toBeVisible();
   await expect(page.getByRole("link", { name: "社区", exact: true })).toBeVisible();
   await expect(page.getByRole("link", { name: "我的", exact: true })).toBeVisible();
@@ -178,7 +188,7 @@ test("first-time visitors land on the real matching home", async ({ page }) => {
 test("game selection opens Deadlock steps and keeps other games coming soon", async ({ page }) => {
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
-  await page.goto("/index.html");
+  await page.goto("/index.html#/home");
 
   await page.getByRole("button", { name: /Deadlock/ }).click();
   await expect(page.getByRole("button", { name: "上分", exact: true })).toBeVisible();
@@ -189,7 +199,7 @@ test("game selection opens Deadlock steps and keeps other games coming soon", as
 });
 
 test("Deadlock rank and casual paths expose different step systems", async ({ page }) => {
-  await page.goto("/index.html");
+  await page.goto("/index.html#/home");
   await page.getByRole("button", { name: /Deadlock/ }).click();
   const stage = page.locator("[data-home-wizard-stage]");
   await stage.evaluate((element) => element.setAttribute("data-test-persisted", "yes"));
@@ -232,8 +242,9 @@ test("Deadlock rank and casual paths expose different step systems", async ({ pa
 });
 
 test("navigation keeps icon-only rest state and staggers open on hover", async ({ page }) => {
-  await page.goto("/index.html");
+  await page.goto("/index.html#/home");
   const rail = page.locator("[data-staggered-rail]");
+  await expect(rail.locator(".product-brand")).toHaveAttribute("href", "#/hero");
   await expect.poll(() => rail.evaluate((el) => el.getBoundingClientRect().width)).toBeLessThan(100);
   await rail.hover();
   await expect(rail).toHaveClass(/is-staggered-open/);
@@ -296,7 +307,7 @@ test("login and registration switch inside a stable account workspace", async ({
 });
 
 test("starting a match while signed out opens the account flow", async ({ page }) => {
-  await page.goto("/index.html");
+  await page.goto("/index.html#/home");
   await reachDeadlockCasualFinal(page);
   await page.getByRole("button", { name: "开始匹配", exact: true }).click();
 
@@ -308,7 +319,7 @@ test("starting a match while signed out opens the account flow", async ({ page }
 test("registration continues to player identity and stores the real profile payload", async ({ page }) => {
   const capture: { profile?: Record<string, unknown> } = {};
   await mockProductBackend(page, capture);
-  await page.goto("/index.html");
+  await page.goto("/index.html#/home");
 
   await page.locator(".product-auth-actions").getByRole("button", { name: "注册", exact: true }).click();
   await expect(page.locator("[data-registration-stepper]")).toHaveCount(0);
@@ -364,7 +375,7 @@ test("registration continues to player identity and stores the real profile payl
 });
 
 test("desktop match controls use target cursor but the primary action does not", async ({ page }) => {
-  await page.goto("/index.html");
+  await page.goto("/index.html#/home");
   const game = page.getByRole("button", { name: /Deadlock/ });
   await game.hover();
   await expect(page.locator(".target-cursor")).toHaveClass(/is-visible/);
@@ -384,7 +395,7 @@ test("desktop match controls use target cursor but the primary action does not",
 
 test("authenticated matching opens the new focused modal and removes the old panel", async ({ page }) => {
   await mockProductBackend(page);
-  await page.goto("/index.html");
+  await page.goto("/index.html#/home");
   await login(page);
   await reachDeadlockCasualFinal(page);
   await page.getByRole("button", { name: "开始匹配", exact: true }).click();
@@ -427,23 +438,23 @@ test("mobile visitors see the PC-only gate in the same product language", async 
 test("a narrow desktop window is not mistaken for a phone", async ({ page }) => {
   await page.setViewportSize({ width: 760, height: 844 });
   await page.goto("/index.html");
-  await expect(page.getByRole("heading", { name: "摇人" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "进入摇人匹配" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "请使用电脑打开" })).toBeHidden();
 });
 
 test("signed-in top bar exposes player id and logout", async ({ page }) => {
   await mockProductBackend(page);
-  await page.goto("/index.html");
+  await page.goto("/index.html#/home");
   await login(page);
   await expect(page.getByRole("button", { name: /登出/ })).toBeVisible();
   await page.getByRole("button", { name: /登出/ }).click();
-  await expect(page.locator(".product-auth-actions")).toBeVisible();
-  await expect(page).toHaveURL(/#\/home$/);
+  await expect(page.locator(".landing-auth")).toBeVisible();
+  await expect(page).toHaveURL(/#\/hero$/);
 });
 
 test("my page renders backend recent connections instead of stale local history", async ({ page }) => {
   await mockProductBackend(page);
-  await page.goto("/index.html");
+  await page.goto("/index.html#/home");
   await login(page);
   await page.getByRole("link", { name: "我的", exact: true }).click();
 
@@ -453,7 +464,7 @@ test("my page renders backend recent connections instead of stale local history"
 });
 
 test("community is a separate clean route", async ({ page }) => {
-  await page.goto("/index.html");
+  await page.goto("/index.html#/home");
   await page.getByRole("link", { name: "社区", exact: true }).click();
 
   await expect(page).toHaveURL(/#\/community$/);

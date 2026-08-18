@@ -7,6 +7,7 @@ import { DEVICES, GAME_BY_ID, GAMES, GENRES } from "./data.js";
 import { FLOW } from "./flow.js";
 import * as api from "./api.js";
 import { authPage } from "./pages/auth.js";
+import { landingPage } from "./pages/landing.js";
 import { welcomePage } from "./pages/welcome.js";
 import { homeFlowStepper, homePage } from "./pages/home.js";
 import { communityPage } from "./pages/community.js";
@@ -519,7 +520,7 @@ function navigate(path) {
 }
 
 function parseRoute() {
-  const path = (location.hash || "#/home").replace(/^#/, "") || "/home";
+  const path = (location.hash || "#/hero").replace(/^#/, "") || "/hero";
   const parts = path.split("/").filter(Boolean);
   return { name: parts[0] || "home", id: parts[1] || "" };
 }
@@ -537,7 +538,7 @@ function render() {
   if (route.name === "need" && DRAFT.game) document.body.dataset.gameTheme = DRAFT.game;
   else delete document.body.dataset.gameTheme;
 
-  const publicRoutes = new Set(["home", "community", "auth"]);
+  const publicRoutes = new Set(["hero", "home", "community", "auth"]);
   if (!state.authenticated && !publicRoutes.has(route.name)) {
     location.hash = "#/auth";
     return;
@@ -555,6 +556,9 @@ function render() {
   let immersive = false;
 
   switch (route.name) {
+    case "hero":
+      html = landingPage(state);
+      break;
     case "auth":
       html = authPage(state);
       break;
@@ -626,7 +630,7 @@ function render() {
       html = mePage(state);
       break;
     default:
-      navigate("#/home");
+      navigate("#/hero");
       return;
   }
 
@@ -994,10 +998,12 @@ function applyServerSnapshot(data) {
   }
   const roomChanged = patch.room ? roomShapeChanged(patch.room, state.room) : false;
   update(patch);
-  if (routeName === "home") {
+  if (["home", "hero"].includes(routeName)) {
     const onlineEl = document.getElementById("home-online-count");
+    const heroOnlineEl = document.getElementById("hero-online-count");
     const playingEl = document.getElementById("home-playing-count");
     if (onlineEl) onlineEl.textContent = String(Math.max(0, state.match.pool ?? 0));
+    if (heroOnlineEl) heroOnlineEl.textContent = state.match.pool ? `${Math.max(0, state.match.pool)} 人正在摇人` : "正在等待下一位玩家";
     if (playingEl) playingEl.textContent = String(Math.max(0, state.match.playing ?? 0));
   }
   if (patch.room && routeName !== "room") {
@@ -1110,6 +1116,9 @@ function connectEvents() {
       const routeName = parseRoute().name;
       if (routeName === "home") {
         render();
+      } else if (routeName === "hero") {
+        const heroOnlineEl = document.getElementById("hero-online-count");
+        if (heroOnlineEl) heroOnlineEl.textContent = pool ? `${Math.max(0, pool)} 人正在摇人` : "正在等待下一位玩家";
       }
       if (routeName === "matching") {
         const poolEl = document.getElementById("pool-count");
@@ -1944,7 +1953,7 @@ async function logout() {
   await withProjectTransition(() => api.signOut().catch(() => {}), { label: "正在退出账号" });
   resetState();
   DRAFT.dirty = false;
-  navigate("#/home");
+  navigate("#/hero");
   toast("已退出登录");
 }
 
@@ -2471,6 +2480,8 @@ document.addEventListener("click", (event) => {
   }
 
   const actions = {
+    "enter-match": () => navigate("#/home"),
+    "scroll-landing-more": () => document.getElementById("landing-more")?.scrollIntoView({ behavior: "smooth", block: "start" }),
     "go-home": () => navigate("#/home"),
     "go-me": () => navigate("#/me"),
     "go-friends": () => navigate("#/friends"),
@@ -2663,6 +2674,16 @@ window.addEventListener("beforeunload", () => {
 async function detectOnline() {
   try {
     const res = await fetch("/api/health", { cache: "no-store" });
+    if (res.ok) {
+      const data = await res.json().catch(() => ({}));
+      update({
+        match: {
+          ...state.match,
+          pool: data.matching ?? state.match.pool,
+          playing: data.playing ?? state.match.playing,
+        },
+      });
+    }
     return res.ok;
   } catch {
     return false;

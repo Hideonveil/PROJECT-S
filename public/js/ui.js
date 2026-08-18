@@ -157,7 +157,7 @@ export function homeShell(state, content, active = "home") {
   return `<div class="product-shell">
     <aside class="product-rail ${productRailHeldOpen ? "is-staggered-open is-route-held" : ""}" data-staggered-rail>
       <div class="product-rail-layers" aria-hidden="true"><i class="product-rail-layer product-rail-layer--violet"></i><i class="product-rail-layer product-rail-layer--ink"></i></div>
-      <a class="product-brand" href="#/home" aria-label="PROJECT-S 首页">${brandMark(54)}<strong>PROJECT-S</strong></a>
+      <a class="product-brand" href="#/hero" aria-label="PROJECT-S 首页">${brandMark(54)}<strong>PROJECT-S</strong></a>
       <nav class="product-nav" aria-label="主导航">
         ${navItems.map((n) => `<a class="product-nav-link ${resolvedActive === n.id ? "is-active" : ""}" href="${n.href}" data-nav>${icon(n.icon, 24)}<span>${n.label}</span></a>`).join("")}
       </nav>
