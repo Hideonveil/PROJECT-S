@@ -151,7 +151,7 @@ export function homeShell(state, content, active = "home") {
   ];
   const warningText = "总有人想一起玩　/　NEVER PLAY ALONE　/　".repeat(8);
   const account = state.authenticated
-    ? `<button class="product-account product-account--signed" type="button" data-action="go-me">${avatarWrap(state.user.avatarKey, 34, state.user.online)}<span>${esc(state.user.nickname)}</span></button>`
+    ? `<button class="product-account product-account--signed" type="button" data-action="go-me"><span class="product-account-avatar">${avatarWrap(state.user.avatarKey, 34, state.user.online)}</span><span class="product-account-name">${esc(state.user.nickname)}</span></button>`
     : `<div class="product-account"><span class="product-account-icon">${icon("user", 18)}</span><div><b>未登录</b><span><button type="button" data-action="open-auth-login">登录</button> / <button type="button" data-action="open-auth-register">注册</button></span></div></div>`;
 
   return `<div class="product-shell">

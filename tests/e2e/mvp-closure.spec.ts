@@ -156,6 +156,11 @@ test("first-time visitors land on the hero and enter the matching workspace", as
   expect(pageHeight).toBeGreaterThan(1.3);
   expect(pageHeight).toBeLessThan(1.8);
   const heroMatch = page.getByRole("button", { name: "进入摇人匹配" });
+  await expect.poll(() => heroMatch.evaluate((element) => getComputedStyle(element).animationName)).toBe("none");
+  await heroMatch.hover();
+  await expect.poll(() => heroMatch.evaluate((element) => getComputedStyle(element).animationName)).toContain("landingMatchHoverShake");
+  await page.mouse.move(20, 20);
+  await page.waitForTimeout(500);
   const heroMatchBefore = await heroMatch.boundingBox();
   await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
   await page.waitForTimeout(80);
@@ -226,6 +231,9 @@ test("Deadlock rank and casual paths expose different step systems", async ({ pa
   await page.getByRole("button", { name: /近卫/ }).click();
   await expect(page.getByRole("button", { name: /近卫/ })).toHaveAttribute("aria-pressed", "true");
   await page.getByRole("button", { name: "下一步", exact: true }).click();
+  await expect(page.locator(".match-role-multi")).toContainText("可多选");
+  await expect(page.getByRole("button", { name: "1号位", exact: true }).locator(".match-role-number")).toContainText("1");
+  await expect(page.getByRole("button", { name: "1号位", exact: true }).locator("small")).toHaveText("号位");
   await expect(page.getByRole("button", { name: /1号位/ })).toBeVisible();
   await page.getByRole("button", { name: /1号位/ }).click();
   await page.getByRole("button", { name: /2号位/ }).click();
@@ -237,6 +245,10 @@ test("Deadlock rank and casual paths expose different step systems", async ({ pa
   await page.getByRole("button", { name: "下一步", exact: true }).click();
   await expect(page.getByRole("button", { name: "现在", exact: true })).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByRole("button", { name: "开始匹配", exact: true })).toBeVisible();
+
+  await page.getByRole("button", { name: "重新选择游戏", exact: true }).click();
+  await expect(page.getByRole("button", { name: /Deadlock/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /我的世界/ })).toBeVisible();
 
   await page.goto("/index.html?casual-path=1#/home");
   await page.getByRole("button", { name: /Deadlock/ }).click();
@@ -260,6 +272,9 @@ test("navigation keeps icon-only rest state and staggers open on hover", async (
   await expect(rail).toHaveClass(/is-staggered-open/);
   await expect.poll(() => rail.evaluate((el) => el.getBoundingClientRect().width)).toBeGreaterThan(150);
   await expect(page.locator(".product-nav-link > span").first()).toHaveCSS("opacity", "1");
+  const railBox = await rail.boundingBox();
+  const matchEyebrowBox = await page.locator(".match-head .match-eyebrow").boundingBox();
+  expect((railBox?.x || 0) + (railBox?.width || 0)).toBeLessThanOrEqual(matchEyebrowBox?.x || 0);
   await rail.getByRole("link", { name: "社区", exact: true }).click();
   await expect(page).toHaveURL(/#\/community$/);
   await expect(rail).toHaveClass(/is-staggered-open.*is-route-held/);
@@ -462,6 +477,11 @@ test("signed-in top bar exposes player id and logout", async ({ page }) => {
   const expandedAvatar = await railAvatar.boundingBox();
   expect(expandedAvatar?.width).toBe(collapsedAvatar?.width);
   expect(expandedAvatar?.height).toBe(collapsedAvatar?.height);
+  await page.mouse.move(800, 400);
+  await expect.poll(() => page.locator("[data-staggered-rail]").evaluate((el) => el.getBoundingClientRect().width)).toBeLessThan(100);
+  const recollapsedAvatar = await railAvatar.boundingBox();
+  expect(recollapsedAvatar?.width).toBe(collapsedAvatar?.width);
+  expect(recollapsedAvatar?.height).toBe(collapsedAvatar?.height);
   await expect(page.getByRole("button", { name: /登出/ })).toBeVisible();
   await page.getByRole("button", { name: /登出/ }).click();
   await expect(page.locator(".landing-auth")).toBeVisible();

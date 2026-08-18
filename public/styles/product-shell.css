@@ -2,6 +2,7 @@
 :root {
   --product-rail: 76px;
   --product-rail-expanded: 184px;
+  --product-content-gutter: max(clamp(38px, 6vw, 92px), calc(var(--product-rail-expanded) - var(--product-rail) + 32px));
   --product-ticker: 42px;
   --product-black: #121118;
   --product-black-2: #1a1921;
@@ -101,12 +102,11 @@ body:has(.landing-shell) {
   box-shadow: 12px 12px 0 #b9a5ff;
   isolation: isolate;
   transform: translateY(-50%);
-  animation: landingMatchNudge 5.2s ease-in-out infinite;
   transition: transform 420ms cubic-bezier(.22,1,.36,1), box-shadow 420ms cubic-bezier(.22,1,.36,1);
 }
 .landing-match::before { content: ""; position: absolute; z-index: -1; inset: 60% -30% -26%; transform: rotate(-12deg); background: repeating-linear-gradient(90deg, #b9a5ff 0 28px, var(--product-black) 28px 44px); transition: inset 500ms cubic-bezier(.22,1,.36,1); }
 .landing-match::after { content: ""; position: absolute; z-index: -1; inset: 0; background: linear-gradient(118deg, transparent 35%, rgba(255,255,255,.08) 48%, transparent 60%); transform: translateX(-130%); transition: transform 700ms cubic-bezier(.22,1,.36,1); }
-.landing-match:hover { animation-play-state: paused; transform: translate(-7px, calc(-50% - 7px)); box-shadow: 20px 20px 0 #b9a5ff; }
+.landing-match:hover { animation: landingMatchHoverShake 460ms cubic-bezier(.22,1,.36,1) both; box-shadow: 20px 20px 0 #b9a5ff; }
 .landing-match:hover::before { inset: 48% -30% -20%; }
 .landing-match:hover::after { transform: translateX(130%); }
 .landing-match-code { font-family: var(--font-mono); font-size: 10px; font-weight: 800; letter-spacing: .15em; }
@@ -130,12 +130,13 @@ body:has(.landing-shell) {
 .landing-reserved i { display: block; height: 1px; background: var(--product-hairline); }
 
 @keyframes landingLive { 50% { opacity: .52; transform: scale(.82); } }
-@keyframes landingMatchNudge {
-  0%, 84%, 100% { transform: translate3d(0, -50%, 0) rotate(0); }
-  87% { transform: translate3d(-2px, calc(-50% - 1px), 0) rotate(-.45deg); }
-  90% { transform: translate3d(2px, calc(-50% + 1px), 0) rotate(.45deg); }
-  93% { transform: translate3d(-1px, -50%, 0) rotate(-.2deg); }
-  96% { transform: translate3d(1px, -50%, 0) rotate(.2deg); }
+@keyframes landingMatchHoverShake {
+  0% { transform: translate3d(0, -50%, 0) rotate(0); }
+  22% { transform: translate3d(-4px, calc(-50% - 4px), 0) rotate(-.7deg); }
+  44% { transform: translate3d(1px, calc(-50% - 8px), 0) rotate(.55deg); }
+  66% { transform: translate3d(-9px, calc(-50% - 6px), 0) rotate(-.35deg); }
+  82% { transform: translate3d(-5px, calc(-50% - 8px), 0) rotate(.18deg); }
+  100% { transform: translate3d(-7px, calc(-50% - 7px), 0) rotate(0); }
 }
 
 .product-shell {
@@ -306,13 +307,23 @@ body:has(.landing-shell) {
   justify-content: center;
 }
 
-.product-account .avatar-wrap {
+.product-account-avatar {
   width: 34px;
   min-width: 34px;
   max-width: 34px;
   height: calc(34px * .866);
   flex: 0 0 34px;
+  display: grid;
+  place-items: center;
   overflow: visible;
+}
+
+.product-account-avatar .avatar-wrap {
+  width: 34px !important;
+  min-width: 34px;
+  max-width: 34px;
+  height: calc(34px * .866) !important;
+  flex: none;
 }
 
 .product-account-icon {
@@ -325,7 +336,7 @@ body:has(.landing-shell) {
 }
 
 .product-account b,
-.product-account > span:last-child {
+.product-account-name {
   display: block;
   color: #fff;
   font-size: 13px;
@@ -342,7 +353,7 @@ body:has(.landing-shell) {
 }
 
 .product-account > div,
-.product-account--signed > span:last-child {
+.product-account-name {
   max-width: 0;
   opacity: 0;
   overflow: hidden;
@@ -356,9 +367,9 @@ body:has(.landing-shell) {
 .product-rail:hover .product-account > div,
 .product-rail:focus-within .product-account > div,
 .product-rail.is-staggered-open .product-account > div,
-.product-rail:hover .product-account--signed > span:last-child,
-.product-rail:focus-within .product-account--signed > span:last-child,
-.product-rail.is-staggered-open .product-account--signed > span:last-child { max-width: 110px; opacity: 1; }
+.product-rail:hover .product-account-name,
+.product-rail:focus-within .product-account-name,
+.product-rail.is-staggered-open .product-account-name { max-width: 110px; opacity: 1; }
 
 .product-account--signed {
   color: #fff;
@@ -384,7 +395,7 @@ body:has(.landing-shell) {
   align-items: center;
   justify-content: space-between;
   gap: 24px;
-  padding: 0 clamp(38px, 6vw, 92px);
+  padding: 0 var(--product-content-gutter);
   background: color-mix(in srgb, var(--product-paper) 91%, transparent);
   backdrop-filter: blur(14px);
   border-bottom: 1px solid rgba(18, 17, 24, 0.045);
@@ -466,7 +477,7 @@ body:has(.landing-shell) {
 
 .product-surface .home-main {
   min-height: auto;
-  padding: 12px clamp(38px, 6vw, 92px) 72px;
+  padding: 12px var(--product-content-gutter) 72px;
 }
 
 .match-workspace {
@@ -601,13 +612,39 @@ body:has(.landing-shell) {
 
 .match-wizard { padding-top: 28px; }
 
+.match-wizard-toolbar {
+  position: relative;
+  width: min(1040px, 100%);
+  padding-top: 40px;
+  margin: 0 auto 22px;
+}
+
 .match-wizard-stepper {
   width: min(900px, 100%);
   min-height: 76px;
-  margin: 0 auto 22px;
+  margin: 0 auto;
   display: flex;
   align-items: flex-start;
 }
+
+.match-back-games {
+  position: absolute;
+  top: -2px;
+  right: 0;
+  min-height: 34px;
+  padding: 0 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid var(--product-hairline);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--product-paper) 82%, transparent);
+  color: rgba(18, 17, 24, .58);
+  font-size: 10px;
+  font-weight: 780;
+  transition: border-color 160ms ease, color 160ms ease, transform 160ms ease;
+}
+.match-back-games:hover { border-color: var(--product-violet); color: var(--product-violet); transform: translateY(-2px); }
 
 .match-wizard-marker {
   flex: none;
@@ -674,8 +711,14 @@ body:has(.landing-shell) {
 .match-options--team { grid-template-columns: repeat(5, minmax(0, 1fr)); }
 .match-options--roles .match-option, .match-options--team .match-option { min-height: 92px; }
 .match-option > small { color: rgba(18, 17, 24, 0.42); font-size: 9px; }
-.match-options--roles .match-option > small { margin-top: 2px; padding: 4px 8px; align-self: flex-start; border: 1px dashed rgba(118, 89, 223, .58); border-radius: 999px; background: rgba(118, 89, 223, .08); color: var(--product-violet); font-family: var(--font-mono); font-size: 10px; font-weight: 850; letter-spacing: .06em; }
-.match-options--roles .match-option.is-on > small { border-style: solid; background: var(--product-violet); color: #fff; }
+.match-role-picker { display: flex; flex-direction: column; gap: 14px; }
+.match-role-multi { min-height: 30px; display: flex; align-items: center; gap: 10px; }
+.match-role-multi b { padding: 5px 9px; border: 1px solid var(--product-violet); border-radius: 999px; color: var(--product-violet); font-family: var(--font-mono); font-size: 10px; letter-spacing: .08em; }
+.match-role-multi span { color: rgba(18, 17, 24, .48); font-size: 11px; }
+.match-role-option { align-items: center !important; text-align: center !important; }
+.match-role-number { display: inline-flex; align-items: baseline; gap: 5px; font-family: var(--font-display); font-size: 38px; font-weight: 780; line-height: 1; letter-spacing: -.05em; }
+.match-role-number small { color: rgba(18, 17, 24, .48); font-family: var(--font-sans); font-size: 10px; font-weight: 720; letter-spacing: 0; }
+.match-role-option.is-on .match-role-number small { color: var(--product-violet); }
 .match-rank-option { min-height: 68px; align-content: center; }
 .match-rank-option .match-rank-name { font-weight: 760; }
 .match-rank-option > small { margin-top: 3px; font-family: var(--font-mono); font-size: 9px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }

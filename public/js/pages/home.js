@@ -70,7 +70,16 @@ export function homeFlowStepper(filter) {
 }
 
 function roleOptions(values, selected, action) {
-  return `<div class="match-options match-options--roles" role="group">${values.map((value) => option(value, value, selected.includes(value), action, "circleDot", true)).join("")}</div>`;
+  return `<div class="match-role-picker">
+    <div class="match-role-multi" role="note"><b>可多选</b><span>选择一个或多个号位</span></div>
+    <div class="match-options match-options--roles" role="group" aria-label="位置，可多选">${values.map((value) => {
+      const number = value.replace("号位", "");
+      const on = selected.includes(value);
+      return `<button type="button" class="cursor-target home-filter-tag match-option match-role-option ${on ? "is-on" : ""}" data-action="${action}" data-value="${esc(value)}" aria-label="${esc(value)}" aria-pressed="${on}">
+        <span class="match-role-number">${esc(number)}<small>号位</small></span><span class="match-option-check">${icon("check", 12)}</span>
+      </button>`;
+    }).join("")}</div>
+  </div>`;
 }
 
 function rankOptions(selected) {
@@ -112,8 +121,8 @@ function wizardCopy(stepKey, goal) {
   const copy = {
     goal: ["先决定这局为了什么。", "选择上分会进入位置配置；选择娱乐则直接寻找轻松开黑的玩家。"],
     rank: ["你现在是什么段位？", "选择当前段位，后续用于寻找进度更接近的队友。"],
-    ownRoles: ["你通常玩哪个位置？", "可多选。让队友先知道你能承担哪些位置。"],
-    teammateRoles: ["希望队友补哪个位置？", "可多选。这里只记录你的队伍偏好。"],
+    ownRoles: ["你通常玩哪个位置？", "让队友先知道你能承担哪些位置。"],
+    teammateRoles: ["希望队友补哪个位置？", "这里只记录你的队伍偏好。"],
     voice: ["这局要不要开麦？", goal === "rank" ? "上分默认开麦，你仍然可以改成不开麦。" : "娱乐局默认开麦，不做额外要求。"],
     team: ["这次想找几个人？", "Deadlock 娱乐局最多可以再找 5 位玩家。"],
     time: ["准备什么时候开始？", "默认现在开始，也可以给队友留一点准备时间。"],
@@ -143,7 +152,10 @@ function deadlockStage(filter) {
   const [title, description] = wizardCopy(stepKey, filter.goal);
   const isLast = step === path.length - 1;
   return `<section class="match-wizard">
-    ${flowStepper(step, path)}
+    <div class="match-wizard-toolbar">
+      ${flowStepper(step, path)}
+      <button type="button" class="match-back-games" data-action="home-back-games">${icon("gamepad2", 16)}<span>重新选择游戏</span></button>
+    </div>
     <div class="match-wizard-stage ${filter.direction < 0 ? "is-backward" : "is-forward"}" data-home-wizard-stage data-home-step="${esc(stepKey)}">
       <div class="match-wizard-copy"><span>DEADLOCK / ${String(step + 1).padStart(2, "0")}</span><h2>${title}</h2><p>${description}</p></div>
       <div class="match-wizard-options match-target-zone" data-target-cursor-zone>${wizardContent(filter, stepKey)}</div>
