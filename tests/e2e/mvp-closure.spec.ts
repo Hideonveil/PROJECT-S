@@ -31,6 +31,32 @@ const mockRecentConnection = {
   wantAgain: true,
 };
 
+const mockPartner = {
+  id: "00000000-0000-0000-0000-000000000222",
+  nickname: "连接玩家",
+  handle: "连接玩家#0222",
+  avatarKey: "me-2",
+  device: "PC",
+  playStyle: "稳健沟通",
+  online: true,
+  memberStatus: "active",
+  exitedAt: null,
+  gameAccounts: { deadlock: { steamFriendCode: "76561198000000222" } },
+};
+
+const mockActiveRoom = {
+  id: "00000000-0000-0000-0000-000000000444",
+  code: "LINK42",
+  status: "playing",
+  startedAt: "2026-08-19T00:00:00.000Z",
+  need: { game: "deadlock", mode: "天梯上分", goal: "上分", voice: true, time: "现在", target: 2 },
+  members: [
+    { ...mockProfile, memberStatus: "active", exitedAt: null },
+    mockPartner,
+  ],
+  goodbyeRequests: [],
+};
+
 async function mockProductBackend(
   page: Page,
   capture: { profile?: Record<string, unknown>; match?: Record<string, unknown>; friendAdd?: Record<string, unknown> } = {}
@@ -606,6 +632,55 @@ test("confirmation timeout updates the existing matching modal without resetting
   await expect(page.locator("#match-desc")).toHaveText("对方没有接受，正在继续寻找其他玩家。", { timeout: 5000 });
   await expect(modal).toHaveAttribute("data-test-persisted", "yes");
   await expect(page.locator("#match-time")).not.toHaveText("0s");
+});
+
+test("room navigation stays voluntary and goodbye patches the existing connection room", async ({ page }) => {
+  await mockProductBackend(page);
+  let goodbyeRequested = false;
+  await page.unroute("**/api/state");
+  await page.route("**/api/state", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({
+      user: mockProfile,
+      friends: [],
+      friendRequests: { incoming: [{ user: mockPartner, createdAt: "2026-08-19T00:01:00.000Z" }], outgoing: [] },
+      recentConnections: [],
+      room: { ...mockActiveRoom, goodbyeRequests: goodbyeRequested ? [{ userId: mockProfile.id, requestedAt: "2026-08-19T00:02:00.000Z" }] : [] },
+      session: { id: "session-1", roomCode: "LINK42", status: "playing" },
+      matching: 1,
+      playing: 2,
+      matchmaking: { ticket: null, pair: null, candidate: null, matching: 1, matchable: 1 },
+    }),
+  }));
+  await page.route("**/api/room/LINK42/goodbye", (route) => {
+    goodbyeRequested = true;
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        room: { ...mockActiveRoom, goodbyeRequests: [{ userId: mockProfile.id, requestedAt: "2026-08-19T00:02:00.000Z" }] },
+        session: { id: "session-1", roomCode: "LINK42", status: "playing" },
+      }),
+    });
+  });
+
+  await page.goto("/index.html#/home");
+  await login(page);
+  await expect(page).toHaveURL(/#\/home$/);
+  await page.locator("[data-staggered-rail]").hover();
+  await page.getByRole("link", { name: "进行中的房间", exact: true }).click();
+  const room = page.locator("[data-connection-room]");
+  await expect(room).toBeVisible();
+  await expect(page.getByText("对方申请加你为 PROJECT-S 好友", { exact: true })).toBeVisible();
+  await room.evaluate((element) => element.setAttribute("data-test-persisted", "yes"));
+  await page.getByRole("button", { name: "拜拜", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "确定要拜拜吗？", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "确认拜拜", exact: true }).click();
+  await expect(page.getByText("已提出拜拜，等待对方", { exact: false })).toBeVisible();
+  await expect(room).toHaveAttribute("data-test-persisted", "yes");
+  await page.getByRole("link", { name: "我的", exact: true }).click();
+  await expect(page).toHaveURL(/#\/me$/);
 });
 
 test("mobile visitors see the PC-only gate in the same product language", async ({ browser }) => {

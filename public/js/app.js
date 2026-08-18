@@ -404,10 +404,19 @@ function persistentProductShell(html) {
 
   if (currentRail && nextRail) {
     currentRail.className = nextRail.className;
+    const currentNav = currentRail.querySelector(".product-nav");
+    const nextNav = nextRail.querySelector(".product-nav");
+    const currentLinks = [...currentRail.querySelectorAll("[data-nav]")];
     const nextLinks = [...nextRail.querySelectorAll("[data-nav]")];
-    [...currentRail.querySelectorAll("[data-nav]")].forEach((link, index) => {
-      link.classList.toggle("is-active", nextLinks[index]?.classList.contains("is-active"));
-    });
+    const sameNavStructure =
+      currentLinks.length === nextLinks.length &&
+      currentLinks.every((link, index) => link.getAttribute("href") === nextLinks[index]?.getAttribute("href"));
+    if (!sameNavStructure && currentNav && nextNav) currentNav.innerHTML = nextNav.innerHTML;
+    else {
+      currentLinks.forEach((link, index) => {
+        link.classList.toggle("is-active", nextLinks[index]?.classList.contains("is-active"));
+      });
+    }
     const currentFooter = currentRail.querySelector(".product-rail-footer");
     const nextFooter = nextRail.querySelector(".product-rail-footer");
     if (currentFooter && nextFooter && currentFooter.innerHTML !== nextFooter.innerHTML) currentFooter.innerHTML = nextFooter.innerHTML;
@@ -884,7 +893,7 @@ function normalizeServerRoom(room) {
     partner,
     members,
     status: room.status || "playing",
-    startedAt: room.startedAt || 0,
+    startedAt: room.startedAt ? new Date(room.startedAt).getTime() : Date.now(),
     need: room.need || state.need,
     sessionId: room.sessionId || null,
     sessionStatus: room.sessionStatus || null,
@@ -947,6 +956,8 @@ function updateRoomView(nextRoom) {
     const mine = (nextRoom.goodbyeRequests || []).some((request) => request.userId === state.user.id);
     const theirs = (nextRoom.goodbyeRequests || []).some((request) => request.userId !== state.user.id);
     goodbye.textContent = mine && theirs ? "双方都已拜拜" : mine ? "已提出拜拜，等待对方" : theirs ? "对方想结束这次匹配" : "";
+    const actions = root.querySelector("[data-room-farewell-actions]");
+    if (actions) actions.innerHTML = `${mine ? button({ label: "撤回", action: "withdraw-goodbye", kind: "ghost", iconName: "refreshCw" }) : ""}${button({ label: theirs && !mine ? "回应拜拜" : "拜拜", action: "say-goodbye", kind: "primary", extra: "connection-goodbye-button", iconName: "handshake", disabled: mine })}`;
   }
   return true;
 }
@@ -1495,22 +1506,6 @@ function startMatchingFlow() {
   timers.push(sync);
 }
 
-async function startGame() {
-  if (!state.room?.code || !ONLINE) {
-    toast("服务暂不可用，请稍后重试");
-    return;
-  }
-  try {
-    await withProjectTransition(async () => {
-      const result = await api.roomAction(state.room.code, "start");
-      update({ room: normalizeServerRoom(result.room || { ...state.room, status: "playing", startedAt: Date.now() }) });
-      render();
-    }, { label: "正在开始 Session" });
-  } catch (err) {
-    toast(err.message);
-  }
-}
-
 function startRoomTimer() {
   const started = state.room?.startedAt || Date.now();
   timers.push(
@@ -1525,48 +1520,41 @@ function startRoomTimer() {
   );
 }
 
-async function finishGame() {
+function finishGame() {
   const partner = state.room?.partner;
   if (!partner) return;
   if (!state.room?.code || !ONLINE) {
     toast("服务暂不可用，请稍后重试");
     return;
   }
+  const partnerRequested = (state.room.goodbyeRequests || []).some((request) => request.userId !== state.user.id);
+  closeSheet();
+  showSheet(`<div class="sheet connection-goodbye-confirm" role="dialog" aria-modal="true" aria-label="确定要拜拜吗">
+    <div class="sheet-head"><h2 class="sheet-title">确定要拜拜吗？</h2><button class="sheet-close" data-action="close-sheet" aria-label="关闭">${icon("x", 18)}</button></div>
+    <div class="profile-identity">${avatarWrap(partner.avatarKey, 58, partner.online)}<div><div class="profile-name"><strong>${esc(partner.name || "对方玩家")}</strong></div><div class="profile-handle">${partnerRequested ? "对方已经提出拜拜，确认后本次连接会结束。" : "你的选择会先告诉对方，双方确认后才结束。"}</div></div></div>
+    <div class="form-actions">${button({ label: "再玩一会", action: "close-sheet", kind: "ghost" })}${button({ label: "确认拜拜", action: "confirm-goodbye", kind: "primary", iconName: "handshake" })}</div>
+  </div>`);
+}
+
+async function setGoodbyeRequest(requested) {
+  const room = state.room;
+  if (!room?.code || !ONLINE) return toast("服务暂不可用，请稍后重试");
   try {
-    const result = await withProjectTransition(
-      () => api.roomAction(state.room.code, "finish"),
-      { label: "正在结束 Session" },
-    );
-    if (result.session) {
+    const result = await api.requestRoomGoodbye(room.code, requested);
+    closeSheet();
+    if (result.room) {
+      const normalized = normalizeServerRoom(result.room);
+      update({ room: normalized });
+      updateRoomView(normalized);
+    }
+    if (result.session && ["completed", "cancelled"].includes(result.session.status)) {
       handleServerGameOver(result.session);
       return;
     }
+    toast(requested ? "已提出拜拜，正在等对方回应" : "已撤回拜拜");
   } catch (err) {
     toast(err.message);
-    return;
   }
-  await new Promise((resolve) => window.setTimeout(resolve, 800));
-  if (state.session) return;
-  const now = new Date();
-  const time = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
-  const title = `${GAME_BY_ID[state.need.game]?.name || state.need.game} · ${state.need.mode}`;
-  update({
-    room: null,
-    lastRoomCode: state.room?.code,
-    session: {
-      partner: { ...partner },
-      roomCode: state.room?.code,
-      title,
-      time,
-      outcome: null,
-    },
-    stats: {
-      ...state.stats,
-      sessions: state.stats.sessions + 1,
-      hours: state.stats.hours + 1,
-    },
-  });
-  navigate("#/gameover");
 }
 
 async function setRoomLiked(liked) {
@@ -1665,12 +1653,9 @@ async function saveRoomGameAccount() {
     next[gameId][key] = String(value || "").trim();
   }
   try {
-    await withProjectTransition(async () => {
-      const data = await api.updateProfile({ gameAccounts: next });
-      update({ user: { ...state.user, ...data.user } });
-      render();
-      toast("游戏账号已保存");
-    }, { label: "正在保存游戏账号" });
+    const data = await api.updateProfile({ gameAccounts: next });
+    update({ user: { ...state.user, ...data.user } });
+    toast("游戏账号已保存，对方会自动看到");
   } catch (err) {
     toast(err.message);
   }
@@ -2484,9 +2469,9 @@ document.addEventListener("click", (event) => {
     "rematch-recent": (id) => rematchRecent(id),
     "back-to-match": returnToMatchingSetup,
     "go-recent": () => navigate("#/connections"),
-    "start-game": startGame,
     "say-goodbye": finishGame,
-    "finish-game": finishGame,
+    "confirm-goodbye": () => setGoodbyeRequest(true),
+    "withdraw-goodbye": () => setGoodbyeRequest(false),
     "set-room-like": (value) => setRoomLiked(value === "yes"),
     "open-profile-edit": openProfileEdit,
     "close-sheet": closeSheet,
