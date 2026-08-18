@@ -1,5 +1,5 @@
 import { icon } from "../icons.js";
-import { esc, homeShell } from "../ui.js";
+import { esc, homeShell, registrationStepper } from "../ui.js";
 
 export function authPage(state) {
   const isLogin = state.authMode !== "register";
@@ -15,6 +15,7 @@ export function authPage(state) {
         <div class="auth-warning-rule"><span>REAL PLAYERS</span><i>/</i><span>NEVER PLAY ALONE</span><i>/</i><span>真实玩家</span></div>
       </div>
       <div class="product-auth-panel">
+        ${isLogin ? "" : registrationStepper(1)}
         <div class="product-auth-heading">
           <span>${isLogin ? "登录" : "注册"}</span>
           <div class="product-auth-tabs" role="tablist" aria-label="账号">

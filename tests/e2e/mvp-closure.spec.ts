@@ -126,7 +126,8 @@ async function login(page: Page) {
   await page.locator("#auth-username").fill("testplayer");
   await page.locator("#auth-password").fill("Phase1-test!");
   await page.locator(".product-auth-submit").click();
-  await expect(page.locator(".product-topbar-user")).toHaveText("测试玩家");
+  await expect(page.locator(".product-topbar-user span")).toHaveText("测试玩家");
+  await expect(page.locator(".product-topbar-user small")).toHaveText("测试玩家#0111");
 }
 
 test("first-time visitors land on the real matching home", async ({ page }) => {
@@ -138,8 +139,10 @@ test("first-time visitors land on the real matching home", async ({ page }) => {
   await expect(page.getByRole("link", { name: "摇人", exact: true })).toBeVisible();
   await expect(page.getByRole("link", { name: "社区", exact: true })).toBeVisible();
   await expect(page.getByRole("link", { name: "我的", exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "开始摇人", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "开始匹配", exact: true })).toBeVisible();
   await expect(page.locator(".match-head p")).toHaveText("总有人想一起玩");
+  await expect(page.locator("[data-ticker-head]")).toHaveCount(1);
+  await expect(page.locator("[data-ticker-tail]")).toHaveCount(1);
 });
 
 test("game selection updates modes without runtime errors", async ({ page }) => {
@@ -156,11 +159,11 @@ test("game selection updates modes without runtime errors", async ({ page }) => 
 
 test("starting a match while signed out opens the account flow", async ({ page }) => {
   await page.goto("/index.html");
-  await page.getByRole("button", { name: "开始摇人", exact: true }).click();
+  await page.getByRole("button", { name: "开始匹配", exact: true }).click();
 
   await expect(page).toHaveURL(/#\/auth$/);
   await expect(page.getByRole("heading", { name: "回来继续摇人。" })).toBeVisible();
-  await expect(page.getByText("登录后即可开始摇人。", { exact: true })).toBeVisible();
+  await expect(page.getByText("登录后即可开始匹配。", { exact: true })).toBeVisible();
 });
 
 test("registration continues to player identity and stores the real profile payload", async ({ page }) => {
@@ -169,11 +172,14 @@ test("registration continues to player identity and stores the real profile payl
   await page.goto("/index.html");
 
   await page.locator(".product-auth-actions").getByRole("button", { name: "注册", exact: true }).click();
+  await expect(page.locator('[data-registration-stepper][aria-label="注册进度：第 1 步，共 3 步"]')).toBeVisible();
   await page.locator("#auth-username").fill("testplayer");
   await page.locator("#auth-password").fill("Phase1-test!");
   await page.locator(".product-auth-submit").click();
 
   await expect(page).toHaveURL(/#\/welcome$/);
+  await expect(page.locator('[data-registration-stepper][aria-label="注册进度：第 2 步，共 3 步"]')).toBeVisible();
+  await expect(page.locator(".registration-step.is-complete")).toHaveCount(1);
   await page.locator("#nickname").fill("新玩家");
   await page.getByRole("button", { name: "FPS", exact: true }).click();
   await page.getByRole("button", { name: /进入 PROJECT-S/ }).click();
@@ -186,6 +192,34 @@ test("registration continues to player identity and stores the real profile payl
     device: "PC",
     genres: ["FPS"],
   });
+});
+
+test("desktop match controls use target cursor but the primary action does not", async ({ page }) => {
+  await page.goto("/index.html");
+  const game = page.getByRole("button", { name: /Deadlock/ });
+  await game.hover();
+  await expect(page.locator(".target-cursor")).toHaveClass(/is-visible/);
+  await expect(page.locator(".target-cursor")).toHaveClass(/is-locked/);
+
+  await page.getByRole("button", { name: "开始匹配", exact: true }).hover();
+  await expect(page.locator(".target-cursor")).not.toHaveClass(/is-visible/);
+});
+
+test("mobile visitors see the PC-only gate in the same product language", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/index.html");
+  await expect(page.getByRole("heading", { name: "请使用电脑打开" })).toBeVisible();
+  await expect(page.getByText(/Windows \/ macOS/)).toBeVisible();
+});
+
+test("signed-in top bar exposes player id and logout", async ({ page }) => {
+  await mockProductBackend(page);
+  await page.goto("/index.html");
+  await login(page);
+  await expect(page.getByRole("button", { name: /登出/ })).toBeVisible();
+  await page.getByRole("button", { name: /登出/ }).click();
+  await expect(page.locator(".product-auth-actions")).toBeVisible();
+  await expect(page).toHaveURL(/#\/home$/);
 });
 
 test("my page renders backend recent connections instead of stale local history", async ({ page }) => {

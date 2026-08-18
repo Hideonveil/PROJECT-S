@@ -264,12 +264,44 @@ body:has(.product-shell) {
   background: #27242f;
 }
 
+.product-user-actions {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+}
+
 .product-topbar-user {
-  height: 40px;
-  padding: 0 18px;
+  min-width: 150px;
+  min-height: 48px;
+  padding: 7px 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
   background: var(--product-black);
   color: #fff;
 }
+
+.product-topbar-user span,
+.product-topbar-user small { display: block; }
+.product-topbar-user span { font-size: 13px; font-weight: 760; }
+.product-topbar-user small { margin-top: 2px; color: rgba(255, 255, 255, 0.55); font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.04em; }
+
+.product-topbar-logout {
+  min-width: 78px;
+  padding: 0 13px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 1px solid var(--product-black);
+  color: var(--product-black);
+  font-size: 12px;
+  font-weight: 720;
+  transition: background 150ms ease, color 150ms ease, transform 150ms ease;
+}
+
+.product-topbar-logout:hover { background: var(--product-black); color: #fff; transform: translateY(-1px); }
 
 .product-surface .home-main {
   min-height: auto;
@@ -427,6 +459,38 @@ body:has(.product-shell) {
   background: rgba(255, 255, 255, 0.64);
   transform: translateY(-2px);
 }
+
+.match-workspace.is-target-cursor-active,
+.match-workspace.is-target-cursor-active .cursor-target { cursor: none; }
+.match-workspace .match-start { cursor: pointer; }
+
+.target-cursor {
+  position: fixed;
+  z-index: 999;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+  opacity: 0;
+  translate: -50% -50%;
+  scale: 1;
+  transition: opacity 120ms ease, scale 180ms ease;
+  animation: targetCursorSpin 5s linear infinite;
+  mix-blend-mode: difference;
+}
+
+.target-cursor.is-visible { opacity: 1; }
+.target-cursor.is-locked { animation-play-state: paused; rotate: 0deg; }
+.target-cursor.is-down { scale: 0.86; }
+.target-cursor-dot { position: absolute; left: -2px; top: -2px; width: 4px; height: 4px; border-radius: 50%; background: #fff; }
+.target-cursor-corner { position: absolute; left: 0; top: 0; width: 12px; height: 12px; border: 3px solid #fff; transition: transform 250ms cubic-bezier(.2,.8,.2,1); }
+.target-cursor-corner.is-tl { border-right: 0; border-bottom: 0; }
+.target-cursor-corner.is-tr { border-left: 0; border-bottom: 0; }
+.target-cursor-corner.is-br { border-left: 0; border-top: 0; }
+.target-cursor-corner.is-bl { border-right: 0; border-top: 0; }
+
+@keyframes targetCursorSpin { to { rotate: 360deg; } }
 
 .product-shell .match-option.is-on,
 .product-shell .home-filter-game-row.is-on,
@@ -634,6 +698,55 @@ body:has(.product-shell) {
   padding: clamp(46px, 6vw, 78px);
 }
 
+.registration-stepper {
+  width: 100%;
+  display: flex;
+  align-items: flex-start;
+  margin-bottom: 42px;
+  padding-bottom: 30px;
+  border-bottom: 1px solid var(--product-hairline);
+  animation: registerStepEnter 420ms cubic-bezier(.2,.8,.2,1) both;
+}
+
+.registration-step {
+  flex: none;
+  min-width: 62px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.registration-step b {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(18, 17, 24, 0.22);
+  border-radius: 50%;
+  background: transparent;
+  color: rgba(18, 17, 24, 0.42);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  transition: background 300ms ease, color 300ms ease, border-color 300ms ease, transform 300ms ease;
+}
+
+.registration-step em { color: rgba(18, 17, 24, 0.42); font-size: 10px; font-style: normal; font-weight: 700; white-space: nowrap; }
+.registration-step.is-active b { transform: scale(1.08); border-color: var(--product-violet); background: var(--product-violet); color: #fff; box-shadow: 0 0 0 6px rgba(118, 89, 223, 0.11); }
+.registration-step.is-active em { color: var(--product-black); }
+.registration-step.is-complete b { border-color: var(--product-black); background: var(--product-black); color: #fff; }
+.registration-step.is-complete em { color: rgba(18, 17, 24, 0.72); }
+
+.registration-step-line { position: relative; flex: 1; height: 2px; margin: 15px 8px 0; overflow: hidden; border-radius: 2px; background: rgba(18, 17, 24, 0.14); }
+.registration-step-line i { position: absolute; inset: 0; background: var(--product-violet); transform: scaleX(0); transform-origin: left; }
+.registration-step-line.is-complete i { animation: registerLineFill 400ms 100ms cubic-bezier(.2,.8,.2,1) forwards; }
+
+.identity-workspace > .registration-stepper { width: min(620px, 100%); margin: 6px 0 38px auto; }
+.identity-form { animation: registerStepEnter 420ms 60ms cubic-bezier(.2,.8,.2,1) both; }
+
+@keyframes registerLineFill { to { transform: scaleX(1); } }
+@keyframes registerStepEnter { from { opacity: 0; transform: translateX(-26px); } to { opacity: 1; transform: translateX(0); } }
+
 .product-auth-heading {
   display: flex;
   align-items: center;
@@ -787,44 +900,52 @@ body:has(.product-shell) {
   color: var(--product-black);
 }
 
-.product-ticker-track {
-  width: max-content;
-  height: 100%;
-  display: flex;
-  animation: productTickerLoop 24s linear infinite;
-  will-change: transform;
-}
-
-.product-ticker-group {
-  flex: none;
-  display: flex;
-  align-items: center;
+.product-ticker-svg {
+  display: block;
+  width: 100%;
   height: 100%;
 }
 
-.product-ticker span,
-.product-ticker b,
-.product-ticker i {
-  flex: none;
+.product-ticker-text {
+  fill: var(--product-black);
   font-family: var(--font-sans);
-  font-size: 16px;
-  font-style: normal;
+  font-size: 15px;
   font-weight: 750;
-  white-space: nowrap;
+  letter-spacing: 0.02em;
+  user-select: none;
 }
 
-.product-ticker span,
-.product-ticker b {
-  padding: 0 24px;
-}
+.pc-only-gate { display: none; }
 
-.product-ticker i {
-  font-family: var(--font-mono);
-  font-weight: 500;
+.pc-only-card {
+  width: min(520px, calc(100% - 34px));
+  padding: 34px 30px 30px;
+  border: 2px solid var(--product-black);
+  border-radius: 8px;
+  background: var(--product-paper);
+  box-shadow: 8px 8px 0 var(--product-black);
 }
+.pc-only-mark { width: 58px; margin-bottom: 34px; }
+.pc-only-card h1 { margin-top: 20px; font-size: clamp(38px, 12vw, 58px); letter-spacing: -0.055em; }
+.pc-only-card > p { margin-top: 16px; color: rgba(18, 17, 24, 0.58); font-size: 14px; line-height: 1.7; }
+.pc-only-device { margin-top: 28px; padding-top: 22px; display: flex; align-items: center; gap: 14px; border-top: 1px solid var(--product-hairline); }
+.pc-only-device b, .pc-only-device small { display: block; }
+.pc-only-device b { font-size: 13px; }
+.pc-only-device small { margin-top: 3px; color: rgba(18, 17, 24, 0.48); font-size: 11px; }
+.pc-only-warning { position: absolute; left: -8%; right: -8%; bottom: 7vh; height: 42px; display: flex; align-items: center; justify-content: center; gap: 22px; transform: rotate(-3deg); border-block: 2px solid var(--product-black); background: #b9a5ff; font-size: 12px; font-weight: 800; white-space: nowrap; }
+.pc-only-warning i { font-style: normal; font-weight: 500; }
 
-@keyframes productTickerLoop {
-  to { transform: translateX(-50%); }
+@media (max-width: 900px), (hover: none) and (pointer: coarse) {
+  .pc-only-gate {
+    position: fixed;
+    z-index: 1200;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    overflow: hidden;
+    padding: 24px 0 100px;
+    background: var(--product-paper);
+  }
 }
 
 @media (max-width: 1120px) {
@@ -856,7 +977,7 @@ body:has(.product-shell) {
   .product-topbar { height: 82px; padding: 0 20px; }
   .product-surface .home-main { padding: 8px 20px 50px; }
   .product-ticker { bottom: 70px; height: var(--product-ticker); }
-  .product-ticker span, .product-ticker b, .product-ticker i { font-size: 12px; }
+  .product-ticker-text { font-size: 12px; }
   .match-head { align-items: flex-start; flex-direction: column; min-height: 160px; }
   .match-head h1 { font-size: 54px; }
   .match-form { grid-template-columns: 1fr; }
@@ -878,6 +999,12 @@ body:has(.product-shell) {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .product-ticker-track { animation: none; }
   .match-start svg { animation: none; }
+  .target-cursor { display: none; }
+  .match-workspace.is-target-cursor-active,
+  .match-workspace.is-target-cursor-active .cursor-target { cursor: pointer; }
+  .registration-stepper,
+  .identity-form,
+  .registration-step-line.is-complete i { animation: none; }
+  .registration-step-line.is-complete i { transform: scaleX(1); }
 }

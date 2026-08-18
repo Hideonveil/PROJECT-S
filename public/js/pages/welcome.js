@@ -1,6 +1,6 @@
 import { icon } from "../icons.js";
 import { avatar } from "../avatar.js";
-import { esc, homeShell } from "../ui.js";
+import { esc, homeShell, registrationStepper } from "../ui.js";
 import { DEVICES, GENRES } from "../data.js";
 
 export function welcomePage(state, draft) {
@@ -10,6 +10,7 @@ export function welcomePage(state, draft) {
   return homeShell(
     state,
     `<section class="identity-workspace">
+      ${registrationStepper(2)}
       <header class="identity-head"><div class="match-eyebrow">PLAYER IDENTITY / 30 SEC</div><h1>创建玩家身份</h1><p>只保留匹配真正需要的信息，以后都可以修改。</p></header>
       <form class="identity-form" data-form="onboard">
         <div class="identity-column">

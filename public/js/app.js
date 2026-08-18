@@ -69,6 +69,8 @@ let chatClose = null;
 let wizardAdvanceTimer = null;
 let roomExitReadyAt = 0;
 let matchStartObserver = null;
+let productTickerCleanup = null;
+let targetCursorCleanup = null;
 
 function clearTimers() {
   timers.forEach((t) => {
@@ -80,6 +82,133 @@ function clearTimers() {
     matchStartObserver.disconnect();
     matchStartObserver = null;
   }
+  productTickerCleanup?.();
+  productTickerCleanup = null;
+  targetCursorCleanup?.();
+  targetCursorCleanup = null;
+}
+
+function initProductTicker() {
+  const root = document.querySelector("[data-product-ticker]");
+  const path = root?.querySelector("[data-ticker-path]");
+  const head = root?.querySelector("[data-ticker-head]");
+  const tail = root?.querySelector("[data-ticker-tail]");
+  if (!root || !path || !head || !tail) return;
+
+  const svg = root.querySelector("svg");
+  const width = Math.max(root.clientWidth, 960);
+  svg?.setAttribute("viewBox", `0 0 ${width} 42`);
+
+  // Keep two natural-width copies on one long curved path. The second starts
+  // exactly where the first ends, so there is never a blank reset frame.
+  const span = Math.max(head.getComputedTextLength(), width + 320);
+  const pathLength = span * 2 + width;
+  const segments = Math.ceil(pathLength / 280);
+  let d = "M 0 22";
+  for (let index = 1; index <= segments; index += 1) {
+    const end = Math.min(index * 280, pathLength);
+    const start = (index - 1) * 280;
+    const midpoint = start + (end - start) / 2;
+    const bend = index % 2 ? 14 : 30;
+    d += ` Q ${midpoint} ${bend} ${end} 22`;
+  }
+  path.setAttribute("d", d);
+
+  const apply = (offset) => {
+    head.setAttribute("startOffset", String(offset));
+    tail.setAttribute("startOffset", String(offset + span));
+  };
+  apply(0);
+
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  const startedAt = performance.now();
+  const speed = 74;
+  let frame = 0;
+  const tick = (now) => {
+    const offset = -(((now - startedAt) / 1000) * speed % span);
+    apply(offset);
+    frame = window.requestAnimationFrame(tick);
+  };
+  frame = window.requestAnimationFrame(tick);
+  productTickerCleanup = () => window.cancelAnimationFrame(frame);
+}
+
+function initTargetCursor() {
+  const workspace = document.querySelector(".match-workspace");
+  if (!workspace || !window.matchMedia("(pointer: fine)").matches) return;
+
+  const cursor = document.createElement("div");
+  cursor.className = "target-cursor";
+  cursor.setAttribute("aria-hidden", "true");
+  cursor.innerHTML = `<i class="target-cursor-dot"></i><i class="target-cursor-corner is-tl"></i><i class="target-cursor-corner is-tr"></i><i class="target-cursor-corner is-br"></i><i class="target-cursor-corner is-bl"></i>`;
+  document.body.appendChild(cursor);
+  const corners = [...cursor.querySelectorAll(".target-cursor-corner")];
+  const home = [[-18, -18], [6, -18], [6, 6], [-18, 6]];
+  let lastX = 0;
+  let lastY = 0;
+  let target = null;
+
+  const placeCorners = () => {
+    const rect = target?.getBoundingClientRect();
+    corners.forEach((corner, index) => {
+      let [x, y] = home[index];
+      if (rect) {
+        const positions = [
+          [rect.left - lastX - 3, rect.top - lastY - 3],
+          [rect.right - lastX - 9, rect.top - lastY - 3],
+          [rect.right - lastX - 9, rect.bottom - lastY - 9],
+          [rect.left - lastX - 3, rect.bottom - lastY - 9],
+        ];
+        [x, y] = positions[index];
+      }
+      corner.style.transform = `translate3d(${x}px, ${y}px, 0)`;
+    });
+  };
+
+  const move = (event) => {
+    lastX = event.clientX;
+    lastY = event.clientY;
+    const overStart = event.target.closest?.(".match-start");
+    if (overStart) {
+      workspace.classList.remove("is-target-cursor-active");
+      cursor.classList.remove("is-visible", "is-locked");
+      target = null;
+      return;
+    }
+    workspace.classList.add("is-target-cursor-active");
+    cursor.classList.add("is-visible");
+    cursor.style.left = `${lastX}px`;
+    cursor.style.top = `${lastY}px`;
+    const nextTarget = event.target.closest?.(".cursor-target") || null;
+    if (nextTarget !== target) target = nextTarget;
+    cursor.classList.toggle("is-locked", Boolean(target));
+    placeCorners();
+  };
+  const leave = () => {
+    target = null;
+    workspace.classList.remove("is-target-cursor-active");
+    cursor.classList.remove("is-visible", "is-locked", "is-down");
+    placeCorners();
+  };
+  const down = () => cursor.classList.add("is-down");
+  const up = () => cursor.classList.remove("is-down");
+  const scroll = () => target && placeCorners();
+  workspace.addEventListener("pointermove", move);
+  workspace.addEventListener("pointerleave", leave);
+  workspace.addEventListener("pointerdown", down);
+  window.addEventListener("pointerup", up);
+  window.addEventListener("scroll", scroll, { passive: true });
+  placeCorners();
+
+  targetCursorCleanup = () => {
+    workspace.removeEventListener("pointermove", move);
+    workspace.removeEventListener("pointerleave", leave);
+    workspace.removeEventListener("pointerdown", down);
+    window.removeEventListener("pointerup", up);
+    window.removeEventListener("scroll", scroll);
+    workspace.classList.remove("is-target-cursor-active");
+    cursor.remove();
+  };
 }
 
 function initMatchStartDock() {
@@ -255,8 +384,12 @@ function render() {
   app.innerHTML = html;
   paintAvatars(app);
   activeField = initNodeField(app);
+  initProductTicker();
 
-  if (route.name === "home") initMatchStartDock();
+  if (route.name === "home") {
+    initMatchStartDock();
+    initTargetCursor();
+  }
   if (route.name === "matching") startMatchingFlow();
   if (route.name === "room" && state.room?.status === "playing") startRoomTimer();
   if (route.name === "room" && state.room?.id) {
@@ -320,7 +453,7 @@ function renderHomeFilterTags() {
       .slice(0, 3)
       .map(
         (m) =>
-          `<button type="button" class="home-filter-tag match-option ${m === HOME_FILTER.mode ? "is-on" : ""}" data-action="home-mode" data-value="${esc(m)}" aria-pressed="${m === HOME_FILTER.mode}"><span>${esc(m.replace(" / ", ""))}</span><span class="match-option-check">${icon("check", 12)}</span></button>`
+          `<button type="button" class="cursor-target home-filter-tag match-option ${m === HOME_FILTER.mode ? "is-on" : ""}" data-action="home-mode" data-value="${esc(m)}" aria-pressed="${m === HOME_FILTER.mode}"><span>${esc(m.replace(" / ", ""))}</span><span class="match-option-check">${icon("check", 12)}</span></button>`
       )
       .join("");
   }
@@ -328,7 +461,7 @@ function renderHomeFilterTags() {
     timeWrap.innerHTML = times
       .map(
         (t) =>
-          `<button type="button" class="home-filter-tag match-option ${t === HOME_FILTER.time ? "is-on" : ""}" data-action="home-time" data-value="${esc(t)}" aria-pressed="${t === HOME_FILTER.time}"><span>${esc(t === "现在就玩" ? "尽快开始" : t)}</span><span class="match-option-check">${icon("check", 12)}</span></button>`
+          `<button type="button" class="cursor-target home-filter-tag match-option ${t === HOME_FILTER.time ? "is-on" : ""}" data-action="home-time" data-value="${esc(t)}" aria-pressed="${t === HOME_FILTER.time}"><span>${esc(t === "现在就玩" ? "尽快开始" : t)}</span><span class="match-option-check">${icon("check", 12)}</span></button>`
       )
       .join("");
   }
@@ -350,7 +483,7 @@ function syncHomeFilterToDraft() {
 
 function startHomeFilter() {
   if (!state.authenticated) {
-    update({ authMode: "login", authError: "", authNotice: "登录后即可开始摇人。" });
+    update({ authMode: "login", authError: "", authNotice: "登录后即可开始匹配。" });
     navigate("#/auth");
     return;
   }

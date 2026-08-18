@@ -9,14 +9,14 @@ function gameOptions(selected) {
     const game = GAMES.find((item) => item.id === id);
     if (!game) return "";
     const on = id === selected;
-    return `<button type="button" class="match-option match-game-option home-filter-game-row ${on ? "is-on" : ""}" data-home-game="${esc(id)}" data-action="home-game" data-value="${esc(id)}" aria-pressed="${on}">
+    return `<button type="button" class="cursor-target match-option match-game-option home-filter-game-row ${on ? "is-on" : ""}" data-home-game="${esc(id)}" data-action="home-game" data-value="${esc(id)}" aria-pressed="${on}">
       <span class="match-option-icon">${icon(GAME_ICONS[id] || "gamepad2", 21)}</span><span>${esc(game.name)}</span><span class="match-option-check">${icon("check", 12)}</span>
     </button>`;
   }).join("");
 }
 
 function option(value, label, on, action, iconName = "") {
-  return `<button type="button" class="home-filter-tag match-option ${on ? "is-on" : ""}" data-action="${action}" data-value="${esc(value)}" aria-pressed="${on}">
+  return `<button type="button" class="cursor-target home-filter-tag match-option ${on ? "is-on" : ""}" data-action="${action}" data-value="${esc(value)}" aria-pressed="${on}">
     ${iconName ? `<span class="match-option-icon">${icon(iconName, 20)}</span>` : ""}<span>${esc(label)}</span><span class="match-option-check">${icon("check", 12)}</span>
   </button>`;
 }
@@ -39,6 +39,6 @@ export function homePage(state, filter) {
       <section class="match-block"><h2><span>03</span>预计开始时间</h2><div class="home-filter-tag-group match-options match-options--time" id="home-filter-time-tags" role="group" aria-label="开始时间">${times}</div></section>
       <section class="match-block"><h2><span>04</span>语音偏好</h2><div class="home-filter-tag-group match-options" role="group" aria-label="语音偏好">${voices}</div></section>
     </div>
-    <div class="match-start-dock" data-match-start-dock><button class="match-start" type="button" data-action="home-start-match" aria-label="开始摇人"><span>开始摇人</span>${icon("arrowRight", 25)}</button></div>
+    <div class="match-start-dock" data-match-start-dock><button class="match-start" type="button" data-action="home-start-match" aria-label="开始匹配"><span>开始匹配</span>${icon("arrowRight", 25)}</button></div>
   </div>`, "home");
 }
