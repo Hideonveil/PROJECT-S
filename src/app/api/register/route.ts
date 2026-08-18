@@ -38,7 +38,7 @@ export async function POST(request: Request) {
         .insert({
           auth_user_id: authUser.id,
           nickname,
-          avatar_key: String(body.avatarKey || "me-1"),
+          avatar_key: typeof body.avatarKey === "string" ? body.avatarKey : "",
           device: String(body.device || "PC"),
           gender: String(body.gender || "保密"),
           age_range: String(body.ageRange || "保密"),

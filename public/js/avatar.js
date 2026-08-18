@@ -8,6 +8,9 @@ const PALETTES = [
 ];
 
 export function avatar(seed, size = 72, extra = "") {
+  if (!String(seed || "").trim()) {
+    return `<span class="avatar-canvas avatar-empty ${extra}" style="width:${size}px;height:${Math.round(size * 0.866)}px" aria-hidden="true"></span>`;
+  }
   if (String(seed).startsWith("data:")) {
     return `<img class="avatar-canvas avatar-image ${extra}" src="${escapeAttr(seed)}" width="${size}" alt="" />`;
   }

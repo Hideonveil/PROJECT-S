@@ -27,7 +27,7 @@ export async function POST(request: Request) {
       .from("profiles")
       .update({
         nickname: nickname || existing.nickname,
-        avatar_key: String(body.avatarKey || existing.avatar_key),
+        avatar_key: Object.prototype.hasOwnProperty.call(body, "avatarKey") ? String(body.avatarKey || "") : existing.avatar_key,
         device: String(body.device || existing.device),
         gender: String(body.gender || existing.gender),
         age_range: String(body.ageRange || existing.age_range || "保密"),

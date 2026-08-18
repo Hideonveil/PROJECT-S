@@ -175,6 +175,19 @@ test("game selection updates modes without runtime errors", async ({ page }) => 
   expect(errors).toEqual([]);
 });
 
+test("navigation keeps icon-only rest state and staggers open on hover", async ({ page }) => {
+  await page.goto("/index.html");
+  const rail = page.locator("[data-staggered-rail]");
+  await expect.poll(() => rail.evaluate((el) => el.getBoundingClientRect().width)).toBeLessThan(100);
+  await rail.hover();
+  await expect(rail).toHaveClass(/is-staggered-open/);
+  await expect.poll(() => rail.evaluate((el) => el.getBoundingClientRect().width)).toBeGreaterThan(150);
+  await expect(page.locator(".product-nav-link > span").first()).toHaveCSS("opacity", "1");
+  await page.locator(".match-head").hover();
+  await expect(rail).not.toHaveClass(/is-staggered-open/);
+  await expect.poll(() => rail.evaluate((el) => el.getBoundingClientRect().width)).toBeLessThan(100);
+});
+
 test("starting a match while signed out opens the account flow", async ({ page }) => {
   await page.goto("/index.html");
   await page.getByRole("button", { name: "开始匹配", exact: true }).click();
@@ -190,22 +203,34 @@ test("registration continues to player identity and stores the real profile payl
   await page.goto("/index.html");
 
   await page.locator(".product-auth-actions").getByRole("button", { name: "注册", exact: true }).click();
-  await expect(page.locator('[data-registration-stepper][aria-label="注册进度：第 1 步，共 3 步"]')).toBeVisible();
+  await expect(page.locator("[data-registration-stepper]")).toHaveCount(0);
   await page.locator("#auth-username").fill("testplayer");
   await page.locator("#auth-password").fill("Phase1-test!");
+  await page.locator("#auth-password-confirm").fill("not-the-same");
+  await page.locator(".product-auth-submit").click();
+  await expect(page.getByText("两次输入的密码不一致", { exact: true })).toBeVisible();
+  await page.locator("#auth-password-confirm").fill("Phase1-test!");
   await page.locator(".product-auth-submit").click();
 
   await expect(page).toHaveURL(/#\/welcome$/);
-  await expect(page.locator('[data-registration-stepper][aria-label="注册进度：第 2 步，共 3 步"]')).toBeVisible();
-  await expect(page.locator(".registration-step.is-complete")).toHaveCount(1);
+  await expect(page.locator('[data-registration-stepper][aria-label="身份创建进度：第 1 步，共 5 步"]')).toBeVisible();
+  await expect(page.getByRole("button", { name: /头像 1/ })).toHaveCount(0);
   await page.locator("#nickname").fill("新玩家");
-  await page.getByRole("button", { name: "FPS", exact: true }).click();
-  await page.getByRole("button", { name: /进入 PROJECT-S/ }).click();
+  await page.getByRole("button", { name: "下一步", exact: true }).click();
+  await expect(page.locator('[aria-label="身份创建进度：第 2 步，共 5 步"]')).toBeVisible();
+  await page.getByRole("button", { name: /暂不设置头像/ }).click();
+  await page.getByRole("button", { name: "下一步", exact: true }).click();
+  await page.getByRole("button", { name: "PC", exact: true }).click();
+  await page.getByRole("button", { name: "下一步", exact: true }).click();
+  await page.getByRole("button", { name: /FPS/ }).click();
+  await page.getByRole("button", { name: "下一步", exact: true }).click();
+  await page.getByRole("button", { name: "保密", exact: true }).click();
+  await page.getByRole("button", { name: /完成并进入 PROJECT-S/ }).click();
 
   await expect(page).toHaveURL(/#\/home$/);
   expect(capture.profile).toMatchObject({
     nickname: "新玩家",
-    avatarKey: "me-1",
+    avatarKey: "",
     gender: "保密",
     device: "PC",
     genres: ["FPS"],

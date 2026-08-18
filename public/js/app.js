@@ -51,6 +51,7 @@ const DRAFT = {
   voicePref: "都可以",
   style: "",
   needed: 1,
+  onboardStep: 0,
   dirty: false,
 };
 
@@ -71,6 +72,7 @@ let roomExitReadyAt = 0;
 let matchStartObserver = null;
 let productTickerCleanup = null;
 let targetCursorCleanup = null;
+let staggeredRailCleanup = null;
 
 function clearTimers() {
   timers.forEach((t) => {
@@ -86,6 +88,8 @@ function clearTimers() {
   productTickerCleanup = null;
   targetCursorCleanup?.();
   targetCursorCleanup = null;
+  staggeredRailCleanup?.();
+  staggeredRailCleanup = null;
 }
 
 function initProductTicker() {
@@ -274,6 +278,61 @@ function initTargetCursor() {
   };
 }
 
+function initStaggeredRail() {
+  const rail = document.querySelector("[data-staggered-rail]");
+  const gsap = window.gsap;
+  if (!rail || !gsap || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+
+  const layers = [...rail.querySelectorAll(".product-rail-layer")];
+  const labels = [...rail.querySelectorAll(".product-nav-link > span")];
+  const secondary = [...rail.querySelectorAll(".product-brand strong, .product-rail-footer .product-account > div, .product-rail-footer .product-account--signed > span:last-child")];
+  let openTimeline = null;
+  let closeTween = null;
+
+  gsap.set(layers, { xPercent: -112, opacity: 1 });
+
+  const open = () => {
+    closeTween?.kill();
+    openTimeline?.kill();
+    rail.classList.add("is-staggered-open");
+    gsap.set(labels, { yPercent: 125, rotate: 7, opacity: 0, transformOrigin: "50% 100%" });
+    gsap.set(secondary, { y: 12, opacity: 0 });
+    openTimeline = gsap.timeline();
+    layers.forEach((layer, index) => {
+      openTimeline.fromTo(layer, { xPercent: -112 }, { xPercent: 0, duration: 0.5, ease: "power4.out" }, index * 0.07);
+    });
+    openTimeline.to(labels, { yPercent: 0, rotate: 0, opacity: 1, duration: 0.72, ease: "power4.out", stagger: 0.075 }, 0.1);
+    openTimeline.to(secondary, { y: 0, opacity: 1, duration: 0.42, ease: "power3.out", stagger: 0.06 }, 0.18);
+  };
+
+  const close = () => {
+    openTimeline?.kill();
+    rail.classList.remove("is-staggered-open");
+    closeTween?.kill();
+    closeTween = gsap.to(layers, { xPercent: -112, duration: 0.3, ease: "power3.in", stagger: 0.035, overwrite: "auto" });
+    gsap.to(labels, { yPercent: 55, opacity: 0, duration: 0.2, ease: "power2.in", stagger: { each: 0.025, from: "end" }, overwrite: "auto" });
+    gsap.to(secondary, { y: 8, opacity: 0, duration: 0.18, ease: "power2.in", overwrite: "auto" });
+  };
+
+  const focusOut = () => window.setTimeout(() => {
+    if (!rail.contains(document.activeElement) && !rail.matches(":hover")) close();
+  }, 0);
+  rail.addEventListener("pointerenter", open);
+  rail.addEventListener("pointerleave", close);
+  rail.addEventListener("focusin", open);
+  rail.addEventListener("focusout", focusOut);
+
+  staggeredRailCleanup = () => {
+    rail.removeEventListener("pointerenter", open);
+    rail.removeEventListener("pointerleave", close);
+    rail.removeEventListener("focusin", open);
+    rail.removeEventListener("focusout", focusOut);
+    openTimeline?.kill();
+    closeTween?.kill();
+    gsap.killTweensOf([...layers, ...labels, ...secondary]);
+  };
+}
+
 function initMatchStartDock() {
   const dock = document.querySelector("[data-match-start-dock]");
   const button = dock?.querySelector(".match-start");
@@ -448,6 +507,7 @@ function render() {
   paintAvatars(app);
   activeField = initNodeField(app);
   initProductTicker();
+  initStaggeredRail();
 
   if (route.name === "home") {
     initMatchStartDock();
@@ -463,11 +523,12 @@ function render() {
 
 function prepareOnboardDraft() {
   DRAFT.nickname = state.user.nickname || state.authUsername || "";
-  DRAFT.avatarKey = state.user.avatarKey || "me-1";
-  DRAFT.device = state.user.device || "PC";
-  DRAFT.gender = state.user.gender || "保密";
+  DRAFT.avatarKey = String(state.user.avatarKey || "").startsWith("data:") ? state.user.avatarKey : "";
+  DRAFT.device = "";
+  DRAFT.gender = "";
   DRAFT.genres = state.user.genres || [];
   DRAFT.playStyle = state.user.playStyle || "";
+  DRAFT.onboardStep = 0;
 }
 
 function prepareNeedDraft() {
@@ -937,7 +998,7 @@ function connectEvents() {
   });
 }
 
-function showAuthError(message) {
+function showAuthError(message, { preservePassword = false } = {}) {
   update({ authError: message });
   const form = document.querySelector('[data-form="auth"]');
   const card = form?.closest(".product-auth-panel") || form?.closest(".auth-card") || document.querySelector(".product-auth-panel, .auth-card");
@@ -952,7 +1013,7 @@ function showAuthError(message) {
   }
   if (errorEl) errorEl.textContent = message;
   const pw = form?.querySelector('[name="password"]');
-  if (pw) pw.value = "";
+  if (pw && !preservePassword) pw.value = "";
   const userInput = form?.querySelector('[name="username"]');
   if (userInput) update({ authUsername: userInput.value.trim() });
 }
@@ -1047,8 +1108,8 @@ async function sendRoomChat() {
 
 async function completeOnboard() {
   syncDraftFromDom("onboard");
-  if (!DRAFT.nickname.trim() || !DRAFT.genres.length) {
-    toast("昵称和常玩游戏类型至少选一项");
+  if (!DRAFT.nickname.trim() || !DRAFT.device || !DRAFT.genres.length || !DRAFT.gender) {
+    toast("请完成昵称、设备、游戏类型和性别");
     return;
   }
   const user = {
@@ -1087,6 +1148,25 @@ async function completeOnboard() {
   } catch (err) {
     toast(err.message);
   }
+}
+
+function moveOnboardStep(direction) {
+  syncDraftFromDom("onboard");
+  const step = Math.max(0, Math.min(4, Number(DRAFT.onboardStep) || 0));
+  if (direction > 0) {
+    const error =
+      step === 0 && !DRAFT.nickname.trim() ? "请先输入玩家昵称" :
+      step === 2 && !DRAFT.device ? "请选择常用设备" :
+      step === 3 && !DRAFT.genres.length ? "请至少选择一个游戏类型" :
+      step === 4 && !DRAFT.gender ? "请选择性别" : "";
+    if (error) {
+      toast(error);
+      return;
+    }
+  }
+  DRAFT.onboardStep = Math.max(0, Math.min(4, step + direction));
+  DRAFT.dirty = true;
+  render();
 }
 
 async function startMatch() {
@@ -1549,15 +1629,9 @@ function openProfileEdit() {
         <div class="field">
           <span class="label">头像</span>
           <div class="avatar-pick" data-avatar-pick>
-            ${[1, 2, 3, 4]
-              .map(
-                (i) =>
-                  `<button type="button" class="${user.avatarKey === `me-${i}` ? "button--on" : ""}" data-action="pick-avatar" data-value="me-${i}" aria-label="头像 ${i}">${avatar(
-                    `me-${i}`,
-                    96
-                  )}</button>`
-              )
-              .join("")}
+            <button type="button" class="avatar-upload-tile ${!user.avatarKey ? "button--on" : ""}" data-action="pick-avatar" data-value="" aria-label="不设置头像">
+              <span>${avatar("", 72)}</span><span>无头像</span>
+            </button>
             <button type="button" class="avatar-upload-tile ${String(user.avatarKey).startsWith("data:") ? "button--on" : ""}" data-action="choose-avatar-file" aria-label="上传自定义头像">
               <span data-avatar-preview>${String(user.avatarKey).startsWith("data:") ? avatar(user.avatarKey, 72) : icon("camera", 18)}</span>
               <span>${String(user.avatarKey).startsWith("data:") ? "更换" : "上传"}</span>
@@ -1795,9 +1869,14 @@ document.addEventListener("click", (event) => {
 
   if (action === "pick-avatar") {
     DRAFT.avatarKey = value;
+    DRAFT.dirty = true;
     const scope = actionEl.closest("[data-avatar-pick]");
-    scope?.querySelectorAll("button").forEach((b) => b.classList.remove("button--on"));
-    actionEl.classList.add("button--on");
+    scope?.querySelectorAll("button").forEach((b) => {
+      b.classList.remove("button--on", "is-on");
+      b.setAttribute("aria-pressed", "false");
+    });
+    actionEl.classList.add("button--on", "is-on");
+    actionEl.setAttribute("aria-pressed", "true");
     return;
   }
 
@@ -1817,12 +1896,28 @@ document.addEventListener("click", (event) => {
     return;
   }
 
+  if (action === "onboard-choice") {
+    const key = actionEl.dataset.key;
+    if (!key) return;
+    DRAFT[key] = value;
+    DRAFT.dirty = true;
+    const group = actionEl.closest("[data-identity-choice-group]");
+    group?.querySelectorAll(".identity-choice").forEach((choice) => {
+      choice.classList.toggle("is-on", choice === actionEl);
+      choice.setAttribute("aria-pressed", String(choice === actionEl));
+    });
+    return;
+  }
+
   if (action === "toggle-genre") {
     const selected = new Set(DRAFT.genres || []);
     if (selected.has(value)) selected.delete(value);
     else selected.add(value);
     DRAFT.genres = [...selected];
+    DRAFT.dirty = true;
     actionEl.classList.toggle("chip--on");
+    actionEl.classList.toggle("is-on");
+    actionEl.setAttribute("aria-pressed", String(DRAFT.genres.includes(value)));
     return;
   }
 
@@ -2138,6 +2233,8 @@ document.addEventListener("click", (event) => {
       toggle.setAttribute("aria-label", show ? "隐藏密码" : "显示密码");
     },
     "auth-submit": () => submitAuth(),
+    "onboard-next": () => moveOnboardStep(1),
+    "onboard-back": () => moveOnboardStep(-1),
     "complete-onboard": completeOnboard,
     "start-match": startMatch,
     "cancel-match": cancelMatch,
@@ -2240,12 +2337,17 @@ document.addEventListener("change", (event) => {
     if (!file) return;
     readImageAsDataUrl(file).then((dataUrl) => {
       DRAFT.avatarKey = dataUrl;
+      DRAFT.dirty = true;
       const scope = target.closest("[data-avatar-pick]");
-      scope?.querySelectorAll("button").forEach((b) => b.classList.remove("button--on"));
+      scope?.querySelectorAll("button").forEach((b) => {
+        b.classList.remove("button--on", "is-on");
+        b.setAttribute("aria-pressed", "false");
+      });
       const tile = scope?.querySelector('[data-action="choose-avatar-file"]');
-      tile?.classList.add("button--on");
+      tile?.classList.add("button--on", "is-on");
+      tile?.setAttribute("aria-pressed", "true");
       const preview = tile?.querySelector("[data-avatar-preview]");
-      if (preview) preview.innerHTML = avatar(dataUrl, 72);
+      if (preview) preview.innerHTML = avatar(dataUrl, target.closest(".identity-avatar-options") ? 126 : 72);
     });
     return;
   }
@@ -2331,7 +2433,7 @@ async function handleAuthSuccess() {
     navigate("#/home");
     toast(`欢迎回来，${state.user.nickname}`);
   } else {
-    update({ user: { ...state.user, nickname: "", avatarKey: "me-1", device: "PC", gender: "保密", games: [], genres: [], playStyle: "" } });
+    update({ user: { ...state.user, nickname: "", avatarKey: "", device: "", gender: "", games: [], genres: [], playStyle: "" } });
     navigate("#/welcome");
   }
 }
@@ -2366,7 +2468,7 @@ async function restoreSession() {
         // keep profile-only state
       }
     } else {
-      update({ user: { ...state.user, nickname: "", avatarKey: "me-1", device: "PC", gender: "保密", games: [], genres: [], playStyle: "" } });
+      update({ user: { ...state.user, nickname: "", avatarKey: "", device: "", gender: "", games: [], genres: [], playStyle: "" } });
     }
   } catch {
     resetState();
@@ -2381,6 +2483,7 @@ async function submitAuth() {
   const fd = new FormData(form);
   const username = String(fd.get("username") || "").trim();
   const password = String(fd.get("password") || "");
+  const passwordConfirm = String(fd.get("passwordConfirm") || "");
   update({ authUsername: username });
   if (!username || !password) {
     showAuthError("请输入用户名和密码");
@@ -2396,6 +2499,14 @@ async function submitAuth() {
   }
   if (password.length < 6) {
     showAuthError("密码至少 6 位");
+    return;
+  }
+  if (state.authMode === "register" && !passwordConfirm) {
+    showAuthError("请再次输入密码", { preservePassword: true });
+    return;
+  }
+  if (state.authMode === "register" && password !== passwordConfirm) {
+    showAuthError("两次输入的密码不一致", { preservePassword: true });
     return;
   }
   if (submitBtn) {

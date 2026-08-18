@@ -18,9 +18,8 @@ export function brandMark(size = 32) {
   return `<img class="brand-mark" src="/assets/project-s-mark.svg" width="${size}" height="${size}" alt="" aria-hidden="true" />`;
 }
 
-export function registrationStepper(currentStep = 1) {
-  const steps = ["创建账号", "玩家身份", "开始匹配"];
-  return `<div class="registration-stepper" data-registration-stepper aria-label="注册进度：第 ${currentStep} 步，共 3 步">
+export function registrationStepper(currentStep = 1, steps = ["昵称", "头像", "设备", "游戏类型", "性别"]) {
+  return `<div class="registration-stepper" data-registration-stepper aria-label="身份创建进度：第 ${currentStep} 步，共 ${steps.length} 步">
     ${steps
       .map((label, index) => {
         const step = index + 1;
@@ -150,7 +149,8 @@ export function homeShell(state, content, active = "home") {
     : `<div class="product-account"><span class="product-account-icon">${icon("user", 18)}</span><div><b>未登录</b><span><button type="button" data-action="open-auth-login">登录</button> / <button type="button" data-action="open-auth-register">注册</button></span></div></div>`;
 
   return `<div class="product-shell">
-    <aside class="product-rail">
+    <aside class="product-rail" data-staggered-rail>
+      <div class="product-rail-layers" aria-hidden="true"><i class="product-rail-layer product-rail-layer--violet"></i><i class="product-rail-layer product-rail-layer--ink"></i></div>
       <a class="product-brand" href="#/home" aria-label="PROJECT-S 首页">${brandMark(54)}<strong>PROJECT-S</strong></a>
       <nav class="product-nav" aria-label="主导航">
         ${navItems.map((n) => `<a class="product-nav-link ${resolvedActive === n.id ? "is-active" : ""}" href="${n.href}" data-nav>${icon(n.icon, 24)}<span>${n.label}</span></a>`).join("")}

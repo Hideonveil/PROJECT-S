@@ -463,6 +463,12 @@
   object-position: center;
 }
 
+.avatar-empty {
+  display: block;
+  border: 1px solid rgba(18, 17, 24, 0.2);
+  background: linear-gradient(135deg, rgba(118, 89, 223, 0.08), rgba(18, 17, 24, 0.03));
+}
+
 .avatar-wrap {
   position: relative;
   width: var(--avatar-size, 64px);
