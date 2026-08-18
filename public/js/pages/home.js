@@ -152,15 +152,15 @@ function deadlockStage(filter) {
   const [title, description] = wizardCopy(stepKey, filter.goal);
   const isLast = step === path.length - 1;
   return `<section class="match-wizard">
-    <div class="match-wizard-toolbar">
-      ${flowStepper(step, path)}
-      <button type="button" class="match-back-games" data-action="home-back-games">${icon("gamepad2", 16)}<span>重新选择游戏</span></button>
-    </div>
+    ${flowStepper(step, path)}
     <div class="match-wizard-stage ${filter.direction < 0 ? "is-backward" : "is-forward"}" data-home-wizard-stage data-home-step="${esc(stepKey)}">
       <div class="match-wizard-copy"><span>DEADLOCK / ${String(step + 1).padStart(2, "0")}</span><h2>${title}</h2><p>${description}</p></div>
       <div class="match-wizard-options match-target-zone" data-target-cursor-zone>${wizardContent(filter, stepKey)}</div>
       <footer class="match-wizard-actions">
-        <button type="button" class="match-wizard-back" data-action="home-wizard-back">${icon("chevronLeft", 18)}<span>${step === 0 ? "返回游戏" : "上一步"}</span></button>
+        <div class="match-wizard-actions-left">
+          <button type="button" class="match-wizard-back" data-action="home-wizard-back">${icon("chevronLeft", 18)}<span>${step === 0 ? "返回游戏" : "上一步"}</span></button>
+          ${step > 0 ? `<button type="button" class="match-back-games" data-action="home-back-games">${icon("gamepad2", 16)}<span>重新选择游戏</span></button>` : ""}
+        </div>
         ${isLast
           ? `<div class="match-start-dock" data-match-start-dock><button class="match-start" type="button" data-action="home-start-match" aria-label="开始匹配"><span>开始匹配</span>${icon("arrowRight", 25)}</button></div>`
           : `<button type="button" class="match-wizard-next" data-action="home-wizard-next"><span>下一步</span>${icon("arrowRight", 20)}</button>`}
