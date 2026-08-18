@@ -14,6 +14,7 @@ import {
 import { supabaseAdmin } from "@/lib/supabase";
 import { errorResponse, requestId } from "@/lib/http";
 import { mapSession } from "@/lib/session";
+import { matchmakingStatus } from "@/lib/matchmaking/service";
 
 export async function GET(request: Request) {
   const rid = requestId(request);
@@ -34,7 +35,7 @@ export async function GET(request: Request) {
       .eq("status", "pending")
       .order("created_at", { ascending: false });
 
-    const [counts, needs, friends, applications, room, session, activeReq, recentConnections] = await Promise.all([
+    const [counts, needs, friends, applications, room, session, activeReq, recentConnections, matchmaking] = await Promise.all([
       poolCounts(),
       publicNeeds(),
       friendsFor(profile.id),
@@ -43,6 +44,7 @@ export async function GET(request: Request) {
       activeSessionFor(profile.id),
       activeRequest(profile.id),
       recentConnectionsFor(profile.id),
+      matchmakingStatus(profile.id),
     ]);
 
     return NextResponse.json({
@@ -57,6 +59,7 @@ export async function GET(request: Request) {
       session: mapSession(session),
       matchRequestId: activeReq?.id || null,
       recentConnections,
+      matchmaking,
     });
   } catch (error) {
     return errorResponse(error, rid, "状态获取失败，请稍后重试");

@@ -17,6 +17,10 @@ function queryPills(need) {
 
 export function matchingPage(state) {
   const pool = Math.max(0, state.match.pool ?? 0);
+  const pair = state.match.pair;
+  const candidate = state.match.candidate;
+  const awaiting = pair?.state === "waiting_confirmation" && candidate;
+  const mine = pair?.confirmations?.find((confirmation) => confirmation.user_id === state.user.id)?.decision;
   return homeShell(state, `<div class="matching-modal-page" role="dialog" aria-modal="true" aria-labelledby="matching-modal-title">
     <div class="matching-modal-backdrop" aria-hidden="true"></div>
     <section class="matching-modal" data-matching-modal>
@@ -32,12 +36,12 @@ export function matchingPage(state) {
           <span class="matching-signal-ring matching-signal-ring--three"></span>
           <span class="matching-player-card matching-player-card--left">01</span>
           <span class="matching-player-card matching-player-card--center">${icon("gamepad2", 38)}</span>
-          <span class="matching-player-card matching-player-card--right">?</span>
+          <span class="matching-player-card matching-player-card--right">${awaiting ? esc((candidate.nickname || "玩家").slice(0, 1)) : "?"}</span>
         </div>
         <div class="matching-modal-copy">
           <div class="match-eyebrow">FINDING YOUR PEOPLE / 01</div>
-          <h1 id="matching-modal-title">正在找同一局的人。</h1>
-          <p id="match-desc">先对齐游戏、目的和时间，再把真正适合的玩家带到你面前。</p>
+          <h1 id="matching-modal-title">${awaiting ? `找到 ${esc(candidate.nickname || "一位玩家")}。` : "正在找同一局的人。"}</h1>
+          <p id="match-desc">${awaiting ? (mine === "accepted" ? "你已确认，正在等对方回应。" : "双方都确认后才会建立 Session，不会把你重复推荐给其他人。") : "先检查官方硬规则，再比较位置与麦克风偏好。"}</p>
         </div>
         <div class="matching-query" aria-label="本次匹配条件">${queryPills(state.need)}</div>
       </div>
@@ -46,7 +50,7 @@ export function matchingPage(state) {
         <div class="matching-modal-stats">
           <span><b id="pool-count">${pool}</b><small>匹配池人数</small></span>
           <span><b id="match-time">0s</b><small>等待时长</small></span>
-          <span><b id="match-found">0</b><small>锁定候选</small></span>
+          <span><b id="match-found">${awaiting ? 1 : 0}</b><small>锁定候选</small></span>
         </div>
         <div class="matching-modal-steps" aria-label="匹配进度">
           <div class="matching-modal-step is-done" data-step="0"><i></i><span>需求已读取</span></div>
@@ -56,8 +60,11 @@ export function matchingPage(state) {
       </div>
 
       <footer class="matching-modal-footer">
-        <p><i></i>匹配期间可以留在这里，我们会持续更新状态。</p>
-        <button type="button" data-action="cancel-match"><span>退出匹配</span>${icon("x", 16)}</button>
+        <p><i></i>${awaiting ? "候选已暂时锁定，确认超时会自动回到匹配池。" : "匹配期间保持在线，我们会持续更新状态。"}</p>
+        <div class="matching-confirm-actions">
+          ${awaiting && mine !== "accepted" ? `<button type="button" data-action="reject-match"><span>不是这位</span>${icon("x", 16)}</button><button type="button" data-action="confirm-match"><span>确认一起玩</span>${icon("check", 16)}</button>` : ""}
+          <button type="button" data-action="cancel-match"><span>退出匹配</span>${icon("x", 16)}</button>
+        </div>
       </footer>
     </section>
   </div>`, "home");

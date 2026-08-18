@@ -33,7 +33,7 @@ const mockRecentConnection = {
 
 async function mockProductBackend(
   page: Page,
-  capture: { profile?: Record<string, unknown>; need?: Record<string, unknown> } = {}
+  capture: { profile?: Record<string, unknown>; need?: Record<string, unknown>; match?: Record<string, unknown> } = {}
 ) {
   let profileExists = true;
   await page.route("**/api/health", (route) =>
@@ -105,6 +105,7 @@ async function mockProductBackend(
         matching: 8,
         playing: 3,
         matchRequestId: null,
+        matchmaking: { ticket: null, pair: null, candidate: null, matching: 8, matchable: 8 },
       }),
     })
   );
@@ -118,6 +119,22 @@ async function mockProductBackend(
   });
   await page.route("**/api/cancel-need", (route) =>
     route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true }) })
+  );
+  await page.route("**/api/matchmaking/start", (route) => {
+    capture.match = route.request().postDataJSON();
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ticket: { id: "ticket-1", state: "searching" }, pair: null, candidate: null, matching: 8, matchable: 8,
+      }),
+    });
+  });
+  await page.route("**/api/matchmaking/status", (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ticket: { id: "ticket-1", state: "searching" }, pair: null, candidate: null, matching: 8, matchable: 8 }) })
+  );
+  await page.route("**/api/matchmaking/cancel", (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ticket: { state: "cancelled" } }) })
   );
 }
 
@@ -134,11 +151,10 @@ async function reachDeadlockCasualFinal(page: Page) {
   await page.getByRole("button", { name: /Deadlock/ }).click();
   await page.getByRole("button", { name: "娱乐", exact: true }).click();
   await page.getByRole("button", { name: "下一步", exact: true }).click();
+  await page.getByRole("button", { name: "不限", exact: true }).click();
+  await page.getByRole("button", { name: "下一步", exact: true }).click();
   await expect(page.getByRole("button", { name: "开麦", exact: true })).toHaveAttribute("aria-pressed", "true");
-  await page.getByRole("button", { name: "下一步", exact: true }).click();
-  await expect(page.getByRole("button", { name: "找 1 人", exact: true })).toHaveAttribute("aria-pressed", "true");
-  await page.getByRole("button", { name: "下一步", exact: true }).click();
-  await expect(page.getByRole("button", { name: "现在", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("button", { name: "开始匹配", exact: true })).toBeVisible();
 }
 
 test("first-time visitors land on the hero and enter the matching workspace", async ({ page }) => {
@@ -221,7 +237,7 @@ test("Deadlock rank and casual paths expose different step systems", async ({ pa
   await page.getByRole("button", { name: "上分", exact: true }).click();
   await expect(stage).toHaveAttribute("data-test-persisted", "yes");
   const stepper = page.locator("[data-home-stepper]");
-  await expect(stepper).toHaveAttribute("aria-label", "Deadlock 配置进度：第 1 步，共 6 步");
+  await expect(stepper).toHaveAttribute("aria-label", "Deadlock 配置进度：第 1 步，共 4 步");
   await stepper.evaluate((element) => element.setAttribute("data-test-persisted", "yes"));
   await page.getByRole("button", { name: "下一步", exact: true }).click();
   await expect(stepper).toHaveAttribute("data-test-persisted", "yes");
@@ -234,16 +250,10 @@ test("Deadlock rank and casual paths expose different step systems", async ({ pa
   await expect(page.locator(".match-role-multi")).toContainText("可多选");
   await expect(page.getByRole("button", { name: "1号位", exact: true }).locator(".match-role-number")).toContainText("1");
   await expect(page.getByRole("button", { name: "1号位", exact: true }).locator("small")).toHaveText("号位");
-  await expect(page.getByRole("button", { name: /1号位/ })).toBeVisible();
-  await page.getByRole("button", { name: /1号位/ }).click();
-  await page.getByRole("button", { name: /2号位/ }).click();
-  await page.getByRole("button", { name: "下一步", exact: true }).click();
   await page.getByRole("button", { name: /3号位/ }).click();
   await page.getByRole("button", { name: "下一步", exact: true }).click();
   await expect(page.getByText("上分最好开麦哦", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "开麦", exact: true })).toHaveAttribute("aria-pressed", "true");
-  await page.getByRole("button", { name: "下一步", exact: true }).click();
-  await expect(page.getByRole("button", { name: "现在", exact: true })).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByRole("button", { name: "开始匹配", exact: true })).toBeVisible();
 
   await page.getByRole("button", { name: "返回选择游戏", exact: true }).click();
@@ -256,11 +266,12 @@ test("Deadlock rank and casual paths expose different step systems", async ({ pa
   await casualStage.evaluate((element) => element.setAttribute("data-test-persisted", "yes"));
   await page.getByRole("button", { name: "娱乐", exact: true }).click();
   await expect(casualStage).toHaveAttribute("data-test-persisted", "yes");
-  await expect(page.locator("[data-home-stepper]")).toHaveAttribute("aria-label", "Deadlock 配置进度：第 1 步，共 4 步");
+  await expect(page.locator("[data-home-stepper]")).toHaveAttribute("aria-label", "Deadlock 配置进度：第 1 步，共 3 步");
+  await page.getByRole("button", { name: "下一步", exact: true }).click();
+  await page.getByRole("button", { name: "不限", exact: true }).click();
   await page.getByRole("button", { name: "下一步", exact: true }).click();
   await expect(page.getByText("上分最好开麦哦", { exact: true })).toHaveCount(0);
-  await page.getByRole("button", { name: "下一步", exact: true }).click();
-  await expect(page.getByRole("button", { name: "找 5 人", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "无所谓", exact: true })).toBeVisible();
 });
 
 test("navigation keeps icon-only rest state and staggers open on hover", async ({ page }) => {
@@ -440,7 +451,7 @@ test("desktop match controls use target cursor but the primary action does not",
 
   await page.getByRole("button", { name: "娱乐", exact: true }).click();
   await page.getByRole("button", { name: "下一步", exact: true }).click();
-  await page.getByRole("button", { name: "下一步", exact: true }).click();
+  await page.getByRole("button", { name: "不限", exact: true }).click();
   await page.getByRole("button", { name: "下一步", exact: true }).click();
   await page.getByRole("button", { name: "开始匹配", exact: true }).hover();
   await expect(page.locator(".target-cursor")).not.toHaveClass(/is-visible/);

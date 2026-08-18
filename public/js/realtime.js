@@ -54,6 +54,9 @@ export async function openRealtime(handlers) {
   channel
     .on("postgres_changes", { event: "*", schema: "public", table: "profiles" }, schedule)
     .on("postgres_changes", { event: "*", schema: "public", table: "match_requests" }, schedule)
+    .on("postgres_changes", { event: "*", schema: "public", table: "matchmaking_tickets" }, schedule)
+    .on("postgres_changes", { event: "*", schema: "public", table: "matchmaking_pairs" }, schedule)
+    .on("postgres_changes", { event: "*", schema: "public", table: "matchmaking_confirmations" }, schedule)
     .on("postgres_changes", { event: "INSERT", schema: "public", table: "applications" }, async (payload) => {
       try {
         const data = await getState();

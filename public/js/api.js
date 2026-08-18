@@ -110,6 +110,11 @@ export const register = async (profile) => {
 export const updateProfile = (profile) => authedRequest("/api/profile", profile);
 export const postNeed = (need) => authedRequest("/api/need", { need });
 export const cancelNeed = () => authedRequest("/api/cancel-need", {});
+export const startMatchmaking = (match) => authedRequest("/api/matchmaking/start", { match });
+export const getMatchmakingStatus = () => authedRequest("/api/matchmaking/status");
+export const cancelMatchmaking = (reason = "user_cancelled") => authedRequest("/api/matchmaking/cancel", { reason });
+export const confirmMatchmaking = (pairId, decision) => authedRequest("/api/matchmaking/confirm", { pairId, decision });
+export const submitMatchmakingFeedback = (payload) => authedRequest("/api/matchmaking/feedback", payload);
 export const goOffline = async () => {
   try {
     await fetch("/api/offline", {

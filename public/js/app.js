@@ -732,8 +732,8 @@ function prepareNeedDraft() {
 
 function homeWizardPath() {
   return HOME_FILTER.goal === "casual"
-    ? ["goal", "voice", "team", "time"]
-    : ["goal", "rank", "ownRoles", "teammateRoles", "voice", "time"];
+    ? ["goal", "teammateRoles", "voice"]
+    : ["goal", "rank", "teammateRoles", "voice"];
 }
 
 function homeWizardStepKey() {
@@ -800,11 +800,9 @@ function syncHomeFilterToDraft() {
   DRAFT.current = 1;
   DRAFT.needed = HOME_FILTER.goal === "casual" ? Math.min(5, Math.max(1, Number(HOME_FILTER.team) || 1)) : 1;
   DRAFT.voice = HOME_FILTER.voice !== "off";
-  DRAFT.voicePref = DRAFT.voice ? "需要" : "不需要";
-  DRAFT.role = HOME_FILTER.ownRoles.join(" / ");
-  DRAFT.selectedTags = HOME_FILTER.goal === "rank"
-    ? HOME_FILTER.teammateRoles.map((role) => `希望队友：${role}`)
-    : [`娱乐局找 ${DRAFT.needed} 人`];
+  DRAFT.voicePref = HOME_FILTER.voice;
+  DRAFT.role = "";
+  DRAFT.selectedTags = HOME_FILTER.teammateRoles.map((role) => `希望队友：${role}`);
   DRAFT.dirty = true;
 }
 
@@ -971,12 +969,53 @@ function roomShapeChanged(next, prev) {
   return members !== oldMembers;
 }
 
+function applyMatchmakingSnapshot(snapshot) {
+  if (!snapshot) return;
+  const previousTicketState = state.match.lifecycle?.state || null;
+  const previousPairState = state.match.pair?.state || null;
+  const ticket = snapshot.ticket || null;
+  const pair = snapshot.pair || null;
+  const candidate = snapshot.candidate || null;
+  const active = ticket && ["searching", "candidate_found", "waiting_confirmation", "matched", "playing"].includes(ticket.state);
+  update({
+    match: {
+      ...state.match,
+      status: active ? "active" : "idle",
+      pool: snapshot.matching ?? state.match.pool,
+      matchable: snapshot.matchable ?? state.match.matchable ?? 0,
+      lifecycle: ticket,
+      pair,
+      candidate,
+      candidates: [],
+    },
+  });
+  const routeName = parseRoute().name;
+  if (pair?.state === "matched" && pair.roomCode) {
+    api.getState().then(applyServerSnapshot).catch(() => {});
+    return;
+  }
+  if (routeName === "matching" && (previousTicketState !== ticket?.state || previousPairState !== pair?.state)) render();
+}
+
 function applyServerSnapshot(data) {
   const routeName = parseRoute().name;
   const patch = {
     match: { ...state.match, pool: data.matching ?? data.online ?? state.match.pool, playing: data.playing ?? state.match.playing },
     matchRequestId: data.matchRequestId || null,
   };
+  if (data.matchmaking) {
+    const mm = data.matchmaking;
+    patch.match = {
+      ...patch.match,
+      status: mm.ticket ? "active" : "idle",
+      pool: mm.matching ?? patch.match.pool,
+      matchable: mm.matchable ?? 0,
+      lifecycle: mm.ticket || null,
+      pair: mm.pair || null,
+      candidate: mm.candidate || null,
+      candidates: [],
+    };
+  }
   if (data.user) patch.user = data.user;
   if (Array.isArray(data.friends)) {
     patch.friends = data.friends.map((f) => ({
@@ -1026,7 +1065,7 @@ function applyServerSnapshot(data) {
   if (Array.isArray(data.applications) && data.applications.length && !state.incomingRequest) {
     patch.incomingRequest = { application: data.applications[0] };
   }
-  const candidates = snapshotCandidates(data);
+  const candidates = data.matchmaking ? null : snapshotCandidates(data);
   if (candidates !== null) {
     patch.match = {
       ...patch.match,
@@ -1051,8 +1090,27 @@ function applyServerSnapshot(data) {
   } else if (patch.room && routeName === "room" && roomChanged) {
     render();
   }
-  if (["matching", "home"].includes(routeName) && (patch.match?.candidates || []).length) navigate("#/results");
+  if (!data.matchmaking && ["matching", "home"].includes(routeName) && (patch.match?.candidates || []).length) navigate("#/results");
   if (patch.session) render();
+}
+
+async function confirmMatch(decision) {
+  const pairId = state.match.pair?.id;
+  if (!pairId || matchRequestPending) return;
+  matchRequestPending = true;
+  try {
+    const snapshot = await api.confirmMatchmaking(pairId, decision);
+    applyMatchmakingSnapshot(snapshot);
+    if (decision === "rejected") toast("已拒绝，继续为你寻找其他玩家");
+    if (snapshot.pair?.state === "matched") {
+      const fullState = await api.getState();
+      applyServerSnapshot(fullState);
+    }
+  } catch (error) {
+    toast(error.message);
+  } finally {
+    matchRequestPending = false;
+  }
 }
 
 function handleIncomingApplication(application) {
@@ -1386,31 +1444,21 @@ async function startMatch() {
   if (matchRequestPending) return;
   syncDraftFromDom("need");
   DRAFT.dirty = false;
-  const tags = DRAFT.selectedTags || [];
-  const styleParts = [DRAFT.style, ...tags].filter(Boolean);
-  const playerType = styleParts.length ? styleParts.join(" / ") : "不限";
-  const target = Math.min(8, Math.max(2, Number(DRAFT.current || 1) + Number(DRAFT.needed || 1)));
+  const desiredRoles = (DRAFT.selectedTags || [])
+    .map((tag) => Number(String(tag).match(/[1-6]/)?.[0]))
+    .filter((role) => role >= 1 && role <= 6);
+  const matchInput = {
+    gameId: "deadlock",
+    mode: DRAFT.goal === "娱乐" ? "casual" : "ranked",
+    rankCode: DRAFT.goal === "娱乐" ? null : DRAFT.rank || null,
+    desiredRoles,
+    microphonePreference: ["on", "off", "any"].includes(DRAFT.voicePref) ? DRAFT.voicePref : (DRAFT.voice === false ? "off" : "on"),
+  };
   const need = {
-    game: DRAFT.game,
-    mode: DRAFT.mode,
-    goal: DRAFT.goal,
-    current: Math.min(Number(DRAFT.current || 1), target - 1),
-    target,
-    time: DRAFT.time || "现在就玩",
-    duration: DRAFT.duration || "60",
-    voice: DRAFT.voice !== false,
-    playerType,
-    details: {
-      modpack: DRAFT.modpack || "",
-      activityType: DRAFT.mode || "",
-      playStyle: DRAFT.style || "",
-      rank: DRAFT.rank || "",
-      hero: DRAFT.hero || "",
-      role: DRAFT.role || "",
-      gameMode: DRAFT.mode || "",
-      tags,
-      voicePreference: DRAFT.voicePref || "都可以",
-    },
+    game: "deadlock", mode: DRAFT.mode, goal: DRAFT.goal, current: 1, target: 2,
+    time: "现在", duration: "", voice: matchInput.microphonePreference !== "off",
+    playerType: desiredRoles.length ? desiredRoles.map((role) => `${role}号位`).join(" / ") : "不限",
+    details: { rank: DRAFT.rank || "", tags: DRAFT.selectedTags || [], voicePreference: matchInput.microphonePreference },
   };
   if (!ONLINE) {
     toast("服务暂不可用，请稍后重试");
@@ -1430,19 +1478,21 @@ async function startMatch() {
   });
   try {
     await withProjectTransition(async () => {
-      const data = await api.postNeed(need);
-      const candidates = normalizeCandidates(data.candidates || []);
+      const data = await api.startMatchmaking(matchInput);
       update({
         match: {
           ...state.match,
-          status: candidates.length ? "matched" : "active",
-          pool: data.matching ?? data.online ?? state.match.pool,
+          status: "active",
+          pool: data.matching ?? state.match.pool,
           playing: data.playing ?? state.match.playing,
-          matchRequestId: data.requestId || null,
-          candidates,
+          matchable: data.matchable ?? 0,
+          lifecycle: data.ticket || null,
+          pair: data.pair || null,
+          candidate: data.candidate || null,
+          candidates: [],
         },
       });
-      navigate(candidates.length ? "#/results" : "#/matching");
+      navigate("#/matching");
     }, {
       label: "正在进入匹配池",
       immediate: true,
@@ -1465,7 +1515,7 @@ function startMatchingFlow() {
     const titleEl = document.getElementById("match-title");
     if (poolEl) poolEl.textContent = String(Math.max(0, state.match.pool ?? 0));
     if (timeEl) timeEl.textContent = `${Math.floor(elapsed)}s`;
-    if (foundEl) foundEl.textContent = String((state.match.candidates || []).length);
+    if (foundEl) foundEl.textContent = state.match.pair ? "1" : "0";
     if (titleEl) titleEl.textContent = elapsed > 3 ? "正在锁定合适玩家" : "正在扫描匹配池";
     const steps = document.querySelectorAll(".matching-modal-step");
     if (steps.length === 3) {
@@ -1475,6 +1525,14 @@ function startMatchingFlow() {
     }
   }, 350);
   timers.push(interval);
+  const sync = window.setInterval(async () => {
+    try {
+      applyMatchmakingSnapshot(await api.getMatchmakingStatus());
+    } catch {
+      // Realtime remains primary; heartbeat polling is a resilience path.
+    }
+  }, 10000);
+  timers.push(sync);
 }
 
 async function applyPartner(id) {
@@ -1861,10 +1919,10 @@ async function rematchNow() {
   }
 }
 
-function cancelMatch() {
+async function cancelMatch() {
   clearTimers();
-  if (ONLINE) api.cancelNeed().catch(() => {});
-  update({ match: { ...state.match, status: "idle", candidates: [] } });
+  if (ONLINE) await api.cancelMatchmaking().catch(() => {});
+  update({ match: { ...state.match, status: "idle", candidates: [], lifecycle: null, pair: null, candidate: null } });
   navigate("#/home");
 }
 
@@ -1983,7 +2041,11 @@ function mapServerFriends(friends) {
 }
 
 async function logout() {
-  if (ONLINE && state.authenticated) { api.cancelNeed().catch(() => {}); api.goOffline(); }
+  if (ONLINE && state.authenticated) {
+    api.cancelMatchmaking("logout").catch(() => {});
+    api.cancelNeed().catch(() => {});
+    api.goOffline();
+  }
   if (eventSourceClose) {
     eventSourceClose();
     eventSourceClose = null;
@@ -2469,14 +2531,27 @@ document.addEventListener("click", (event) => {
     const key = action === "home-own-role" ? "ownRoles" : "teammateRoles";
     const values = HOME_FILTER[key];
     const selected = values.includes(value);
-    HOME_FILTER[key] = selected ? values.filter((item) => item !== value) : [...values, value];
-    toggleHomeChoice(actionEl, !selected);
+    if (value === "不限") {
+      HOME_FILTER[key] = selected ? [] : ["不限"];
+      actionEl.closest("[role='group']")?.querySelectorAll(".match-option").forEach((choice) => {
+        const on = !selected && choice === actionEl;
+        choice.classList.toggle("is-on", on);
+        choice.setAttribute("aria-pressed", String(on));
+      });
+    } else {
+      const withoutUnlimited = values.filter((item) => item !== "不限");
+      HOME_FILTER[key] = selected ? withoutUnlimited.filter((item) => item !== value) : [...withoutUnlimited, value];
+      const unlimited = actionEl.closest("[role='group']")?.querySelector('[data-value="不限"]');
+      unlimited?.classList.remove("is-on");
+      unlimited?.setAttribute("aria-pressed", "false");
+      toggleHomeChoice(actionEl, !selected);
+    }
     return;
   }
 
   if (action === "home-rank" || action === "home-voice" || action === "home-team" || action === "home-time") {
     if (action === "home-rank") HOME_FILTER.rank = value;
-    if (action === "home-voice") HOME_FILTER.voice = value === "off" ? "off" : "on";
+    if (action === "home-voice") HOME_FILTER.voice = ["on", "off", "any"].includes(value) ? value : "any";
     if (action === "home-team") HOME_FILTER.team = value;
     if (action === "home-time") HOME_FILTER.time = value;
     selectHomeChoice(actionEl);
@@ -2488,8 +2563,7 @@ document.addEventListener("click", (event) => {
     const error =
       stepKey === "goal" && !HOME_FILTER.goal ? "请选择游戏目的" :
       stepKey === "rank" && !HOME_FILTER.rank ? "请选择当前段位" :
-      stepKey === "ownRoles" && !HOME_FILTER.ownRoles.length ? "请至少选择一个自己能玩的位置" :
-      stepKey === "teammateRoles" && !HOME_FILTER.teammateRoles.length ? "请至少选择一个希望队友玩的位置" : "";
+      stepKey === "teammateRoles" && !HOME_FILTER.teammateRoles.length ? "请选择希望队友的位置，或选择不限" : "";
     if (error) {
       toast(error);
       return;
@@ -2557,6 +2631,8 @@ document.addEventListener("click", (event) => {
     "complete-onboard": completeOnboard,
     "start-match": startMatch,
     "cancel-match": cancelMatch,
+    "confirm-match": () => confirmMatch("accepted"),
+    "reject-match": () => confirmMatch("rejected"),
     "rematch": rematchNow,
     "quick-need": (id) => {
       const game = GAMES.find((g) => g.id === id);

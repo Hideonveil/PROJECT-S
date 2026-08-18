@@ -30,6 +30,24 @@ export async function POST(request: Request, { params }: { params: Promise<{ cod
       if (error) throw error;
     }
 
+    const { data: matchPair } = await admin
+      .from("matchmaking_pairs")
+      .select("id")
+      .eq("session_id", session.id)
+      .maybeSingle();
+    if (matchPair?.id) {
+      const { error: matchFeedbackError } = await admin.rpc("matchmaking_submit_feedback", {
+        p_pair_id: matchPair.id,
+        p_user_id: me.id,
+        p_did_play: true,
+        p_rating: rating,
+        p_want_again: wantAgain,
+        p_tags: [],
+        p_note: "",
+      });
+      if (matchFeedbackError) throw matchFeedbackError;
+    }
+
     return jsonOk({ ok: true }, rid);
   } catch (error) {
     return errorResponse(error, rid, "保存失败，请稍后重试");

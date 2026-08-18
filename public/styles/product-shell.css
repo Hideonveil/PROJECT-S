@@ -938,6 +938,9 @@ body.is-project-transitioning { overflow: hidden; }
 .matching-modal-footer p i { width: 6px; height: 6px; border-radius: 50%; background: var(--product-violet); }
 .matching-modal-footer button { min-width: 132px; min-height: 42px; padding: 0 14px; display: flex; align-items: center; justify-content: space-between; gap: 18px; border: 1px solid var(--product-black); border-radius: 5px; color: var(--product-black); font-size: 11px; font-weight: 780; transition: color 160ms ease, background 160ms ease, transform 160ms ease; }
 .matching-modal-footer button:hover { background: var(--product-black); color: #fff; transform: translateY(-1px); }
+.matching-confirm-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
+.matching-confirm-actions button[data-action="confirm-match"] { background: var(--product-black); color: #fff; }
+.matching-confirm-actions button[data-action="confirm-match"]:hover { background: var(--product-violet); border-color: var(--product-violet); }
 
 @keyframes matchingBackdropIn { from { opacity: 0; backdrop-filter: blur(0) saturate(1); } to { opacity: 1; backdrop-filter: blur(16px) saturate(.7); } }
 @keyframes matchingModalIn { 0% { opacity: 0; transform: translate(18vw, 20vh) scale(.18); filter: blur(12px); } 62% { opacity: 1; transform: translate(0) scale(1.025); filter: blur(0); } 100% { opacity: 1; transform: translate(0) scale(1); filter: blur(0); } }
