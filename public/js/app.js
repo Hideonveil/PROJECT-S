@@ -2636,8 +2636,7 @@ async function submitAuth() {
   }
 }
 
-render();
-ONLINE = await detectOnline();
-await restoreSession();
+const [online] = await Promise.all([detectOnline(), restoreSession()]);
+ONLINE = online;
 if (ONLINE && state.authenticated && state.onboarded) connectEvents();
 render();
