@@ -10,12 +10,23 @@ async function request(path, body, token = null) {
     headers["Idempotency-Key"] = mutationId;
   }
   if (token) headers.Authorization = `Bearer ${token}`;
-  const res = await fetch(path, {
-    method: body === undefined ? "GET" : "POST",
-    headers,
-    body: body === undefined ? undefined : JSON.stringify(body),
-    cache: "no-store",
-  });
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), 15000);
+  let res;
+  try {
+    res = await fetch(path, {
+      method: body === undefined ? "GET" : "POST",
+      headers,
+      body: body === undefined ? undefined : JSON.stringify(body),
+      cache: "no-store",
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (error?.name === "AbortError") throw new Error("连接超时，请稍后重试");
+    throw error;
+  } finally {
+    window.clearTimeout(timeout);
+  }
   let data = {};
   try {
     data = await res.json();

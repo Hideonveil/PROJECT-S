@@ -388,7 +388,17 @@ test("authenticated matching opens the new focused modal and removes the old pan
   await login(page);
   await reachDeadlockCasualFinal(page);
   await page.getByRole("button", { name: "开始匹配", exact: true }).click();
+  const transition = page.locator("[data-project-transition]");
+  await expect(transition).toBeVisible();
+  await expect(transition).toHaveAttribute("aria-label", "正在进入匹配池");
+  await expect(transition.locator(".project-transition-device")).toHaveCount(6);
+  await expect(transition.locator(".project-transition-tape-track")).toHaveCount(2);
+  const tapeBefore = await transition.locator(".project-transition-tape-track").first().evaluate((element) => getComputedStyle(element).transform);
+  await page.waitForTimeout(180);
+  const tapeAfter = await transition.locator(".project-transition-tape-track").first().evaluate((element) => getComputedStyle(element).transform);
+  expect(tapeAfter).not.toBe(tapeBefore);
   await expect(page).toHaveURL(/#\/matching$/);
+  await expect(transition).toHaveCount(0);
   const modal = page.locator("[data-matching-modal]");
   await expect(modal).toBeVisible();
   await expect(modal).toHaveCSS("opacity", "1");

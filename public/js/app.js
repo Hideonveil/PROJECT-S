@@ -19,6 +19,7 @@ import { gameoverPage } from "./pages/gameover.js";
 import { connectionsPage } from "./pages/connections.js";
 import { friendsPage } from "./pages/friends.js";
 import { mePage } from "./pages/me.js";
+import { withProjectTransition } from "./transition.js";
 
 const app = document.getElementById("app");
 
@@ -79,6 +80,7 @@ let roomExitReadyAt = 0;
 let matchStartObserver = null;
 let productTickerCleanup = null;
 let targetCursorCleanup = null;
+let matchRequestPending = false;
 let staggeredRailCleanup = null;
 let staggeredRailHoldOpen = false;
 
@@ -1285,25 +1287,29 @@ async function completeOnboard() {
     return;
   }
   try {
-    const result = await api.register({
-      nickname: user.nickname,
-      avatarKey: user.avatarKey,
-      device: user.device,
-      gender: user.gender,
-      genres: user.genres,
-      playStyle: user.playStyle,
-      voice: user.voice,
+    await withProjectTransition(async () => {
+      const result = await api.register({
+        nickname: user.nickname,
+        avatarKey: user.avatarKey,
+        device: user.device,
+        gender: user.gender,
+        genres: user.genres,
+        playStyle: user.playStyle,
+        voice: user.voice,
+      });
+      update({
+        authenticated: true,
+        onboarded: true,
+        user: result.user,
+        match: { ...state.match, pool: 0 },
+      });
+      DRAFT.dirty = false;
+      connectEvents();
+      navigate("#/home");
+    }, {
+      label: "正在创建玩家身份",
     });
-    update({
-      authenticated: true,
-      onboarded: true,
-      user: result.user,
-      match: { ...state.match, pool: 0 },
-    });
-    DRAFT.dirty = false;
-    connectEvents();
-    navigate("#/home");
-    toast(`欢迎，${result.user.nickname}`);
+    toast(`欢迎，${user.nickname}`);
   } catch (err) {
     toast(err.message);
   }
@@ -1330,6 +1336,7 @@ function moveOnboardStep(direction) {
 }
 
 async function startMatch() {
+  if (matchRequestPending) return;
   syncDraftFromDom("need");
   DRAFT.dirty = false;
   const tags = DRAFT.selectedTags || [];
@@ -1362,6 +1369,8 @@ async function startMatch() {
     toast("服务暂不可用，请稍后重试");
     return;
   }
+  const previousMatch = { ...state.match };
+  matchRequestPending = true;
   update({
     need,
     match: {
@@ -1373,21 +1382,30 @@ async function startMatch() {
     },
   });
   try {
-    const data = await api.postNeed(need);
-    const candidates = normalizeCandidates(data.candidates || []);
-    update({
-      match: {
-        ...state.match,
-        status: candidates.length ? "matched" : "active",
-        pool: data.matching ?? data.online ?? state.match.pool,
-        playing: data.playing ?? state.match.playing,
-        matchRequestId: data.requestId || null,
-        candidates,
-      },
+    await withProjectTransition(async () => {
+      const data = await api.postNeed(need);
+      const candidates = normalizeCandidates(data.candidates || []);
+      update({
+        match: {
+          ...state.match,
+          status: candidates.length ? "matched" : "active",
+          pool: data.matching ?? data.online ?? state.match.pool,
+          playing: data.playing ?? state.match.playing,
+          matchRequestId: data.requestId || null,
+          candidates,
+        },
+      });
+      navigate(candidates.length ? "#/results" : "#/matching");
+    }, {
+      label: "正在进入匹配池",
+      immediate: true,
+      minDuration: 1800,
     });
-    navigate(candidates.length ? "#/results" : "#/matching");
   } catch (err) {
+    update({ match: previousMatch });
     toast(err.message);
+  } finally {
+    matchRequestPending = false;
   }
 }
 
@@ -1622,6 +1640,7 @@ async function setRoomWantAgain(wantAgain) {
 }
 
 async function rematchRecent(id) {
+  if (matchRequestPending) return;
   const item = state.recentConnections.find((c) => c.id === id);
   if (!item) return;
   const game = GAMES.find((g) => g.id === item.gameId) || GAMES[0];
@@ -1630,26 +1649,36 @@ async function rematchRecent(id) {
     toast("服务暂不可用，请稍后重试");
     return;
   }
+  const previousMatch = { ...state.match };
   update({
     need,
     match: { status: "active", pool: state.match.pool ?? 0, playing: state.match.playing ?? 0, candidates: [], pending: null },
   });
+  matchRequestPending = true;
   try {
-    const data = await api.postNeed(need);
-    update({
-      match: {
-        ...state.match,
-        status: "active",
-        pool: data.matching ?? data.online ?? state.match.pool,
-        playing: data.playing ?? state.match.playing,
-        matchRequestId: data.requestId || null,
-        candidates: normalizeCandidates(data.candidates || []),
-      },
+    await withProjectTransition(async () => {
+      const data = await api.postNeed(need);
+      update({
+        match: {
+          ...state.match,
+          status: "active",
+          pool: data.matching ?? data.online ?? state.match.pool,
+          playing: data.playing ?? state.match.playing,
+          matchRequestId: data.requestId || null,
+          candidates: normalizeCandidates(data.candidates || []),
+        },
+      });
+      navigate("#/matching");
+    }, {
+      label: "正在重新进入匹配池",
+      immediate: true,
     });
   } catch (err) {
+    update({ match: previousMatch });
     toast(err.message);
+  } finally {
+    matchRequestPending = false;
   }
-  navigate("#/matching");
 }
 
 function setOutcome(outcome) {
@@ -1682,6 +1711,7 @@ async function chooseRematch(value) {
 }
 
 async function rematchFriend(id) {
+  if (matchRequestPending) return;
   const friend = state.friends.find((f) => f.id === id);
   if (!friend) return;
   const game = GAMES.find((g) => (friend.lastGame || "").includes(g.name)) || GAMES[0];
@@ -1694,6 +1724,7 @@ async function rematchFriend(id) {
     toast("服务暂不可用，请稍后重试");
     return;
   }
+  const previousMatch = { ...state.match };
   update({
     need: {
       ...need,
@@ -1706,48 +1737,68 @@ async function rematchFriend(id) {
       pending: null,
     },
   });
+  matchRequestPending = true;
   try {
-    const data = await api.postNeed(need);
-    update({
-      match: {
-        ...state.match,
-        status: "active",
-        pool: data.matching ?? data.online ?? state.match.pool,
-        playing: data.playing ?? state.match.playing,
-        matchRequestId: data.requestId || null,
-        candidates: normalizeCandidates(data.candidates || []),
-      },
+    await withProjectTransition(async () => {
+      const data = await api.postNeed(need);
+      update({
+        match: {
+          ...state.match,
+          status: "active",
+          pool: data.matching ?? data.online ?? state.match.pool,
+          playing: data.playing ?? state.match.playing,
+          matchRequestId: data.requestId || null,
+          candidates: normalizeCandidates(data.candidates || []),
+        },
+      });
+      navigate("#/matching");
+    }, {
+      label: "正在重新进入匹配池",
+      immediate: true,
     });
   } catch (err) {
+    update({ match: previousMatch });
     toast(err.message);
+  } finally {
+    matchRequestPending = false;
   }
-  navigate("#/matching");
 }
 
 async function rematchNow() {
+  if (matchRequestPending) return;
   if (!ONLINE) {
     toast("服务暂不可用，请稍后重试");
     return;
   }
+  const previousMatch = { ...state.match };
   update({
     match: { ...state.match, status: "active", candidates: [], pending: null, pool: state.match.pool ?? 0 },
   });
+  matchRequestPending = true;
   try {
-    const data = await api.postNeed(state.need);
-    update({
-      match: {
-        ...state.match,
-        status: "active",
-        pool: data.matching ?? data.online ?? state.match.pool,
-        playing: data.playing ?? state.match.playing,
-        matchRequestId: data.requestId || null,
-        candidates: normalizeCandidates(data.candidates || []),
-      },
+    await withProjectTransition(async () => {
+      const data = await api.postNeed(state.need);
+      update({
+        match: {
+          ...state.match,
+          status: "active",
+          pool: data.matching ?? data.online ?? state.match.pool,
+          playing: data.playing ?? state.match.playing,
+          matchRequestId: data.requestId || null,
+          candidates: normalizeCandidates(data.candidates || []),
+        },
+      });
+      navigate("#/matching");
+    }, {
+      label: "正在重新进入匹配池",
+      immediate: true,
     });
   } catch (err) {
+    update({ match: previousMatch });
     toast(err.message);
+  } finally {
+    matchRequestPending = false;
   }
-  navigate("#/matching");
 }
 
 function cancelMatch() {
@@ -2724,11 +2775,15 @@ async function submitAuth() {
   update({ authError: "", authNotice: "" });
   document.querySelector("[data-auth-error]")?.remove();
   try {
-    const data = state.authMode === "register"
-      ? await api.registerAccount(username, password)
-      : await api.loginByUsername(username, password);
-    await api.signIn(data.email, password);
-    await handleAuthSuccess();
+    await withProjectTransition(async () => {
+      const data = state.authMode === "register"
+        ? await api.registerAccount(username, password)
+        : await api.loginByUsername(username, password);
+      await api.signIn(data.email, password);
+      await handleAuthSuccess();
+    }, {
+      label: state.authMode === "register" ? "正在建立账号" : "正在验证玩家身份",
+    });
   } catch (err) {
     showAuthError(mapAuthError(err));
   } finally {

@@ -586,6 +586,117 @@ body:has(.product-shell) {
 @keyframes matchMarkerEcho { 0% { opacity: 0; transform: scale(.72); } 34% { opacity: .75; } 100% { opacity: 0; transform: scale(1.42); } }
 @keyframes matchLineSignal { 0%, 18% { opacity: 0; transform: translateY(-50%) scale(.35); } 48% { opacity: 1; transform: translateY(-50%) scale(1); } 100% { opacity: 0; transform: translateY(-50%) scale(.45); } }
 
+/* A shared PROJECT-S waiting transition: gaming hardware cycles while two live caution tapes keep the system moving. */
+body.is-project-transitioning { overflow: hidden; }
+
+.project-transition {
+  position: fixed;
+  z-index: 10000;
+  inset: 0;
+  display: grid;
+  grid-template-rows: 38px 1fr 38px;
+  overflow: hidden;
+  color: #17131f;
+  background: var(--product-violet);
+  clip-path: inset(50% 0 50%);
+  transition: clip-path 420ms cubic-bezier(.22,1,.36,1);
+  contain: layout paint;
+}
+
+.project-transition.is-visible { clip-path: inset(0); }
+.project-transition.is-leaving { animation: projectTransitionOut 400ms cubic-bezier(.55,0,1,.45) both; }
+
+.project-transition-tape {
+  position: relative;
+  z-index: 2;
+  overflow: hidden;
+  color: #f5f2eb;
+  background: var(--product-black);
+  border-block: 1px solid rgba(255, 255, 255, .28);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 850;
+  line-height: 36px;
+  letter-spacing: .04em;
+  white-space: nowrap;
+}
+
+.project-transition-tape-track {
+  width: max-content;
+  height: 100%;
+  display: flex;
+  will-change: transform;
+  animation: projectTape 13s linear infinite;
+}
+
+.project-transition-tape--bottom .project-transition-tape-track { animation-direction: reverse; animation-duration: 15s; }
+.project-transition-tape-track > span { flex: none; }
+
+.project-transition-center {
+  position: relative;
+  display: grid;
+  place-items: center;
+  isolation: isolate;
+}
+
+.project-transition-center::before,
+.project-transition-center::after {
+  content: "";
+  position: absolute;
+  width: min(46vw, 640px);
+  height: 1px;
+  background: rgba(23, 19, 31, .25);
+}
+
+.project-transition-center::before { transform: translateY(-112px); }
+.project-transition-center::after { transform: translateY(112px); }
+.project-transition-devices { position: relative; width: 120px; height: 120px; }
+
+.project-transition-device {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  opacity: 0;
+  color: #f5f2eb;
+  animation: projectDeviceCycle 1.8s linear infinite;
+  animation-delay: calc(var(--device-index) * .3s);
+}
+
+.project-transition-device .icon { filter: drop-shadow(0 8px 0 rgba(23, 19, 31, .16)); }
+.project-transition-device small {
+  position: absolute;
+  top: calc(100% + 8px);
+  color: rgba(23, 19, 31, .82);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: .2em;
+}
+
+.project-transition-center > p {
+  position: absolute;
+  top: calc(50% + 150px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 7px;
+  color: rgba(23, 19, 31, .72);
+  font-size: 11px;
+  letter-spacing: .06em;
+}
+
+.project-transition-center > p b { color: var(--product-black); font-family: var(--font-mono); font-size: 10px; letter-spacing: .13em; }
+
+@keyframes projectDeviceCycle {
+  0%, 1% { opacity: 1; transform: translateY(3px); }
+  12% { opacity: 1; transform: translateY(0); }
+  17%, 100% { opacity: 0; transform: translateY(-3px); }
+}
+
+@keyframes projectTape { to { transform: translate3d(-50%, 0, 0); } }
+@keyframes projectTransitionOut { to { opacity: 0; transform: scale(1.018); } }
+
 /* Matching is presented as a focused, expanding modal rather than a second dashboard. */
 .matching-modal-page {
   position: fixed;
@@ -1468,4 +1579,8 @@ body:has(.product-shell) {
   .matching-signal-ring,
   .matching-player-card,
   .matching-query > span { animation: none; }
+  .project-transition { transition: none; clip-path: inset(0); }
+  .project-transition-tape-track { animation: none; }
+  .project-transition-device { animation: none; opacity: 0; }
+  .project-transition-device:first-child { opacity: 1; }
 }
