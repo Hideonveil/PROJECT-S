@@ -249,8 +249,11 @@ test("game selection opens Deadlock steps and keeps other games coming soon", as
 });
 
 test("Deadlock rank and casual paths expose different step systems", async ({ page }) => {
+  await page.setViewportSize({ width: 1366, height: 768 });
   await page.goto("/index.html#/home");
   await page.getByRole("button", { name: /Deadlock/ }).click();
+  const nextButtonBox = await page.getByRole("button", { name: "下一步", exact: true }).boundingBox();
+  expect((nextButtonBox?.y || 0) + (nextButtonBox?.height || 0)).toBeLessThanOrEqual(768);
   const stage = page.locator("[data-home-wizard-stage]");
   await stage.evaluate((element) => element.setAttribute("data-test-persisted", "yes"));
   await page.getByRole("button", { name: "上分", exact: true }).click();
@@ -266,10 +269,15 @@ test("Deadlock rank and casual paths expose different step systems", async ({ pa
   await page.getByRole("button", { name: /近卫/ }).click();
   await expect(page.getByRole("button", { name: /近卫/ })).toHaveAttribute("aria-pressed", "true");
   await page.getByRole("button", { name: "下一步", exact: true }).click();
-  await expect(page.locator(".match-role-multi")).toContainText("可多选");
-  await expect(page.getByRole("button", { name: "1号位", exact: true }).locator(".match-role-number")).toContainText("1");
-  await expect(page.getByRole("button", { name: "1号位", exact: true }).locator("small")).toHaveText("号位");
-  await page.getByRole("button", { name: /3号位/ }).click();
+  const ownRoles = page.getByRole("group", { name: "我的位置，可多选" });
+  const teammateRoles = page.getByRole("group", { name: "希望队友位置，可多选" });
+  await expect(ownRoles).toBeVisible();
+  await expect(teammateRoles).toBeVisible();
+  await expect(page.locator(".match-role-multi")).toHaveCount(2);
+  await expect(ownRoles.getByRole("button", { name: "1号位", exact: true }).locator(".match-role-number")).toContainText("1");
+  await expect(ownRoles.getByRole("button", { name: "1号位", exact: true }).locator("small")).toHaveText("号位");
+  await ownRoles.getByRole("button", { name: /2号位/ }).click();
+  await teammateRoles.getByRole("button", { name: /3号位/ }).click();
   await page.getByRole("button", { name: "下一步", exact: true }).click();
   await expect(page.getByText("上分最好开麦哦", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "开麦", exact: true })).toHaveAttribute("aria-pressed", "true");
@@ -287,10 +295,23 @@ test("Deadlock rank and casual paths expose different step systems", async ({ pa
   await expect(casualStage).toHaveAttribute("data-test-persisted", "yes");
   await expect(page.locator("[data-home-stepper]")).toHaveAttribute("aria-label", "Deadlock 配置进度：第 1 步，共 3 步");
   await page.getByRole("button", { name: "下一步", exact: true }).click();
-  await page.getByRole("button", { name: "不限", exact: true }).click();
+  await expect(page.getByRole("group", { name: "找几个人" })).toBeVisible();
+  await expect(page.getByRole("group", { name: /位置/ })).toHaveCount(0);
+  await page.getByRole("button", { name: "找 2 人", exact: true }).click();
   await page.getByRole("button", { name: "下一步", exact: true }).click();
   await expect(page.getByText("上分最好开麦哦", { exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "无所谓", exact: true })).toBeVisible();
+});
+
+test("hero auth actions use a dedicated transition without affecting auth tabs", async ({ page }) => {
+  await page.goto("/index.html#/hero");
+  await page.locator(".landing-auth").getByRole("button", { name: "登录", exact: true }).click();
+  await expect(page.locator("[data-project-transition]")).toBeVisible();
+  await expect(page.locator("[data-project-transition]")).toHaveAttribute("aria-label", "正在进入账号页面");
+  await expect(page).toHaveURL(/#\/auth$/);
+  await expect(page.locator("[data-project-transition]")).toHaveCount(0);
+  await page.getByRole("tab", { name: "注册", exact: true }).click();
+  await expect(page.locator("[data-project-transition]")).toHaveCount(0);
 });
 
 test("navigation keeps icon-only rest state and staggers open on hover", async ({ page }) => {

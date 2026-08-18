@@ -34,8 +34,9 @@ describe("friends flow and retired matching cleanup", () => {
     expect(feedback).toContain('p_tags: effectiveLiked ? ["liked"] : []');
   });
 
-  it("records the goodbye button as a normal goodbye completion", () => {
-    const finish = readFileSync("src/app/api/room/[code]/finish/route.ts", "utf8");
-    expect(finish).toContain('p_reason: "normal_goodbye"');
+  it("does not let one player complete a normal game alone", () => {
+    expect(existsSync("src/app/api/room/[code]/finish/route.ts")).toBe(false);
+    const goodbye = readFileSync("src/app/api/room/[code]/goodbye/route.ts", "utf8");
+    expect(goodbye).toContain("phase1_request_goodbye");
   });
 });
