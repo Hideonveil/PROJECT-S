@@ -3,7 +3,7 @@ import { avatar, avatarWrap, paintAvatars } from "./avatar.js";
 import { initNodeField } from "./field.js";
 import { button, esc, needSummary, setProductRailHeldOpen, toast } from "./ui.js";
 import { state, update, resetState } from "./store.js";
-import { DEVICES, GAME_BY_ID, GAMES, GENRES, HOME_CASUAL_TIMES, HOME_GAME_IDS } from "./data.js";
+import { DEVICES, GAME_BY_ID, GAMES, GENRES } from "./data.js";
 import { FLOW } from "./flow.js";
 import * as api from "./api.js";
 import { authPage } from "./pages/auth.js";
@@ -52,15 +52,20 @@ const DRAFT = {
   style: "",
   needed: 1,
   onboardStep: 0,
+  onboardDirection: 1,
   dirty: false,
 };
 
 const HOME_FILTER = {
-  game: HOME_GAME_IDS[0],
-  mode: GAMES.find((game) => game.id === HOME_GAME_IDS[0])?.modes?.[0] || "",
-  time: "现在就玩",
+  game: "",
+  goal: "",
+  step: 0,
+  direction: 1,
+  ownRoles: [],
+  teammateRoles: [],
+  time: "现在",
   team: "1",
-  voice: "需要",
+  voice: "on",
 };
 let activeField = null;
 let timers = [];
@@ -385,8 +390,6 @@ function persistentProductShell(html) {
   const nextRail = template.content.querySelector("[data-staggered-rail]");
   const currentTicker = app.querySelector("[data-product-ticker]");
   const nextTicker = template.content.querySelector("[data-product-ticker]");
-  const currentStepper = app.querySelector("[data-registration-stepper]");
-  const nextStepper = template.content.querySelector("[data-registration-stepper]");
 
   if (currentRail && nextRail) {
     currentRail.className = nextRail.className;
@@ -400,18 +403,29 @@ function persistentProductShell(html) {
     nextRail.replaceWith(currentRail);
   }
   if (currentTicker && nextTicker) nextTicker.replaceWith(currentTicker);
-  if (currentStepper && nextStepper) {
+  const preserveStepper = (selector, markerSelector, lineSelector) => {
+    const currentStepper = app.querySelector(selector);
+    const nextStepper = template.content.querySelector(selector);
+    if (!currentStepper || !nextStepper) return;
+    const currentSteps = [...currentStepper.querySelectorAll(markerSelector)];
+    const nextSteps = [...nextStepper.querySelectorAll(markerSelector)];
+    if (currentSteps.length !== nextSteps.length) return;
     currentStepper.setAttribute("aria-label", nextStepper.getAttribute("aria-label") || "身份创建进度");
-    const nextSteps = [...nextStepper.querySelectorAll(".registration-step")];
-    [...currentStepper.querySelectorAll(".registration-step")].forEach((item, index) => {
-      item.className = nextSteps[index]?.className || item.className;
+    currentSteps.forEach((item, index) => {
+      const nextItem = nextSteps[index];
+      item.className = nextItem?.className || item.className;
+      const currentBadge = item.querySelector("b");
+      const nextBadge = nextItem?.querySelector("b");
+      if (currentBadge && nextBadge) currentBadge.innerHTML = nextBadge.innerHTML;
     });
-    const nextLines = [...nextStepper.querySelectorAll(".registration-step-line")];
-    [...currentStepper.querySelectorAll(".registration-step-line")].forEach((line, index) => {
+    const nextLines = [...nextStepper.querySelectorAll(lineSelector)];
+    [...currentStepper.querySelectorAll(lineSelector)].forEach((line, index) => {
       line.className = nextLines[index]?.className || line.className;
     });
     nextStepper.replaceWith(currentStepper);
-  }
+  };
+  preserveStepper("[data-registration-stepper]", ".registration-step", ".registration-step-line");
+  preserveStepper("[data-home-stepper]", ".match-wizard-marker", ".match-wizard-line");
   return template.content;
 }
 
@@ -643,6 +657,7 @@ function prepareOnboardDraft() {
   DRAFT.genres = state.user.genres || [];
   DRAFT.playStyle = state.user.playStyle || "";
   DRAFT.onboardStep = 0;
+  DRAFT.onboardDirection = 1;
 }
 
 function prepareNeedDraft() {
@@ -673,49 +688,46 @@ function prepareNeedDraft() {
   DRAFT.dirty = false;
 }
 
-function renderHomeFilterGameState() {
-  document.querySelectorAll("[data-home-game]").forEach((row) => {
-    const on = row.dataset.homeGame === HOME_FILTER.game;
-    row.classList.toggle("is-on", on);
-    row.setAttribute("aria-pressed", String(on));
+function homeWizardPath() {
+  return HOME_FILTER.goal === "casual"
+    ? ["goal", "voice", "team", "time"]
+    : ["goal", "ownRoles", "teammateRoles", "voice", "time"];
+}
+
+function homeWizardStepKey() {
+  const path = homeWizardPath();
+  return path[Math.max(0, Math.min(path.length - 1, Number(HOME_FILTER.step) || 0))];
+}
+
+function toggleHomeChoice(actionEl, selected) {
+  actionEl.classList.toggle("is-on", selected);
+  actionEl.setAttribute("aria-pressed", String(selected));
+  const small = actionEl.querySelector("small");
+  if (small) small.textContent = selected ? "已选择" : "可多选";
+}
+
+function selectHomeChoice(actionEl) {
+  const group = actionEl.closest("[role='group']");
+  group?.querySelectorAll(".match-option").forEach((choice) => {
+    choice.classList.toggle("is-on", choice === actionEl);
+    choice.setAttribute("aria-pressed", String(choice === actionEl));
   });
 }
 
-function renderHomeFilterTags() {
-  const modeWrap = document.getElementById("home-filter-mode-tags");
-  const timeWrap = document.getElementById("home-filter-time-tags");
-  const game = GAMES.find((g) => g.id === HOME_FILTER.game) || GAMES[0];
-  const times = HOME_CASUAL_TIMES;
-  if (modeWrap) {
-    modeWrap.innerHTML = (game.modes || [])
-      .slice(0, 3)
-      .map(
-        (m) =>
-          `<button type="button" class="cursor-target home-filter-tag match-option ${m === HOME_FILTER.mode ? "is-on" : ""}" data-action="home-mode" data-value="${esc(m)}" aria-pressed="${m === HOME_FILTER.mode}"><span>${esc(m.replace(" / ", ""))}</span><span class="match-option-check">${icon("check", 12)}</span></button>`
-      )
-      .join("");
-  }
-  if (timeWrap) {
-    timeWrap.innerHTML = times
-      .map(
-        (t) =>
-          `<button type="button" class="cursor-target home-filter-tag match-option ${t === HOME_FILTER.time ? "is-on" : ""}" data-action="home-time" data-value="${esc(t)}" aria-pressed="${t === HOME_FILTER.time}"><span>${esc(t === "现在就玩" ? "尽快开始" : t)}</span><span class="match-option-check">${icon("check", 12)}</span></button>`
-      )
-      .join("");
-  }
-}
 function syncHomeFilterToDraft() {
   prepareNeedDraft();
-  const game = GAMES.find((g) => g.id === HOME_FILTER.game) || GAMES[0];
-  DRAFT.game = game.id;
-  DRAFT.mode = HOME_FILTER.mode || game.modes[0] || "";
-  const flow = FLOW[DRAFT.game] || {};
-  DRAFT.goal = flow.goalByMode?.[DRAFT.mode] || "";
-  DRAFT.time = HOME_FILTER.time || "现在就玩";
+  DRAFT.game = "deadlock";
+  DRAFT.mode = HOME_FILTER.goal === "casual" ? "娱乐" : "排位 / 上分";
+  DRAFT.goal = HOME_FILTER.goal === "casual" ? "娱乐" : "上分";
+  DRAFT.time = HOME_FILTER.time || "现在";
   DRAFT.current = 1;
-  DRAFT.needed = Math.min(4, Math.max(1, Number(HOME_FILTER.team) || 1));
-  DRAFT.voice = HOME_FILTER.voice !== "不需要";
-  DRAFT.voicePref = HOME_FILTER.voice || "都可以";
+  DRAFT.needed = HOME_FILTER.goal === "casual" ? Math.min(5, Math.max(1, Number(HOME_FILTER.team) || 1)) : 1;
+  DRAFT.voice = HOME_FILTER.voice !== "off";
+  DRAFT.voicePref = DRAFT.voice ? "需要" : "不需要";
+  DRAFT.role = HOME_FILTER.ownRoles.join(" / ");
+  DRAFT.selectedTags = HOME_FILTER.goal === "rank"
+    ? HOME_FILTER.teammateRoles.map((role) => `希望队友：${role}`)
+    : [`娱乐局找 ${DRAFT.needed} 人`];
   DRAFT.dirty = true;
 }
 
@@ -1279,6 +1291,7 @@ function moveOnboardStep(direction) {
     }
   }
   DRAFT.onboardStep = Math.max(0, Math.min(4, step + direction));
+  DRAFT.onboardDirection = direction < 0 ? -1 : 1;
   DRAFT.dirty = true;
   render();
 }
@@ -2276,38 +2289,77 @@ document.addEventListener("click", (event) => {
 
   if (action === "home-game") {
     HOME_FILTER.game = value;
-    const game = GAMES.find((g) => g.id === value);
-    HOME_FILTER.mode = game?.modes?.[0] || "";
-    HOME_FILTER.time = HOME_CASUAL_TIMES[0];
-    renderHomeFilterGameState();
-    renderHomeFilterTags();
+    HOME_FILTER.goal = "";
+    HOME_FILTER.step = 0;
+    HOME_FILTER.direction = 1;
+    HOME_FILTER.ownRoles = [];
+    HOME_FILTER.teammateRoles = [];
+    HOME_FILTER.voice = "on";
+    HOME_FILTER.team = "1";
+    HOME_FILTER.time = "现在";
+    render();
+    window.requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "smooth" }));
     return;
   }
 
-  if (action === "home-mode") {
-    HOME_FILTER.mode = value;
-    const group = actionEl.closest(".home-filter-tag-group");
-    group?.querySelectorAll(".home-filter-tag").forEach((c) => c.classList.remove("is-on"));
-    actionEl.classList.add("is-on");
-    group?.querySelectorAll(".home-filter-tag").forEach((c) => c.setAttribute("aria-pressed", String(c === actionEl)));
+  if (action === "home-back-games") {
+    HOME_FILTER.game = "";
+    HOME_FILTER.step = 0;
+    HOME_FILTER.direction = -1;
+    render();
     return;
   }
 
-  if (action === "home-time") {
-    HOME_FILTER.time = value;
-    const group = actionEl.closest(".home-filter-tag-group");
-    group?.querySelectorAll(".home-filter-tag").forEach((c) => c.classList.remove("is-on"));
-    actionEl.classList.add("is-on");
-    group?.querySelectorAll(".home-filter-tag").forEach((c) => c.setAttribute("aria-pressed", String(c === actionEl)));
+  if (action === "home-goal") {
+    HOME_FILTER.goal = value === "casual" ? "casual" : "rank";
+    HOME_FILTER.step = 0;
+    HOME_FILTER.direction = 1;
+    render();
     return;
   }
 
-  if (action === "home-voice") {
-    HOME_FILTER.voice = value;
-    const group = actionEl.closest(".home-filter-tag-group");
-    group?.querySelectorAll(".home-filter-tag").forEach((c) => c.classList.remove("is-on"));
-    actionEl.classList.add("is-on");
-    group?.querySelectorAll(".home-filter-tag").forEach((c) => c.setAttribute("aria-pressed", String(c === actionEl)));
+  if (action === "home-own-role" || action === "home-teammate-role") {
+    const key = action === "home-own-role" ? "ownRoles" : "teammateRoles";
+    const values = HOME_FILTER[key];
+    const selected = values.includes(value);
+    HOME_FILTER[key] = selected ? values.filter((item) => item !== value) : [...values, value];
+    toggleHomeChoice(actionEl, !selected);
+    return;
+  }
+
+  if (action === "home-voice" || action === "home-team" || action === "home-time") {
+    if (action === "home-voice") HOME_FILTER.voice = value === "off" ? "off" : "on";
+    if (action === "home-team") HOME_FILTER.team = value;
+    if (action === "home-time") HOME_FILTER.time = value;
+    selectHomeChoice(actionEl);
+    return;
+  }
+
+  if (action === "home-wizard-next") {
+    const stepKey = homeWizardStepKey();
+    const error =
+      stepKey === "goal" && !HOME_FILTER.goal ? "请选择游戏目的" :
+      stepKey === "ownRoles" && !HOME_FILTER.ownRoles.length ? "请至少选择一个自己能玩的位置" :
+      stepKey === "teammateRoles" && !HOME_FILTER.teammateRoles.length ? "请至少选择一个希望队友玩的位置" : "";
+    if (error) {
+      toast(error);
+      return;
+    }
+    HOME_FILTER.step = Math.min(homeWizardPath().length - 1, HOME_FILTER.step + 1);
+    HOME_FILTER.direction = 1;
+    render();
+    return;
+  }
+
+  if (action === "home-wizard-back") {
+    if (HOME_FILTER.step <= 0) {
+      HOME_FILTER.game = "";
+      HOME_FILTER.step = 0;
+    } else {
+      HOME_FILTER.step -= 1;
+    }
+    HOME_FILTER.direction = -1;
+    render();
     return;
   }
 

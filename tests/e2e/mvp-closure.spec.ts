@@ -130,6 +130,17 @@ async function login(page: Page) {
   await expect(page.locator(".product-topbar-user small")).toHaveText("测试玩家#0111");
 }
 
+async function reachDeadlockCasualFinal(page: Page) {
+  await page.getByRole("button", { name: /Deadlock/ }).click();
+  await page.getByRole("button", { name: "娱乐", exact: true }).click();
+  await page.getByRole("button", { name: "下一步", exact: true }).click();
+  await expect(page.getByRole("button", { name: "开麦", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await page.getByRole("button", { name: "下一步", exact: true }).click();
+  await expect(page.getByRole("button", { name: "找 1 人", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await page.getByRole("button", { name: "下一步", exact: true }).click();
+  await expect(page.getByRole("button", { name: "现在", exact: true })).toHaveAttribute("aria-pressed", "true");
+}
+
 test("first-time visitors land on the real matching home", async ({ page }) => {
   await page.goto("/index.html");
 
@@ -139,7 +150,8 @@ test("first-time visitors land on the real matching home", async ({ page }) => {
   await expect(page.getByRole("link", { name: "摇人", exact: true })).toBeVisible();
   await expect(page.getByRole("link", { name: "社区", exact: true })).toBeVisible();
   await expect(page.getByRole("link", { name: "我的", exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "开始匹配", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Deadlock/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: "开始匹配", exact: true })).toHaveCount(0);
   await expect(page.locator(".match-head p")).toHaveText("总有人想一起玩");
   await expect(page.locator("[data-ticker-head]")).toHaveCount(1);
   await expect(page.locator("[data-ticker-tail]")).toHaveCount(1);
@@ -163,16 +175,47 @@ test("first-time visitors land on the real matching home", async ({ page }) => {
   expect(tickerAfter).not.toBe(tickerBefore);
 });
 
-test("game selection updates modes without runtime errors", async ({ page }) => {
+test("game selection opens Deadlock steps and keeps other games coming soon", async ({ page }) => {
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
   await page.goto("/index.html");
 
   await page.getByRole("button", { name: /Deadlock/ }).click();
-  await expect(page.getByRole("button", { name: /普通对局/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: "上分", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "返回游戏", exact: true }).click();
   await page.getByRole("button", { name: /我的世界/ }).click();
-  await expect(page.getByRole("button", { name: /生存/ })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "我的世界还在准备。" })).toBeVisible();
   expect(errors).toEqual([]);
+});
+
+test("Deadlock rank and casual paths expose different step systems", async ({ page }) => {
+  await page.goto("/index.html");
+  await page.getByRole("button", { name: /Deadlock/ }).click();
+  await page.getByRole("button", { name: "上分", exact: true }).click();
+  const stepper = page.locator("[data-home-stepper]");
+  await expect(stepper).toHaveAttribute("aria-label", "Deadlock 配置进度：第 1 步，共 5 步");
+  await stepper.evaluate((element) => element.setAttribute("data-test-persisted", "yes"));
+  await page.getByRole("button", { name: "下一步", exact: true }).click();
+  await expect(stepper).toHaveAttribute("data-test-persisted", "yes");
+  await expect(page.getByRole("button", { name: /1号位/ })).toBeVisible();
+  await page.getByRole("button", { name: /1号位/ }).click();
+  await page.getByRole("button", { name: /2号位/ }).click();
+  await page.getByRole("button", { name: "下一步", exact: true }).click();
+  await page.getByRole("button", { name: /3号位/ }).click();
+  await page.getByRole("button", { name: "下一步", exact: true }).click();
+  await expect(page.getByText("上分最好开麦哦", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "开麦", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await page.getByRole("button", { name: "下一步", exact: true }).click();
+  await expect(page.getByRole("button", { name: "现在", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("button", { name: "开始匹配", exact: true })).toBeVisible();
+
+  await page.goto("/index.html?casual-path=1#/home");
+  await page.getByRole("button", { name: /Deadlock/ }).click();
+  await page.getByRole("button", { name: "娱乐", exact: true }).click();
+  await page.getByRole("button", { name: "下一步", exact: true }).click();
+  await expect(page.getByText("上分最好开麦哦", { exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "下一步", exact: true }).click();
+  await expect(page.getByRole("button", { name: "找 5 人", exact: true })).toBeVisible();
 });
 
 test("navigation keeps icon-only rest state and staggers open on hover", async ({ page }) => {
@@ -241,6 +284,7 @@ test("login and registration switch inside a stable account workspace", async ({
 
 test("starting a match while signed out opens the account flow", async ({ page }) => {
   await page.goto("/index.html");
+  await reachDeadlockCasualFinal(page);
   await page.getByRole("button", { name: "开始匹配", exact: true }).click();
 
   await expect(page).toHaveURL(/#\/auth$/);
@@ -285,6 +329,7 @@ test("registration continues to player identity and stores the real profile payl
   await page.getByRole("button", { name: "下一步", exact: true }).click();
   await expect(page.locator('[aria-label="身份创建进度：第 2 步，共 5 步"]')).toBeVisible();
   await expect(page.locator("[data-registration-stepper]")).toHaveAttribute("data-test-persisted", "yes");
+  await expect(page.locator(".identity-form--step")).toHaveClass(/is-forward/);
   await page.getByRole("button", { name: /暂不设置头像/ }).click();
   await page.getByRole("button", { name: "下一步", exact: true }).click();
   await page.getByRole("button", { name: "PC", exact: true }).click();
@@ -312,6 +357,7 @@ test("desktop match controls use target cursor but the primary action does not",
   await expect(page.locator(".target-cursor")).toHaveClass(/is-visible/);
   await expect(page.locator(".target-cursor")).toHaveClass(/is-locked/);
 
+  await reachDeadlockCasualFinal(page);
   await page.getByRole("button", { name: "开始匹配", exact: true }).hover();
   await expect(page.locator(".target-cursor")).not.toHaveClass(/is-visible/);
 });

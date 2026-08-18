@@ -1,44 +1,138 @@
 import { icon } from "../icons.js";
 import { esc, homeShell } from "../ui.js";
-import { GAMES, HOME_CASUAL_TIMES, HOME_GAME_IDS } from "../data.js";
+import { GAMES, HOME_GAME_IDS } from "../data.js";
 
 const GAME_ICONS = { hok: "trophy", valorant: "target", deadlock: "swords", minecraft: "gamepad2" };
+const DEADLOCK_ROLES = ["1号位", "2号位", "3号位", "4号位", "5号位", "6号位"];
+const DEADLOCK_TIMES = ["现在", "30分钟后", "1小时后"];
+
+const DEADLOCK_PATHS = {
+  rank: [
+    { key: "goal", label: "游戏目的" },
+    { key: "ownRoles", label: "我的位置" },
+    { key: "teammateRoles", label: "队友位置" },
+    { key: "voice", label: "是否开麦" },
+    { key: "time", label: "什么时候玩" },
+  ],
+  casual: [
+    { key: "goal", label: "游戏目的" },
+    { key: "voice", label: "是否开麦" },
+    { key: "team", label: "找几个人" },
+    { key: "time", label: "什么时候玩" },
+  ],
+};
+
+function option(value, label, on, action, iconName = "", multiple = false) {
+  return `<button type="button" class="cursor-target home-filter-tag match-option ${on ? "is-on" : ""}" data-action="${action}" data-value="${esc(value)}" aria-pressed="${on}">
+    ${iconName ? `<span class="match-option-icon">${icon(iconName, 20)}</span>` : ""}<span>${esc(label)}</span>${multiple ? `<small>${on ? "已选择" : "可多选"}</small>` : ""}<span class="match-option-check">${icon("check", 12)}</span>
+  </button>`;
+}
 
 function gameOptions(selected) {
   return HOME_GAME_IDS.map((id) => {
     const game = GAMES.find((item) => item.id === id);
     if (!game) return "";
     const on = id === selected;
-    return `<button type="button" class="cursor-target match-option match-game-option home-filter-game-row ${on ? "is-on" : ""}" data-home-game="${esc(id)}" data-action="home-game" data-value="${esc(id)}" aria-pressed="${on}">
-      <span class="match-option-icon">${icon(GAME_ICONS[id] || "gamepad2", 21)}</span><span>${esc(game.name)}</span><span class="match-option-check">${icon("check", 12)}</span>
+    const ready = id === "deadlock";
+    return `<button type="button" class="cursor-target match-option match-game-option home-filter-game-row ${on ? "is-on" : ""} ${ready ? "is-ready" : "is-soon"}" data-home-game="${esc(id)}" data-action="home-game" data-value="${esc(id)}" aria-pressed="${on}">
+      <span class="match-option-icon">${icon(GAME_ICONS[id] || "gamepad2", 22)}</span><span>${esc(game.name)}</span><small>${ready ? "AVAILABLE / 01" : "COMING SOON"}</small><span class="match-option-check">${icon("arrowRight", 12)}</span>
     </button>`;
   }).join("");
 }
 
-function option(value, label, on, action, iconName = "") {
-  return `<button type="button" class="cursor-target home-filter-tag match-option ${on ? "is-on" : ""}" data-action="${action}" data-value="${esc(value)}" aria-pressed="${on}">
-    ${iconName ? `<span class="match-option-icon">${icon(iconName, 20)}</span>` : ""}<span>${esc(label)}</span><span class="match-option-check">${icon("check", 12)}</span>
-  </button>`;
+function flowStepper(currentStep, steps) {
+  return `<div class="match-wizard-stepper" data-home-stepper aria-label="Deadlock 配置进度：第 ${currentStep + 1} 步，共 ${steps.length} 步">
+    ${steps.map((step, index) => {
+      const status = index < currentStep ? "is-complete" : index === currentStep ? "is-active" : "is-pending";
+      return `${index ? `<span class="match-wizard-line ${index <= currentStep ? "is-complete" : ""}" aria-hidden="true"><i></i></span>` : ""}<span class="match-wizard-marker ${status}"><b>${status === "is-complete" ? icon("check", 13) : String(index + 1).padStart(2, "0")}</b><em>${step.label}</em></span>`;
+    }).join("")}
+  </div>`;
+}
+
+function roleOptions(values, selected, action) {
+  return `<div class="match-options match-options--roles" role="group">${values.map((value) => option(value, value, selected.includes(value), action, "circleDot", true)).join("")}</div>`;
+}
+
+function wizardContent(filter, stepKey) {
+  if (stepKey === "goal") {
+    return `<div class="match-options match-options--goal" role="group" aria-label="游戏目的">
+      ${option("rank", "上分", filter.goal === "rank", "home-goal", "trophy")}
+      ${option("casual", "娱乐", filter.goal === "casual", "home-goal", "dices")}
+    </div>`;
+  }
+  if (stepKey === "ownRoles") return roleOptions(DEADLOCK_ROLES, filter.ownRoles, "home-own-role");
+  if (stepKey === "teammateRoles") return roleOptions(DEADLOCK_ROLES, filter.teammateRoles, "home-teammate-role");
+  if (stepKey === "voice") {
+    return `<div class="match-choice-stack">
+      ${filter.goal === "rank" ? `<p class="match-rank-note" role="note">${icon("mic", 18)}<span><b>上分最好开麦哦</b><small>及时沟通位置与团战信息，配合会更稳定。</small></span></p>` : ""}
+      <div class="match-options match-options--voice" role="group" aria-label="是否开麦">
+        ${option("on", "开麦", filter.voice === "on", "home-voice", "mic")}
+        ${option("off", "不开麦", filter.voice === "off", "home-voice", "volumeX")}
+      </div>
+    </div>`;
+  }
+  if (stepKey === "team") {
+    return `<div class="match-options match-options--team" role="group" aria-label="找几个人">${[1, 2, 3, 4, 5].map((count) => option(String(count), `找 ${count} 人`, Number(filter.team) === count, "home-team", "users")).join("")}</div>`;
+  }
+  return `<div class="match-options match-options--time" role="group" aria-label="什么时候玩">${DEADLOCK_TIMES.map((time, index) => option(time, time, filter.time === time, "home-time", index === 0 ? "zap" : "clock")).join("")}</div>`;
+}
+
+function wizardCopy(stepKey, goal) {
+  const copy = {
+    goal: ["先决定这局为了什么。", "选择上分会进入位置配置；选择娱乐则直接寻找轻松开黑的玩家。"],
+    ownRoles: ["你通常玩哪个位置？", "可多选。让队友先知道你能承担哪些位置。"],
+    teammateRoles: ["希望队友补哪个位置？", "可多选。这里只记录你的队伍偏好。"],
+    voice: ["这局要不要开麦？", goal === "rank" ? "上分默认开麦，你仍然可以改成不开麦。" : "娱乐局默认开麦，不做额外要求。"],
+    team: ["这次想找几个人？", "Deadlock 娱乐局最多可以再找 5 位玩家。"],
+    time: ["准备什么时候开始？", "默认现在开始，也可以给队友留一点准备时间。"],
+  };
+  return copy[stepKey] || copy.goal;
+}
+
+function gameStage(selectedGame) {
+  return `<section class="match-game-stage match-stage-enter" aria-labelledby="match-game-title">
+    <div class="match-stage-copy"><span>GAME SELECT / 00</span><h2 id="match-game-title">先选一个游戏。</h2><p>目前先开放 Deadlock 的匹配配置。其他游戏的入口保留，后续逐个上线。</p></div>
+    <div class="match-options match-options--games" role="group" aria-label="选择游戏">${gameOptions(selectedGame)}</div>
+  </section>`;
+}
+
+function comingSoonStage(filter) {
+  const game = GAMES.find((item) => item.id === filter.game);
+  return `<section class="match-coming-soon match-stage-enter" aria-live="polite">
+    <span>COMING SOON / ${esc(game?.name || "GAME")}</span><h2>${esc(game?.name || "这个游戏")}还在准备。</h2><p>入口已经留下，但本阶段只制作 Deadlock 的配置流程。</p>
+    <button type="button" class="match-wizard-back" data-action="home-back-games">${icon("chevronLeft", 18)}<span>返回选择游戏</span></button>
+  </section>`;
+}
+
+function deadlockStage(filter) {
+  const path = DEADLOCK_PATHS[filter.goal === "casual" ? "casual" : "rank"];
+  const step = Math.max(0, Math.min(path.length - 1, Number(filter.step) || 0));
+  const stepKey = path[step].key;
+  const [title, description] = wizardCopy(stepKey, filter.goal);
+  const isLast = step === path.length - 1;
+  return `<section class="match-wizard">
+    ${flowStepper(step, path)}
+    <div class="match-wizard-stage ${filter.direction < 0 ? "is-backward" : "is-forward"}" data-home-wizard-stage data-home-step="${esc(stepKey)}">
+      <div class="match-wizard-copy"><span>DEADLOCK / ${String(step + 1).padStart(2, "0")}</span><h2>${title}</h2><p>${description}</p></div>
+      <div class="match-wizard-options">${wizardContent(filter, stepKey)}</div>
+      <footer class="match-wizard-actions">
+        <button type="button" class="match-wizard-back" data-action="home-wizard-back">${icon("chevronLeft", 18)}<span>${step === 0 ? "返回游戏" : "上一步"}</span></button>
+        ${isLast
+          ? `<div class="match-start-dock" data-match-start-dock><button class="match-start" type="button" data-action="home-start-match" aria-label="开始匹配"><span>开始匹配</span>${icon("arrowRight", 25)}</button></div>`
+          : `<button type="button" class="match-wizard-next" data-action="home-wizard-next"><span>下一步</span>${icon("arrowRight", 20)}</button>`}
+      </footer>
+    </div>
+  </section>`;
 }
 
 export function homePage(state, filter) {
-  const selectedGame = GAMES.find((game) => game.id === filter.game) || GAMES.find((game) => game.id === HOME_GAME_IDS[0]) || GAMES[0];
-  const modes = (selectedGame.modes || []).slice(0, 3).map((mode, index) => option(mode, mode.replace(" / ", ""), mode === filter.mode || (!filter.mode && index === 0), "home-mode", index === 0 ? "trophy" : index === 1 ? "swords" : "circleDot")).join("");
-  const times = HOME_CASUAL_TIMES.map((time, index) => option(time, time === "现在就玩" ? "尽快开始" : time, time === filter.time, "home-time", index === 0 ? "clock" : index === 4 ? "calendar" : "timer")).join("");
-  const voices = [["需要", "语音开黑", "mic"], ["不需要", "文字交流", "messageSquare"], ["都可以", "无偏好", "volumeX"]].map(([value, label, iconName]) => option(value, label, value === filter.voice, "home-voice", iconName)).join("");
   const pool = Math.max(0, Number(state.match.pool || 0));
-
+  const stage = !filter.game ? gameStage("") : filter.game === "deadlock" ? deadlockStage(filter) : comingSoonStage(filter);
   return homeShell(state, `<div class="match-workspace">
     <header class="match-head">
       <div><div class="match-eyebrow">01 / MATCH</div><h1>摇人</h1><p>总有人想一起玩</p></div>
       <div class="match-live" aria-label="匹配池状态"><span></span><b>匹配池在线</b><i>·</i><em>${pool ? `${pool} 人正在找队友` : "等待新的玩家"}</em></div>
     </header>
-    <div class="match-form" aria-label="匹配筛选">
-      <section class="match-block"><h2><span>01</span>选择游戏</h2><div class="match-options match-options--games" role="group" aria-label="选择游戏">${gameOptions(selectedGame.id)}</div></section>
-      <section class="match-block"><h2><span>02</span>选择模式</h2><div class="home-filter-tag-group match-options" id="home-filter-mode-tags" role="group" aria-label="选择模式">${modes}</div></section>
-      <section class="match-block"><h2><span>03</span>预计开始时间</h2><div class="home-filter-tag-group match-options match-options--time" id="home-filter-time-tags" role="group" aria-label="开始时间">${times}</div></section>
-      <section class="match-block"><h2><span>04</span>语音偏好</h2><div class="home-filter-tag-group match-options" role="group" aria-label="语音偏好">${voices}</div></section>
-    </div>
-    <div class="match-start-dock" data-match-start-dock><button class="match-start" type="button" data-action="home-start-match" aria-label="开始匹配"><span>开始匹配</span>${icon("arrowRight", 25)}</button></div>
+    ${stage}
   </div>`, "home");
 }

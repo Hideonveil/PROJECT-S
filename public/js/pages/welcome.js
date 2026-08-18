@@ -68,7 +68,7 @@ export function welcomePage(state, draft) {
     `<section class="identity-workspace">
       ${registrationStepper(step + 1, IDENTITY_STEPS)}
       <header class="identity-head"><div><div class="match-eyebrow">PLAYER IDENTITY / ${String(step + 1).padStart(2, "0")} OF 05</div><h1>创建玩家身份</h1></div><p>一次只完成一件事。<br />所有信息以后都可以修改。</p></header>
-      <form class="identity-form identity-form--step" data-form="onboard" data-onboard-step="${step}">
+      <form class="identity-form identity-form--step ${draft.onboardDirection < 0 ? "is-backward" : "is-forward"}" data-form="onboard" data-onboard-step="${step}">
         <section class="identity-step-card">
           <div class="identity-step-copy"><span>${String(step + 1).padStart(2, "0")} / 05</span><h2>${titles[step]}</h2><p>${descriptions[step]}</p></div>
           <div class="identity-step-body">${stepContent(step, draft)}</div>
