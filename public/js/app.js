@@ -332,10 +332,16 @@ function initStaggeredRail() {
   };
 
   const pointerEnter = () => {
+    if (rail.classList.contains("is-staggered-open")) return;
     if (staggeredRailHoldOpen) {
       restoreOpen();
       return;
     }
+    open();
+  };
+
+  const focusIn = () => {
+    if (rail.classList.contains("is-staggered-open")) return;
     open();
   };
 
@@ -354,7 +360,7 @@ function initStaggeredRail() {
   };
   rail.addEventListener("pointerenter", pointerEnter);
   rail.addEventListener("pointerleave", close);
-  rail.addEventListener("focusin", open);
+  rail.addEventListener("focusin", focusIn);
   rail.addEventListener("focusout", focusOut);
   rail.addEventListener("click", holdOpenOnNavigation);
   if (staggeredRailHoldOpen) restoreOpen();
@@ -363,7 +369,7 @@ function initStaggeredRail() {
     window.clearTimeout(focusOutTimer);
     rail.removeEventListener("pointerenter", pointerEnter);
     rail.removeEventListener("pointerleave", close);
-    rail.removeEventListener("focusin", open);
+    rail.removeEventListener("focusin", focusIn);
     rail.removeEventListener("focusout", focusOut);
     rail.removeEventListener("click", holdOpenOnNavigation);
     openTimeline?.kill();

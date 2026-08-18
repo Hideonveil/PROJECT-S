@@ -188,10 +188,22 @@ test("navigation keeps icon-only rest state and staggers open on hover", async (
   await expect(rail).toHaveClass(/is-staggered-open.*is-route-held/);
   await expect(rail).toHaveCSS("transition-duration", "0s");
   await expect.poll(() => rail.evaluate((el) => el.getBoundingClientRect().width)).toBeGreaterThan(150);
+  await rail.evaluate((element) => {
+    element.setAttribute("data-test-layer-replays", "0");
+    const layers = [...element.querySelectorAll<HTMLElement>(".product-rail-layer")];
+    const observer = new MutationObserver(() => {
+      if (layers.some((layer) => layer.style.transform.includes("-112%"))) {
+        const count = Number(element.getAttribute("data-test-layer-replays") || 0);
+        element.setAttribute("data-test-layer-replays", String(count + 1));
+      }
+    });
+    layers.forEach((layer) => observer.observe(layer, { attributes: true, attributeFilter: ["style"] }));
+  });
   await rail.getByRole("link", { name: "我的", exact: true }).click();
   await expect(page).toHaveURL(/#\/auth$/);
   await expect(rail).toHaveClass(/is-staggered-open.*is-route-held/);
   await expect.poll(() => rail.evaluate((el) => el.getBoundingClientRect().width)).toBeGreaterThan(150);
+  await expect(rail).toHaveAttribute("data-test-layer-replays", "0");
   await rail.getByRole("link", { name: "摇人", exact: true }).click();
   await expect(page).toHaveURL(/#\/home$/);
   await expect(rail).toHaveClass(/is-staggered-open.*is-route-held/);
