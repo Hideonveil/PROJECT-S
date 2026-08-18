@@ -1,5 +1,6 @@
 import { supabaseAdmin } from "./supabase";
 import { gamesForProfile, publicProfile, publicProfilesFor } from "./data";
+import { mapGoodbyeRequests } from "./session-goodbye";
 import type {
   EnrichedRecentConnection,
   Profile,
@@ -60,6 +61,13 @@ export async function enrichRoom(room: Record<string, unknown>): Promise<Room> {
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
+  const { data: goodbyeRows } = session?.id
+    ? await supabaseAdmin()
+        .from("session_goodbye_requests")
+        .select("user_id,requested_at")
+        .eq("session_id", session.id)
+        .order("requested_at", { ascending: true })
+    : { data: [] };
   return {
     id: room.id as string,
     code: room.code as string,
@@ -71,6 +79,7 @@ export async function enrichRoom(room: Record<string, unknown>): Promise<Room> {
     members: memberViews,
     sessionId: session?.id || null,
     sessionStatus: session?.status || null,
+    goodbyeRequests: mapGoodbyeRequests(goodbyeRows || []),
   };
 }
 

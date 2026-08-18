@@ -58,6 +58,7 @@ export interface Room {
   members: RoomMemberView[];
   sessionId?: string | null;
   sessionStatus?: string | null;
+  goodbyeRequests: Array<{ userId: string; requestedAt: string }>;
 }
 
 export interface RecentConnection {

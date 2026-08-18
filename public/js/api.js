@@ -126,6 +126,7 @@ export const goOffline = async () => {
   }
 };
 export const roomAction = (code, action) => authedRequest(`/api/room/${code}/${action}`, {});
+export const requestRoomGoodbye = (code, requested) => authedRequest(`/api/room/${code}/goodbye`, { requested });
 export const roomFeedback = (code, payload) => authedRequest(`/api/room/${code}/feedback`, payload);
 export const searchFriend = (code) => authedRequest("/api/friends/search", { code });
 export const addFriend = ({ friendCode, targetUserId } = {}) => authedRequest("/api/friends/add", { friendCode, targetUserId });

@@ -81,6 +81,7 @@ function mapDatabaseError(raw: string, fallback: string) {
     CONFIRMATION_INVALID: { code: "CONFIRMATION_INVALID", message: "确认操作无效", status: 422, retryable: false },
     MATCH_NOT_COMPLETED: { code: "MATCH_NOT_COMPLETED", message: "游戏结束后才能提交体验反馈", status: 409, retryable: false },
     MATCH_ALREADY_CONNECTED: { code: "MATCH_ALREADY_CONNECTED", message: "已经建立 Session，请从房间内退出", status: 409, retryable: false },
+    GOODBYE_REQUEST_INVALID: { code: "GOODBYE_REQUEST_INVALID", message: "请选择是否结束本次匹配", status: 422, retryable: false },
   };
   const key = Object.keys(known).find((candidate) => raw.includes(candidate));
   return key
