@@ -112,13 +112,14 @@ export function needSummary(need, { compact = false, title = "当前需求" } = 
 }
 
 export function homeShell(state, content, active = "home") {
-  const resolvedActive = active === "community" ? "community" : active === "me" || active === "friends" || active === "connections" ? "me" : active === "home" ? "match" : "none";
+  const resolvedActive = active === "community" ? "community" : active === "me" || active === "friends" || active === "connections" ? "me" : active === "room" ? "room" : active === "home" ? "match" : "none";
   const sectionLabel = resolvedActive === "match" ? "摇人" : resolvedActive === "community" ? "社区" : resolvedActive === "me" ? "我的" : active === "auth" ? "账号" : "玩家身份";
   const navItems = [
     { id: "match", label: "摇人", href: "#/home", icon: "userPlus" },
     { id: "community", label: "社区", href: "#/community", icon: "users" },
     { id: "me", label: "我的", href: "#/me", icon: "user" },
   ];
+  if (state.room) navItems.push({ id: "room", label: "进行中的房间", href: "#/room", icon: "radio" });
   const warningText = "总有人想一起玩　/　NEVER PLAY ALONE　/　".repeat(8);
   const account = state.authenticated
     ? `<button class="product-account product-account--signed" type="button" data-action="go-me"><span class="product-account-avatar">${avatarWrap(state.user.avatarKey, 34, state.user.online)}</span><span class="product-account-name">${esc(state.user.nickname)}</span></button>`

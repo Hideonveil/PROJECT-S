@@ -73,10 +73,10 @@ export function roomPage(state) {
   const partnerAccountRows = fields
     .map((f) => {
       const value = String(partnerAccounts[f.key] || "").trim();
-      if (!value) return `<div class="kv-row" style="border:0;padding:0"><div class="kv-label">${esc(f.label)}</div><div class="kv-value dim">对方还没填写</div></div>`;
-      return `<div class="kv-row" style="border:0;padding:0">
-        <div class="kv-label">${esc(f.label)}</div>
-        <div class="kv-value room-account-value">${esc(value)}
+      if (!value) return `<div class="kv-row" data-partner-account-key="${f.key}" style="border:0;padding:0"><div class="kv-label">${esc(f.label)}</div><div class="kv-value dim" data-partner-account-value>对方还没填写</div></div>`;
+      return `<div class="kv-row" data-partner-account-key="${f.key}" style="border:0;padding:0">
+         <div class="kv-label">${esc(f.label)}</div>
+         <div class="kv-value room-account-value" data-partner-account-value>${esc(value)}
           ${button({ label: "复制", action: "copy-room-account", value, kind: "ghost", size: "sm", iconName: "copy" })}
         </div>
       </div>`;
@@ -131,13 +131,13 @@ export function roomPage(state) {
         <div class="card" style="display:flex;flex-direction:column;gap:12px">
           <div class="section-head"><h2 class="section-title">${esc(partner.name || "对方")} 的游戏账号</h2><span class="section-note">一键复制后去游戏内添加</span></div>
           ${partnerAccountRows}
-          ${partner.id ? (partnerIsFriend
+          <div data-room-friendship>${partner.id ? (partnerIsFriend
             ? statusPill("CONNECTED", "已是 PROJECT-S 好友")
             : incomingFriendRequest
               ? `<div class="room-friend-request"><strong>对方申请加你为好友</strong><div class="inline-actions">${button({ label: "接受", action: "accept-friend", value: partner.id, kind: "primary", size: "sm", iconName: "check" })}${button({ label: "拒绝", action: "reject-friend", value: partner.id, kind: "ghost", size: "sm", iconName: "x" })}</div></div>`
               : outgoingFriendRequest
                 ? statusPill("WAITING", "好友申请待确认")
-                : button({ label: "添加为 PROJECT-S 好友", action: "add-project-friend", value: partner.id, kind: "outline", iconName: "userPlus" })) : ""}
+                : button({ label: "添加为 PROJECT-S 好友", action: "add-project-friend", value: partner.id, kind: "outline", iconName: "userPlus" })) : ""}</div>
         </div>
       </div>
       <section class="card room-chat-card">
@@ -149,6 +149,6 @@ export function roomPage(state) {
         </form>
       </section>
     </div>`,
-    "home"
+    "room"
   );
 }

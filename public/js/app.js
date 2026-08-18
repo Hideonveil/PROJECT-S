@@ -911,6 +911,46 @@ function roomShapeChanged(next, prev) {
   return members !== oldMembers;
 }
 
+function updateRoomView(nextRoom) {
+  const root = document.querySelector(".room-page");
+  if (!root || !nextRoom) return false;
+  const partner = nextRoom.partner || {};
+  const gameId = nextRoom.need?.game || state.need?.game;
+  const accounts = partner.gameAccounts?.[gameId] || {};
+  root.querySelectorAll("[data-partner-account-key]").forEach((row) => {
+    const key = row.dataset.partnerAccountKey;
+    const target = row.querySelector("[data-partner-account-value]");
+    if (!target) return;
+    const value = String(accounts[key] || "").trim();
+    target.classList.toggle("dim", !value);
+    target.classList.toggle("room-account-value", Boolean(value));
+    target.innerHTML = value
+      ? `${esc(value)}${button({ label: "复制", action: "copy-room-account", value, kind: "ghost", size: "sm", iconName: "copy" })}`
+      : "对方还没填写";
+  });
+
+  const friendship = root.querySelector("[data-room-friendship]");
+  if (friendship && partner.id) {
+    const accepted = (state.friends || []).some((friend) => friend.id === partner.id);
+    const incoming = (state.friendRequests?.incoming || []).some((request) => request.user?.id === partner.id);
+    const outgoing = (state.friendRequests?.outgoing || []).some((request) => request.user?.id === partner.id);
+    friendship.innerHTML = accepted
+      ? `<span class="status-pill status-pill--live"><span class="dot"></span>已是 PROJECT-S 好友</span>`
+      : incoming
+        ? `<div class="room-friend-request"><strong>对方申请加你为好友</strong><div class="inline-actions">${button({ label: "接受", action: "accept-friend", value: partner.id, kind: "primary", size: "sm", iconName: "check" })}${button({ label: "拒绝", action: "reject-friend", value: partner.id, kind: "ghost", size: "sm", iconName: "x" })}</div></div>`
+        : outgoing
+          ? `<span class="status-pill"><span class="dot"></span>好友申请待确认</span>`
+          : button({ label: "添加为 PROJECT-S 好友", action: "add-project-friend", value: partner.id, kind: "outline", iconName: "userPlus" });
+  }
+  const goodbye = root.querySelector("[data-room-goodbye-status]");
+  if (goodbye) {
+    const mine = (nextRoom.goodbyeRequests || []).some((request) => request.userId === state.user.id);
+    const theirs = (nextRoom.goodbyeRequests || []).some((request) => request.userId !== state.user.id);
+    goodbye.textContent = mine && theirs ? "双方都已拜拜" : mine ? "已提出拜拜，等待对方" : theirs ? "对方想结束这次匹配" : "";
+  }
+  return true;
+}
+
 function matchmakingShape(match) {
   const confirmations = (match?.pair?.confirmations || [])
     .map((confirmation) => `${confirmation.user_id}:${confirmation.decision || "pending"}`)
@@ -992,7 +1032,10 @@ function applyMatchmakingSnapshot(snapshot, options = {}) {
   update({ match: nextMatch });
   const routeName = parseRoute().name;
   if (pair?.state === "matched" && pair.roomCode) {
-    api.getState().then(applyServerSnapshot).catch(() => {});
+    api.getState().then((snapshot) => {
+      applyServerSnapshot(snapshot);
+      if (snapshot.room && parseRoute().name === "matching") navigate("#/room");
+    }).catch(() => {});
     return;
   }
   if (routeName === "matching" && previousShape !== matchmakingShape(nextMatch)) updateMatchingView(previousMatch, nextMatch);
@@ -1002,6 +1045,7 @@ function applyServerSnapshot(data) {
   const routeName = parseRoute().name;
   const previousMatchShape = matchmakingShape(state.match);
   const previousMatch = state.match;
+  const previousFriendRequestShape = JSON.stringify(state.friendRequests || {});
   const patch = {
     match: { ...state.match, pool: data.matching ?? data.online ?? state.match.pool, playing: data.playing ?? state.match.playing },
   };
@@ -1061,6 +1105,7 @@ function applyServerSnapshot(data) {
   }
   const roomChanged = patch.room ? roomShapeChanged(patch.room, state.room) : false;
   update(patch);
+  const friendRequestsChanged = previousFriendRequestShape !== JSON.stringify(state.friendRequests || {});
   const matchmakingChanged = previousMatchShape !== matchmakingShape(state.match);
   if (["home", "hero"].includes(routeName)) {
     const onlineEl = document.getElementById("home-online-count");
@@ -1070,12 +1115,10 @@ function applyServerSnapshot(data) {
     if (heroOnlineEl) heroOnlineEl.textContent = state.match.pool ? `${Math.max(0, state.match.pool)} 人正在摇人` : "正在等待下一位玩家";
     if (playingEl) playingEl.textContent = String(Math.max(0, state.match.playing ?? 0));
   }
-  if (patch.room && routeName !== "room") {
-    navigate("#/room");
-  } else if (patch.room === null && routeName === "room") {
+  if (patch.room === null && routeName === "room") {
     render();
-  } else if (patch.room && routeName === "room" && roomChanged) {
-    render();
+  } else if (patch.room && routeName === "room" && (roomChanged || friendRequestsChanged)) {
+    updateRoomView(state.room);
   }
   if (routeName === "matching" && matchmakingChanged && !patch.room) updateMatchingView(previousMatch, state.match);
   if (patch.session) render();
@@ -1092,6 +1135,7 @@ async function confirmMatch(decision) {
     if (snapshot.pair?.state === "matched") {
       const fullState = await api.getState();
       applyServerSnapshot(fullState);
+      if (fullState.room) navigate("#/room");
     }
   } catch (error) {
     toast(error.message);
@@ -1102,13 +1146,15 @@ async function confirmMatch(decision) {
 
 function handleServerRoom(room) {
   const normalized = normalizeServerRoom(room);
-  if (!state.room || state.room.code !== normalized.code) roomExitReadyAt = 0;
+  const isNewRoom = !state.room || state.room.code !== normalized.code;
+  if (isNewRoom) roomExitReadyAt = 0;
   update({
     room: normalized,
     need: room.need || state.need,
     session: null,
   });
-  navigate("#/room");
+  if (isNewRoom && parseRoute().name === "matching") navigate("#/room");
+  else if (parseRoute().name === "room") updateRoomView(normalized);
 }
 
 function handleServerGameOver(session) {
@@ -1890,7 +1936,8 @@ async function addProjectFriend(targetUserId, { fromRoom = false } = {}) {
       friendSearchResult: data.status === "accepted" ? null : state.friendSearchResult,
       friendSearchStatus: "idle",
     });
-    render();
+    if (parseRoute().name === "room") updateRoomView(state.room);
+    else render();
     toast(data.status === "accepted" ? `你和 ${data.user.nickname || "对方"} 已成为 PROJECT-S 好友` : "好友申请已发送，等待对方确认");
   } catch (err) {
     update({ friendSearchStatus: "idle", friendSearchError: err.message });
@@ -1904,7 +1951,8 @@ async function respondProjectFriend(requesterId, decision) {
   try {
     const data = await api.respondFriend(requesterId, decision);
     update({ friends: mapServerFriends(data.friends), friendRequests: mapServerFriendRequests(data.friendRequests) });
-    render();
+    if (parseRoute().name === "room") updateRoomView(state.room);
+    else render();
     toast(decision === "accepted" ? "已接受好友申请" : "已拒绝好友申请");
   } catch (err) {
     toast(err.message);
