@@ -5,6 +5,7 @@ import { supabaseAdmin } from "@/lib/supabase";
 import { errorResponse, requestId } from "@/lib/http";
 import { mapSession } from "@/lib/session";
 import { matchmakingStatus } from "@/lib/matchmaking/service";
+import { friendRequestsFor } from "@/lib/friendships";
 
 export async function GET(request: Request) {
   const rid = requestId(request);
@@ -18,9 +19,10 @@ export async function GET(request: Request) {
       await admin.from("profiles").update({ online: true, last_seen: nowIso }).eq("id", profile.id);
     }
 
-    const [counts, friends, room, session, recentConnections, matchmaking] = await Promise.all([
+    const [counts, friends, friendRequests, room, session, recentConnections, matchmaking] = await Promise.all([
       poolCounts(),
       friendsFor(profile.id),
+      friendRequestsFor(profile.id),
       activeRoomFor(profile.id),
       activeSessionFor(profile.id),
       recentConnectionsFor(profile.id),
@@ -33,6 +35,7 @@ export async function GET(request: Request) {
       matching: counts.matching,
       playing: counts.playing,
       friends,
+      friendRequests,
       room,
       session: mapSession(session),
       recentConnections,

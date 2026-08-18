@@ -82,6 +82,12 @@ function mapDatabaseError(raw: string, fallback: string) {
     MATCH_NOT_COMPLETED: { code: "MATCH_NOT_COMPLETED", message: "游戏结束后才能提交体验反馈", status: 409, retryable: false },
     MATCH_ALREADY_CONNECTED: { code: "MATCH_ALREADY_CONNECTED", message: "已经建立 Session，请从房间内退出", status: 409, retryable: false },
     GOODBYE_REQUEST_INVALID: { code: "GOODBYE_REQUEST_INVALID", message: "请选择是否结束本次匹配", status: 422, retryable: false },
+    FRIEND_PROFILE_NOT_FOUND: { code: "FRIEND_PROFILE_NOT_FOUND", message: "没有找到这个玩家", status: 404, retryable: false },
+    FRIEND_DECISION_INVALID: { code: "FRIEND_DECISION_INVALID", message: "请选择接受或拒绝", status: 422, retryable: false },
+    FRIEND_REQUEST_NOT_FOUND: { code: "FRIEND_REQUEST_NOT_FOUND", message: "这个好友申请已经不存在", status: 404, retryable: false },
+    FRIEND_REQUEST_STATE_CONFLICT: { code: "FRIEND_REQUEST_STATE_CONFLICT", message: "这个好友申请已经处理过了", status: 409, retryable: false },
+    FRIEND_BLOCKED: { code: "FRIEND_BLOCKED", message: "当前不能向这个玩家发送好友申请", status: 403, retryable: false },
+    FRIEND_SELF_FORBIDDEN: { code: "FRIEND_SELF_FORBIDDEN", message: "不能添加自己为好友", status: 422, retryable: false },
   };
   const key = Object.keys(known).find((candidate) => raw.includes(candidate));
   return key

@@ -44,6 +44,7 @@ export function defaultState() {
     room: null,
     session: null,
     friends: [],
+    friendRequests: { incoming: [], outgoing: [] },
     recentConnections: [],
     stats: {
       sessions: 0,

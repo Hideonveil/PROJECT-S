@@ -130,6 +130,7 @@ export const requestRoomGoodbye = (code, requested) => authedRequest(`/api/room/
 export const roomFeedback = (code, payload) => authedRequest(`/api/room/${code}/feedback`, payload);
 export const searchFriend = (code) => authedRequest("/api/friends/search", { code });
 export const addFriend = ({ friendCode, targetUserId } = {}) => authedRequest("/api/friends/add", { friendCode, targetUserId });
+export const respondFriend = (requesterId, decision) => authedRequest("/api/friends/respond", { requesterId, decision });
 export const sendFeedback = (payload) => authedRequest("/api/feedback", payload);
 export const trackEvent = (eventName, properties = {}) =>
   authedRequest("/api/events", { eventName, properties }).catch(() => null);

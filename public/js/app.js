@@ -885,6 +885,10 @@ function normalizeServerRoom(room) {
     members,
     status: room.status || "playing",
     startedAt: room.startedAt || 0,
+    need: room.need || state.need,
+    sessionId: room.sessionId || null,
+    sessionStatus: room.sessionStatus || null,
+    goodbyeRequests: room.goodbyeRequests || [],
     target: room.need?.target || state.need.target || 5,
   };
 }
@@ -893,6 +897,7 @@ function roomShapeChanged(next, prev) {
   if (!next || !prev) return true;
   if (next.code !== prev.code || next.status !== prev.status) return true;
   if (JSON.stringify(next.need || {}) !== JSON.stringify(prev.need || {})) return true;
+  if (JSON.stringify(next.goodbyeRequests || []) !== JSON.stringify(prev.goodbyeRequests || [])) return true;
   const memberShape = (member) => JSON.stringify([
     member.id,
     member.memberStatus || "active",
@@ -1025,6 +1030,7 @@ function applyServerSnapshot(data) {
       lastTime: f.lastTime || "",
     }));
   }
+  if (data.friendRequests) patch.friendRequests = mapServerFriendRequests(data.friendRequests);
   if (data.room) {
     patch.room = normalizeServerRoom(data.room);
   } else if (data.room === null && state.room) {
@@ -1803,6 +1809,14 @@ function mapServerFriends(friends) {
   }));
 }
 
+function mapServerFriendRequests(requests = {}) {
+  const mapEntries = (entries) => (entries || []).map((entry) => ({
+    createdAt: entry.createdAt || "",
+    user: { ...entry.user, name: entry.user?.nickname || entry.user?.name || "玩家" },
+  }));
+  return { incoming: mapEntries(requests.incoming), outgoing: mapEntries(requests.outgoing) };
+}
+
 async function logout() {
   if (ONLINE && state.authenticated) {
     api.cancelMatchmaking("logout").catch(() => {});
@@ -1870,13 +1884,30 @@ async function addProjectFriend(targetUserId, { fromRoom = false } = {}) {
   if (!fromRoom) render();
   try {
     const data = await api.addFriend({ targetUserId });
-    update({ friends: mapServerFriends(data.friends), friendSearchResult: null, friendSearchStatus: "idle" });
+    update({
+      friends: mapServerFriends(data.friends),
+      friendRequests: mapServerFriendRequests(data.friendRequests),
+      friendSearchResult: data.status === "accepted" ? null : state.friendSearchResult,
+      friendSearchStatus: "idle",
+    });
     render();
-    toast(`已添加 ${data.user.nickname || "对方"} 为 PROJECT-S 好友`);
+    toast(data.status === "accepted" ? `你和 ${data.user.nickname || "对方"} 已成为 PROJECT-S 好友` : "好友申请已发送，等待对方确认");
   } catch (err) {
     update({ friendSearchStatus: "idle", friendSearchError: err.message });
     if (!fromRoom) render();
     else toast(err.message);
+  }
+}
+
+async function respondProjectFriend(requesterId, decision) {
+  if (!ONLINE) return toast("在线版才支持处理好友申请");
+  try {
+    const data = await api.respondFriend(requesterId, decision);
+    update({ friends: mapServerFriends(data.friends), friendRequests: mapServerFriendRequests(data.friendRequests) });
+    render();
+    toast(decision === "accepted" ? "已接受好友申请" : "已拒绝好友申请");
+  } catch (err) {
+    toast(err.message);
   }
 }
 
@@ -2415,6 +2446,8 @@ document.addEventListener("click", (event) => {
     "logout": logout,
     "search-friend": searchFriendByCode,
     "add-friend": (id) => addProjectFriend(id),
+    "accept-friend": (id) => respondProjectFriend(id, "accepted"),
+    "reject-friend": (id) => respondProjectFriend(id, "rejected"),
     "copy-code": (code) => copyText(code),
     "open-feedback": () => {
       api.trackEvent("feedback_opened", { page: location.hash || "/" });

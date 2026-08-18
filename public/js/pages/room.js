@@ -43,6 +43,8 @@ export function roomPage(state) {
   const myAccounts = (me.gameAccounts || {})[need.game] || {};
   const partnerAccounts = (partner.gameAccounts || {})[need.game] || {};
   const partnerIsFriend = (state.friends || []).some((friend) => friend.id === partner.id);
+  const incomingFriendRequest = (state.friendRequests?.incoming || []).find((request) => request.user?.id === partner.id);
+  const outgoingFriendRequest = (state.friendRequests?.outgoing || []).some((request) => request.user?.id === partner.id);
 
   const memberRows = members
     .map((p) => {
@@ -131,7 +133,11 @@ export function roomPage(state) {
           ${partnerAccountRows}
           ${partner.id ? (partnerIsFriend
             ? statusPill("CONNECTED", "已是 PROJECT-S 好友")
-            : button({ label: "添加为 PROJECT-S 好友", action: "add-project-friend", value: partner.id, kind: "outline", iconName: "userPlus" })) : ""}
+            : incomingFriendRequest
+              ? `<div class="room-friend-request"><strong>对方申请加你为好友</strong><div class="inline-actions">${button({ label: "接受", action: "accept-friend", value: partner.id, kind: "primary", size: "sm", iconName: "check" })}${button({ label: "拒绝", action: "reject-friend", value: partner.id, kind: "ghost", size: "sm", iconName: "x" })}</div></div>`
+              : outgoingFriendRequest
+                ? statusPill("WAITING", "好友申请待确认")
+                : button({ label: "添加为 PROJECT-S 好友", action: "add-project-friend", value: partner.id, kind: "outline", iconName: "userPlus" })) : ""}
         </div>
       </div>
       <section class="card room-chat-card">

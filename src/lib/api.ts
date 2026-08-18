@@ -169,7 +169,11 @@ export async function activeSessionFor(profileId: string): Promise<Session | nul
 }
 
 export async function friendsFor(profileId: string): Promise<PublicProfile[]> {
-  const { data } = await supabaseAdmin().from("friendships").select("friend_id").eq("user_id", profileId);
+  const { data } = await supabaseAdmin()
+    .from("friendships")
+    .select("friend_id")
+    .eq("user_id", profileId)
+    .eq("status", "accepted");
   return publicProfilesFor((data || []).map((f) => f.friend_id));
 }
 
