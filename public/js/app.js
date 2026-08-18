@@ -101,7 +101,9 @@ function initProductTicker() {
   if (!root || !track || !head || !tail) return;
 
   let span = head.getBoundingClientRect().width;
-  let offset = 0;
+  const matrix = getComputedStyle(track).transform;
+  const currentX = matrix && matrix !== "none" ? new DOMMatrixReadOnly(matrix).m41 : 0;
+  let offset = span ? ((-currentX % span) + span) % span : 0;
   const measure = () => {
     span = head.getBoundingClientRect().width;
     offset = span ? offset % span : 0;
@@ -289,6 +291,7 @@ function initStaggeredRail() {
   const secondary = [...rail.querySelectorAll(".product-brand strong, .product-rail-footer .product-account > div, .product-rail-footer .product-account--signed > span:last-child")];
   let openTimeline = null;
   let closeTween = null;
+  let focusOutTimer = null;
 
   if (!staggeredRailHoldOpen) gsap.set(layers, { xPercent: -112, opacity: 1 });
 
@@ -342,9 +345,13 @@ function initStaggeredRail() {
     setProductRailHeldOpen(true);
   };
 
-  const focusOut = () => window.setTimeout(() => {
-    if (!rail.contains(document.activeElement) && !rail.matches(":hover")) close();
-  }, 0);
+  const focusOut = () => {
+    window.clearTimeout(focusOutTimer);
+    focusOutTimer = window.setTimeout(() => {
+      if (!rail.isConnected) return;
+      if (!rail.contains(document.activeElement) && !rail.matches(":hover")) close();
+    }, 0);
+  };
   rail.addEventListener("pointerenter", pointerEnter);
   rail.addEventListener("pointerleave", close);
   rail.addEventListener("focusin", open);
@@ -353,6 +360,7 @@ function initStaggeredRail() {
   if (staggeredRailHoldOpen) restoreOpen();
 
   staggeredRailCleanup = () => {
+    window.clearTimeout(focusOutTimer);
     rail.removeEventListener("pointerenter", pointerEnter);
     rail.removeEventListener("pointerleave", close);
     rail.removeEventListener("focusin", open);
@@ -362,6 +370,61 @@ function initStaggeredRail() {
     closeTween?.kill();
     gsap.killTweensOf([...layers, ...labels, ...secondary]);
   };
+}
+
+function persistentProductShell(html) {
+  const template = document.createElement("template");
+  template.innerHTML = html;
+  const currentRail = app.querySelector("[data-staggered-rail]");
+  const nextRail = template.content.querySelector("[data-staggered-rail]");
+  const currentTicker = app.querySelector("[data-product-ticker]");
+  const nextTicker = template.content.querySelector("[data-product-ticker]");
+
+  if (currentRail && nextRail) {
+    currentRail.className = nextRail.className;
+    const nextLinks = [...nextRail.querySelectorAll("[data-nav]")];
+    [...currentRail.querySelectorAll("[data-nav]")].forEach((link, index) => {
+      link.classList.toggle("is-active", nextLinks[index]?.classList.contains("is-active"));
+    });
+    const currentFooter = currentRail.querySelector(".product-rail-footer");
+    const nextFooter = nextRail.querySelector(".product-rail-footer");
+    if (currentFooter && nextFooter && currentFooter.innerHTML !== nextFooter.innerHTML) currentFooter.innerHTML = nextFooter.innerHTML;
+    nextRail.replaceWith(currentRail);
+  }
+  if (currentTicker && nextTicker) nextTicker.replaceWith(currentTicker);
+  return template.content;
+}
+
+function switchAuthMode(mode) {
+  const workspace = document.querySelector("[data-auth-workspace]");
+  if (!workspace) {
+    render();
+    return;
+  }
+  const isRegister = mode === "register";
+  workspace.classList.toggle("is-login", !isRegister);
+  workspace.classList.toggle("is-register", isRegister);
+  workspace.querySelector("[data-auth-mode-title]").textContent = isRegister ? "注册" : "登录";
+  workspace.querySelectorAll('[data-action="switch-auth-mode"][role="tab"]').forEach((tab) => {
+    const active = tab.dataset.value === mode;
+    tab.classList.toggle("is-active", active);
+    tab.setAttribute("aria-selected", String(active));
+  });
+  const password = workspace.querySelector("#auth-password");
+  password.placeholder = isRegister ? "至少 6 位" : "输入密码";
+  password.autocomplete = isRegister ? "new-password" : "current-password";
+  const confirmSlot = workspace.querySelector(".auth-confirm-slot");
+  const confirmInput = workspace.querySelector("#auth-password-confirm");
+  confirmSlot.setAttribute("aria-hidden", String(!isRegister));
+  confirmInput.disabled = !isRegister;
+  if (!isRegister) confirmInput.value = "";
+  const copy = workspace.querySelector("[data-auth-switch-copy]");
+  copy.querySelector("span").textContent = isRegister ? "已经有账号？" : "还没有账号？";
+  const copyButton = copy.querySelector("button");
+  copyButton.textContent = isRegister ? "直接登录" : "创建一个";
+  copyButton.dataset.value = isRegister ? "login" : "register";
+  workspace.querySelector("[data-auth-submit-label]").textContent = isRegister ? "注册" : "登录";
+  workspace.querySelectorAll("[data-auth-note], [data-auth-error]").forEach((message) => message.remove());
 }
 
 function initMatchStartDock() {
@@ -534,7 +597,7 @@ function render() {
   }
 
   document.body.dataset.immersive = immersive ? "true" : "";
-  app.innerHTML = html;
+  app.replaceChildren(persistentProductShell(html));
   paintAvatars(app);
   activeField = initNodeField(app);
   initProductTicker();
@@ -2251,8 +2314,9 @@ document.addEventListener("click", (event) => {
     },
     "switch-auth-mode": (value) => {
       const username = document.querySelector("#auth-username")?.value?.trim() || state.authUsername;
-      update({ authMode: value === "register" ? "register" : "login", authUsername: username, authError: "", authNotice: "" });
-      render();
+      const mode = value === "register" ? "register" : "login";
+      update({ authMode: mode, authUsername: username, authError: "", authNotice: "" });
+      switchAuthMode(mode);
     },
     "toggle-password": () => {
       const toggle = actionEl;

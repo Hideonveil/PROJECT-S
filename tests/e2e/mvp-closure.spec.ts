@@ -188,9 +188,43 @@ test("navigation keeps icon-only rest state and staggers open on hover", async (
   await expect(rail).toHaveClass(/is-staggered-open.*is-route-held/);
   await expect(rail).toHaveCSS("transition-duration", "0s");
   await expect.poll(() => rail.evaluate((el) => el.getBoundingClientRect().width)).toBeGreaterThan(150);
-  await page.locator(".community-workspace").hover();
+  await rail.getByRole("link", { name: "我的", exact: true }).click();
+  await expect(page).toHaveURL(/#\/auth$/);
+  await expect(rail).toHaveClass(/is-staggered-open.*is-route-held/);
+  await expect.poll(() => rail.evaluate((el) => el.getBoundingClientRect().width)).toBeGreaterThan(150);
+  await rail.getByRole("link", { name: "摇人", exact: true }).click();
+  await expect(page).toHaveURL(/#\/home$/);
+  await expect(rail).toHaveClass(/is-staggered-open.*is-route-held/);
+  await expect.poll(() => rail.evaluate((el) => el.getBoundingClientRect().width)).toBeGreaterThan(150);
+  await page.locator(".home-main").hover({ position: { x: 500, y: 220 } });
   await expect(rail).not.toHaveClass(/is-staggered-open/);
   await expect.poll(() => rail.evaluate((el) => el.getBoundingClientRect().width)).toBeLessThan(100);
+});
+
+test("login and registration switch inside a stable account workspace", async ({ page }) => {
+  await page.goto("/index.html#/auth");
+  const ticker = page.locator("[data-ticker-track]");
+  const rail = page.locator("[data-staggered-rail]");
+  await ticker.evaluate((element) => { element.setAttribute("data-test-persisted", "yes"); });
+  await rail.evaluate((element) => { element.setAttribute("data-test-persisted", "yes"); });
+
+  const workspace = page.locator("[data-auth-workspace]");
+  const before = await workspace.boundingBox();
+  await page.getByRole("tab", { name: "注册", exact: true }).click();
+  await expect(workspace).toHaveClass(/is-register/);
+  await expect(page.locator("#auth-password-confirm")).toBeEnabled();
+  await expect(ticker).toHaveAttribute("data-test-persisted", "yes");
+  await expect(rail).toHaveAttribute("data-test-persisted", "yes");
+  const afterRegister = await workspace.boundingBox();
+  expect(afterRegister?.height).toBe(before?.height);
+
+  await page.getByRole("tab", { name: "登录", exact: true }).click();
+  await expect(workspace).toHaveClass(/is-login/);
+  await expect(page.locator("#auth-password-confirm")).toBeDisabled();
+  await expect(ticker).toHaveAttribute("data-test-persisted", "yes");
+  await expect(rail).toHaveAttribute("data-test-persisted", "yes");
+  const afterLogin = await workspace.boundingBox();
+  expect(afterLogin?.height).toBe(before?.height);
 });
 
 test("starting a match while signed out opens the account flow", async ({ page }) => {
