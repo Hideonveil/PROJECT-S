@@ -191,7 +191,10 @@ test("game selection opens Deadlock steps and keeps other games coming soon", as
 test("Deadlock rank and casual paths expose different step systems", async ({ page }) => {
   await page.goto("/index.html");
   await page.getByRole("button", { name: /Deadlock/ }).click();
+  const stage = page.locator("[data-home-wizard-stage]");
+  await stage.evaluate((element) => element.setAttribute("data-test-persisted", "yes"));
   await page.getByRole("button", { name: "上分", exact: true }).click();
+  await expect(stage).toHaveAttribute("data-test-persisted", "yes");
   const stepper = page.locator("[data-home-stepper]");
   await expect(stepper).toHaveAttribute("aria-label", "Deadlock 配置进度：第 1 步，共 5 步");
   await stepper.evaluate((element) => element.setAttribute("data-test-persisted", "yes"));
@@ -211,7 +214,11 @@ test("Deadlock rank and casual paths expose different step systems", async ({ pa
 
   await page.goto("/index.html?casual-path=1#/home");
   await page.getByRole("button", { name: /Deadlock/ }).click();
+  const casualStage = page.locator("[data-home-wizard-stage]");
+  await casualStage.evaluate((element) => element.setAttribute("data-test-persisted", "yes"));
   await page.getByRole("button", { name: "娱乐", exact: true }).click();
+  await expect(casualStage).toHaveAttribute("data-test-persisted", "yes");
+  await expect(page.locator("[data-home-stepper]")).toHaveAttribute("aria-label", "Deadlock 配置进度：第 1 步，共 4 步");
   await page.getByRole("button", { name: "下一步", exact: true }).click();
   await expect(page.getByText("上分最好开麦哦", { exact: true })).toHaveCount(0);
   await page.getByRole("button", { name: "下一步", exact: true }).click();
@@ -357,9 +364,31 @@ test("desktop match controls use target cursor but the primary action does not",
   await expect(page.locator(".target-cursor")).toHaveClass(/is-visible/);
   await expect(page.locator(".target-cursor")).toHaveClass(/is-locked/);
 
-  await reachDeadlockCasualFinal(page);
+  await game.click();
+  await page.getByRole("button", { name: "下一步", exact: true }).hover();
+  await expect(page.locator(".target-cursor")).not.toHaveClass(/is-visible/);
+
+  await page.getByRole("button", { name: "娱乐", exact: true }).click();
+  await page.getByRole("button", { name: "下一步", exact: true }).click();
+  await page.getByRole("button", { name: "下一步", exact: true }).click();
+  await page.getByRole("button", { name: "下一步", exact: true }).click();
   await page.getByRole("button", { name: "开始匹配", exact: true }).hover();
   await expect(page.locator(".target-cursor")).not.toHaveClass(/is-visible/);
+});
+
+test("authenticated matching opens the new focused modal and removes the old panel", async ({ page }) => {
+  await mockProductBackend(page);
+  await page.goto("/index.html");
+  await login(page);
+  await reachDeadlockCasualFinal(page);
+  await page.getByRole("button", { name: "开始匹配", exact: true }).click();
+  await expect(page).toHaveURL(/#\/matching$/);
+  const modal = page.locator("[data-matching-modal]");
+  await expect(modal).toBeVisible();
+  await expect(modal).toHaveCSS("opacity", "1");
+  await expect(page.getByRole("heading", { name: "正在找同一局的人。" })).toBeVisible();
+  await expect(page.locator(".matching-panel, .prism-matching")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "退出匹配", exact: true })).toHaveCount(2);
 });
 
 test("mobile visitors see the PC-only gate in the same product language", async ({ browser }) => {

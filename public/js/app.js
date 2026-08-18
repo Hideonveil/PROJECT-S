@@ -8,7 +8,7 @@ import { FLOW } from "./flow.js";
 import * as api from "./api.js";
 import { authPage } from "./pages/auth.js";
 import { welcomePage } from "./pages/welcome.js";
-import { homePage } from "./pages/home.js";
+import { homeFlowStepper, homePage } from "./pages/home.js";
 import { communityPage } from "./pages/community.js";
 import { needPage } from "./pages/need.js";
 import { matchingPage } from "./pages/matching.js";
@@ -67,6 +67,7 @@ const HOME_FILTER = {
   team: "1",
   voice: "on",
 };
+let homeStepperRevision = 0;
 let activeField = null;
 let timers = [];
 let ONLINE = false;
@@ -137,12 +138,12 @@ function initProductTicker() {
 }
 
 function initTargetCursor() {
-  const workspace = document.querySelector(".match-workspace");
+  const zones = [...document.querySelectorAll("[data-target-cursor-zone]")];
   const gsap = window.gsap;
   const hasTouch = "ontouchstart" in window || navigator.maxTouchPoints > 0;
   const mobileUa = /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini/i.test(navigator.userAgent.toLowerCase());
   const isMobile = (hasTouch && window.innerWidth <= 768) || mobileUa;
-  if (!workspace || !gsap || isMobile || !window.matchMedia("(pointer: fine)").matches) return;
+  if (!zones.length || !gsap || isMobile || !window.matchMedia("(pointer: fine)").matches) return;
 
   const cursor = document.createElement("div");
   cursor.className = "target-cursor target-cursor-wrapper";
@@ -218,18 +219,10 @@ function initTargetCursor() {
   };
 
   const move = (event) => {
+    const zone = event.currentTarget;
     pointerX = event.clientX;
     pointerY = event.clientY;
-    const overStart = event.target.closest?.(".match-start");
-    if (overStart) {
-      releaseTarget();
-      workspace.classList.remove("is-target-cursor-active");
-      cursor.classList.remove("is-visible");
-      gsap.to(cursor, { opacity: 0, duration: 0.12, overwrite: "auto" });
-      return;
-    }
-
-    workspace.classList.add("is-target-cursor-active");
+    zone.classList.add("is-target-cursor-active");
     cursor.classList.add("is-visible");
     gsap.to(cursor, { x: pointerX, y: pointerY, opacity: 1, duration: 0.1, ease: "power3.out", overwrite: "auto" });
     const nextTarget = event.target.closest?.(".cursor-target") || null;
@@ -238,9 +231,9 @@ function initTargetCursor() {
 
   };
 
-  const leave = () => {
+  const leave = (event) => {
     releaseTarget();
-    workspace.classList.remove("is-target-cursor-active");
+    event.currentTarget.classList.remove("is-target-cursor-active");
     cursor.classList.remove("is-visible", "is-down");
     gsap.to(cursor, { opacity: 0, duration: 0.12, overwrite: "auto" });
   };
@@ -263,16 +256,21 @@ function initTargetCursor() {
       corners.forEach((corner, index) => gsap.to(corner, { ...positions[index], duration: 0.2, ease: "power1.out", overwrite: "auto" }));
     }
   };
-  workspace.addEventListener("pointermove", move);
-  workspace.addEventListener("pointerleave", leave);
-  workspace.addEventListener("pointerdown", down);
+  zones.forEach((zone) => {
+    zone.addEventListener("pointermove", move);
+    zone.addEventListener("pointerleave", leave);
+    zone.addEventListener("pointerdown", down);
+  });
   window.addEventListener("pointerup", up);
   window.addEventListener("scroll", scroll, { passive: true });
 
   targetCursorCleanup = () => {
-    workspace.removeEventListener("pointermove", move);
-    workspace.removeEventListener("pointerleave", leave);
-    workspace.removeEventListener("pointerdown", down);
+    zones.forEach((zone) => {
+      zone.removeEventListener("pointermove", move);
+      zone.removeEventListener("pointerleave", leave);
+      zone.removeEventListener("pointerdown", down);
+      zone.classList.remove("is-target-cursor-active");
+    });
     window.removeEventListener("pointerup", up);
     window.removeEventListener("scroll", scroll);
     window.clearTimeout(resumeTimer);
@@ -281,7 +279,6 @@ function initTargetCursor() {
     gsap.killTweensOf(cursor);
     gsap.killTweensOf(corners);
     gsap.killTweensOf(dot);
-    workspace.classList.remove("is-target-cursor-active");
     cursor.remove();
   };
 }
@@ -697,6 +694,40 @@ function homeWizardPath() {
 function homeWizardStepKey() {
   const path = homeWizardPath();
   return path[Math.max(0, Math.min(path.length - 1, Number(HOME_FILTER.step) || 0))];
+}
+
+function updateHomeFlowStepper() {
+  const current = document.querySelector("[data-home-stepper]");
+  if (!current) return;
+  const template = document.createElement("template");
+  template.innerHTML = homeFlowStepper(HOME_FILTER);
+  const next = template.content.querySelector("[data-home-stepper]");
+  if (!next) return;
+  const revision = ++homeStepperRevision;
+  const applyNext = () => {
+    if (revision !== homeStepperRevision || !current.isConnected) return;
+    current.setAttribute("aria-label", next.getAttribute("aria-label") || "Deadlock 配置进度");
+    current.replaceChildren(...next.childNodes);
+    current.animate(
+      [
+        { opacity: 0.24, transform: "translateY(7px) scale(0.985)", filter: "blur(3px)" },
+        { opacity: 1, transform: "translateY(0) scale(1)", filter: "blur(0)" },
+      ],
+      { duration: 360, easing: "cubic-bezier(.22,1,.36,1)" },
+    );
+  };
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches || !current.animate) {
+    applyNext();
+    return;
+  }
+  const outgoing = current.animate(
+    [
+      { opacity: 1, transform: "translateY(0) scale(1)", filter: "blur(0)" },
+      { opacity: 0.2, transform: "translateY(-6px) scale(0.985)", filter: "blur(3px)" },
+    ],
+    { duration: 150, easing: "cubic-bezier(.4,0,1,1)" },
+  );
+  outgoing.finished.then(applyNext).catch(() => {});
 }
 
 function toggleHomeChoice(actionEl, selected) {
@@ -1369,12 +1400,12 @@ function startMatchingFlow() {
     if (poolEl) poolEl.textContent = String(Math.max(0, state.match.pool ?? 0));
     if (timeEl) timeEl.textContent = `${Math.floor(elapsed)}s`;
     if (foundEl) foundEl.textContent = String((state.match.candidates || []).length);
-    if (titleEl) titleEl.textContent = elapsed > 3 ? "正在锁定候选节点" : "正在筛选节点";
-    const steps = document.querySelectorAll(".match-step");
+    if (titleEl) titleEl.textContent = elapsed > 3 ? "正在锁定合适玩家" : "正在扫描匹配池";
+    const steps = document.querySelectorAll(".matching-modal-step");
     if (steps.length === 3) {
-      steps[1].classList.toggle("match-step--active", elapsed < 3);
-      steps[1].classList.toggle("match-step--done", elapsed >= 3);
-      steps[2].classList.toggle("match-step--active", elapsed >= 3);
+      steps[1].classList.toggle("is-active", elapsed < 3);
+      steps[1].classList.toggle("is-done", elapsed >= 3);
+      steps[2].classList.toggle("is-active", elapsed >= 3);
     }
   }, 350);
   timers.push(interval);
@@ -2314,7 +2345,8 @@ document.addEventListener("click", (event) => {
     HOME_FILTER.goal = value === "casual" ? "casual" : "rank";
     HOME_FILTER.step = 0;
     HOME_FILTER.direction = 1;
-    render();
+    selectHomeChoice(actionEl);
+    updateHomeFlowStepper();
     return;
   }
 

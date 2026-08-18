@@ -937,102 +937,6 @@
   padding-top: 4px;
 }
 
-/* ================= matching ================= */
-.matching-page {
-  position: relative;
-  min-height: calc(100vh - var(--header-h));
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  overflow: hidden;
-}
-
-.matching-panel {
-  position: relative;
-  z-index: 2;
-  width: 100%;
-  max-width: 520px;
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
-}
-
-.matching-ring {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.matching-status {
-  text-align: center;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  align-items: center;
-}
-
-.matching-status h2 {
-  font-size: 26px;
-}
-
-.matching-status p {
-  color: var(--dim);
-  max-width: 420px;
-}
-
-.matching-stats {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
-}
-
-.matching-stats .card {
-  padding: 14px;
-  text-align: center;
-}
-
-.matching-steps {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.match-step {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  color: var(--muted);
-  font-size: 13px;
-}
-
-.match-step--done {
-  color: var(--dim);
-}
-
-.match-step--active {
-  color: var(--paper);
-  font-weight: 600;
-}
-
-.step-dot {
-  width: 10px;
-  height: 10px;
-  flex: none;
-  border-radius: 50%;
-  border: 1px solid currentColor;
-}
-
-.match-step--done .step-dot {
-  background: var(--live);
-  border-color: var(--live);
-}
-
-.match-step--active .step-dot {
-  background: transparent;
-  border-color: var(--signal);
-  animation: pulse-dot 1.4s infinite;
-}
-
 /* ================= results ================= */
 .results-head {
   display: flex;
@@ -2151,10 +2055,6 @@
     font-size: 34px;
   }
 
-  .matching-stats {
-    grid-template-columns: 1fr;
-  }
-
   .room-page {
     grid-template-columns: 1fr;
     width: min(100% - 24px, 1060px);
@@ -2346,28 +2246,6 @@
 
 .prism-flow-card .flow-game-tile {
   border-radius: var(--r-md) var(--r-md) 0 0;
-}
-
-/* matching */
-.prism-matching {
-  width: min(620px, calc(100vw - 72px));
-  min-height: calc(100vh - var(--header-h));
-  justify-content: center;
-  padding-top: calc(var(--header-h) + 40px);
-}
-
-.prism-matching .matching-panel {
-  width: 100%;
-  max-width: 100%;
-}
-
-.matching-title {
-  font-size: 26px;
-  font-weight: 750;
-}
-
-.prism-matching .matching-stats .card {
-  background: rgba(255, 255, 255, 0.86);
 }
 
 /* results */

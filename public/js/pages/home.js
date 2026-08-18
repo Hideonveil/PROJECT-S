@@ -49,6 +49,12 @@ function flowStepper(currentStep, steps) {
   </div>`;
 }
 
+export function homeFlowStepper(filter) {
+  const path = DEADLOCK_PATHS[filter.goal === "casual" ? "casual" : "rank"];
+  const step = Math.max(0, Math.min(path.length - 1, Number(filter.step) || 0));
+  return flowStepper(step, path);
+}
+
 function roleOptions(values, selected, action) {
   return `<div class="match-options match-options--roles" role="group">${values.map((value) => option(value, value, selected.includes(value), action, "circleDot", true)).join("")}</div>`;
 }
@@ -92,7 +98,7 @@ function wizardCopy(stepKey, goal) {
 function gameStage(selectedGame) {
   return `<section class="match-game-stage match-stage-enter" aria-labelledby="match-game-title">
     <div class="match-stage-copy"><span>GAME SELECT / 00</span><h2 id="match-game-title">先选一个游戏。</h2><p>目前先开放 Deadlock 的匹配配置。其他游戏的入口保留，后续逐个上线。</p></div>
-    <div class="match-options match-options--games" role="group" aria-label="选择游戏">${gameOptions(selectedGame)}</div>
+    <div class="match-options match-options--games match-target-zone" data-target-cursor-zone role="group" aria-label="选择游戏">${gameOptions(selectedGame)}</div>
   </section>`;
 }
 
@@ -114,7 +120,7 @@ function deadlockStage(filter) {
     ${flowStepper(step, path)}
     <div class="match-wizard-stage ${filter.direction < 0 ? "is-backward" : "is-forward"}" data-home-wizard-stage data-home-step="${esc(stepKey)}">
       <div class="match-wizard-copy"><span>DEADLOCK / ${String(step + 1).padStart(2, "0")}</span><h2>${title}</h2><p>${description}</p></div>
-      <div class="match-wizard-options">${wizardContent(filter, stepKey)}</div>
+      <div class="match-wizard-options match-target-zone" data-target-cursor-zone>${wizardContent(filter, stepKey)}</div>
       <footer class="match-wizard-actions">
         <button type="button" class="match-wizard-back" data-action="home-wizard-back">${icon("chevronLeft", 18)}<span>${step === 0 ? "返回游戏" : "上一步"}</span></button>
         ${isLast
