@@ -21,6 +21,14 @@ export function matchingPage(state) {
   const candidate = state.match.candidate;
   const awaiting = pair?.state === "waiting_confirmation" && candidate;
   const mine = pair?.confirmations?.find((confirmation) => confirmation.user_id === state.user.id)?.decision;
+  const theirs = pair?.confirmations?.find((confirmation) => confirmation.user_id !== state.user.id)?.decision;
+  const confirmationCopy = mine === "accepted" && theirs === "accepted"
+    ? "双方都已确定，正在建立房间。"
+    : mine === "accepted"
+      ? "你已准备，正在等对方确定。"
+      : theirs === "accepted"
+        ? "对方已确定，正在等你。"
+        : "你们可以分别确定，不需要同时点击。";
   return homeShell(state, `<div class="matching-modal-page" role="dialog" aria-modal="true" aria-labelledby="matching-modal-title">
     <div class="matching-modal-backdrop" aria-hidden="true"></div>
     <section class="matching-modal" data-matching-modal>
@@ -41,9 +49,13 @@ export function matchingPage(state) {
         <div class="matching-modal-copy">
           <div class="match-eyebrow">FINDING YOUR PEOPLE / 01</div>
           <h1 id="matching-modal-title">${awaiting ? `找到 ${esc(candidate.nickname || "一位玩家")}。` : "正在找同一局的人。"}</h1>
-          <p id="match-desc">${awaiting ? (mine === "accepted" ? "你已确认，正在等对方回应。" : "双方都确认后才会建立 Session，不会把你重复推荐给其他人。") : "先检查官方硬规则，再比较位置与麦克风偏好。"}</p>
+          <p id="match-desc">${awaiting ? confirmationCopy : "先检查官方硬规则，再比较位置与麦克风偏好。"}</p>
         </div>
         <div class="matching-query" aria-label="本次匹配条件">${queryPills(state.need)}</div>
+        ${awaiting ? `<div class="matching-ready-state" aria-live="polite">
+          <span class="${mine === "accepted" ? "is-ready" : ""}">${mine === "accepted" ? icon("check", 15) : icon("clock", 15)}你：${mine === "accepted" ? "已确定" : "待确定"}</span>
+          <span class="${theirs === "accepted" ? "is-ready" : ""}">${theirs === "accepted" ? icon("check", 15) : icon("clock", 15)}对方：${theirs === "accepted" ? "已确定" : "待确定"}</span>
+        </div>` : ""}
       </div>
 
       <div class="matching-modal-progress">
@@ -62,7 +74,7 @@ export function matchingPage(state) {
       <footer class="matching-modal-footer">
         <p><i></i>${awaiting ? "候选已暂时锁定，确认超时会自动回到匹配池。" : "匹配期间保持在线，我们会持续更新状态。"}</p>
         <div class="matching-confirm-actions">
-          ${awaiting && mine !== "accepted" ? `<button type="button" data-action="reject-match"><span>不是这位</span>${icon("x", 16)}</button><button type="button" data-action="confirm-match"><span>确认一起玩</span>${icon("check", 16)}</button>` : ""}
+          ${awaiting && mine !== "accepted" ? `<button type="button" data-action="reject-match"><span>不是这位</span>${icon("x", 16)}</button><button type="button" data-action="confirm-match"><span>确定是 TA</span>${icon("check", 16)}</button>` : ""}
           <button type="button" data-action="cancel-match"><span>退出匹配</span>${icon("x", 16)}</button>
         </div>
       </footer>

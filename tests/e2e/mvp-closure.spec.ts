@@ -36,6 +36,7 @@ async function mockProductBackend(
   capture: { profile?: Record<string, unknown>; need?: Record<string, unknown>; match?: Record<string, unknown> } = {}
 ) {
   let profileExists = true;
+  const matchStartedAt = new Date().toISOString();
   await page.route("**/api/health", (route) =>
     route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true }) })
   );
@@ -126,12 +127,12 @@ async function mockProductBackend(
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({
-        ticket: { id: "ticket-1", state: "searching" }, pair: null, candidate: null, matching: 8, matchable: 8,
+        ticket: { id: "ticket-1", state: "searching", search_started_at: matchStartedAt }, pair: null, candidate: null, matching: 8, matchable: 8,
       }),
     });
   });
   await page.route("**/api/matchmaking/status", (route) =>
-    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ticket: { id: "ticket-1", state: "searching" }, pair: null, candidate: null, matching: 8, matchable: 8 }) })
+    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ticket: { id: "ticket-1", state: "searching", search_started_at: matchStartedAt }, pair: null, candidate: null, matching: 8, matchable: 8 }) })
   );
   await page.route("**/api/matchmaking/cancel", (route) =>
     route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ticket: { state: "cancelled" } }) })
@@ -481,9 +482,44 @@ test("authenticated matching opens the new focused modal and removes the old pan
   const modal = page.locator("[data-matching-modal]");
   await expect(modal).toBeVisible();
   await expect(modal).toHaveCSS("opacity", "1");
+  await modal.evaluate((element) => element.setAttribute("data-test-persisted", "yes"));
   await expect(page.getByRole("heading", { name: "正在找同一局的人。" })).toBeVisible();
   await expect(page.locator(".matching-panel, .prism-matching")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "退出匹配", exact: true })).toHaveCount(2);
+  await page.waitForTimeout(3200);
+  await expect(modal).toHaveAttribute("data-test-persisted", "yes");
+  await expect(page.locator("#match-time")).not.toHaveText("0s");
+});
+
+test("candidate confirmation shows each player's independent ready state", async ({ page }) => {
+  await mockProductBackend(page);
+  await page.unroute("**/api/matchmaking/start");
+  await page.route("**/api/matchmaking/start", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({
+      ticket: { id: "ticket-1", state: "waiting_confirmation", search_started_at: new Date().toISOString() },
+      pair: {
+        id: "pair-1",
+        state: "waiting_confirmation",
+        confirmations: [
+          { user_id: mockProfile.id, decision: null },
+          { user_id: "00000000-0000-0000-0000-000000000222", decision: "accepted" },
+        ],
+      },
+      candidate: { id: "00000000-0000-0000-0000-000000000222", nickname: "已准备玩家" },
+      matching: 0,
+      matchable: 0,
+    }),
+  }));
+  await page.goto("/index.html#/home");
+  await login(page);
+  await reachDeadlockCasualFinal(page);
+  await page.getByRole("button", { name: "开始匹配", exact: true }).click();
+
+  await expect(page.getByText("对方已确定，正在等你。", { exact: true })).toBeVisible();
+  await expect(page.getByText("对方：已确定", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "确定是 TA", exact: true })).toBeVisible();
 });
 
 test("mobile visitors see the PC-only gate in the same product language", async ({ browser }) => {

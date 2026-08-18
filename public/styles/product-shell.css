@@ -918,6 +918,9 @@ body.is-project-transitioning { overflow: hidden; }
 .matching-query > span:nth-child(3) { animation-delay: 120ms; }
 .matching-query > span:nth-child(4) { animation-delay: 180ms; }
 .matching-query > span:nth-child(5) { animation-delay: 240ms; }
+.matching-ready-state { margin: 14px auto 0; display: flex; justify-content: center; gap: 8px; flex-wrap: wrap; }
+.matching-ready-state > span { min-height: 34px; padding: 0 12px; display: inline-flex; align-items: center; gap: 7px; border: 1px solid rgba(16, 16, 21, .18); border-radius: 8px; background: rgba(255, 255, 255, .62); color: rgba(16, 16, 21, .62); font-size: 11px; font-weight: 760; transition: background 220ms ease, border-color 220ms ease, color 220ms ease; }
+.matching-ready-state > span.is-ready { border-color: rgba(77, 166, 86, .42); background: rgba(77, 166, 86, .1); color: #276d30; }
 
 .matching-modal-progress { display: grid; grid-template-columns: .86fr 1.14fr; background: var(--product-black); color: #fff; }
 .matching-modal-stats { display: grid; grid-template-columns: repeat(3, 1fr); border-right: 1px solid rgba(255, 255, 255, .1); }

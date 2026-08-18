@@ -964,21 +964,40 @@ function roomShapeChanged(next, prev) {
   if (!next || !prev) return true;
   if (next.code !== prev.code || next.status !== prev.status) return true;
   if (JSON.stringify(next.need || {}) !== JSON.stringify(prev.need || {})) return true;
-  const members = (next.members || []).map((m) => m.id + ":" + (m.memberStatus || "active") + ":" + (m.exitedAt || "")).join("|");
-  const oldMembers = (prev.members || []).map((m) => m.id + ":" + (m.memberStatus || "active") + ":" + (m.exitedAt || "")).join("|");
+  const memberShape = (member) => JSON.stringify([
+    member.id,
+    member.memberStatus || "active",
+    member.exitedAt || "",
+    member.nickname || member.name || "",
+    member.avatarKey || "",
+    member.gameAccounts || {},
+  ]);
+  const members = (next.members || []).map(memberShape).join("|");
+  const oldMembers = (prev.members || []).map(memberShape).join("|");
   return members !== oldMembers;
+}
+
+function matchmakingShape(match) {
+  const confirmations = (match?.pair?.confirmations || [])
+    .map((confirmation) => `${confirmation.user_id}:${confirmation.decision || "pending"}`)
+    .sort();
+  return JSON.stringify([
+    match?.lifecycle?.state || null,
+    match?.pair?.id || null,
+    match?.pair?.state || null,
+    match?.candidate?.id || null,
+    confirmations,
+  ]);
 }
 
 function applyMatchmakingSnapshot(snapshot) {
   if (!snapshot) return;
-  const previousTicketState = state.match.lifecycle?.state || null;
-  const previousPairState = state.match.pair?.state || null;
+  const previousShape = matchmakingShape(state.match);
   const ticket = snapshot.ticket || null;
   const pair = snapshot.pair || null;
   const candidate = snapshot.candidate || null;
   const active = ticket && ["searching", "candidate_found", "waiting_confirmation", "matched", "playing"].includes(ticket.state);
-  update({
-    match: {
+  const nextMatch = {
       ...state.match,
       status: active ? "active" : "idle",
       pool: snapshot.matching ?? state.match.pool,
@@ -987,18 +1006,19 @@ function applyMatchmakingSnapshot(snapshot) {
       pair,
       candidate,
       candidates: [],
-    },
-  });
+  };
+  update({ match: nextMatch });
   const routeName = parseRoute().name;
   if (pair?.state === "matched" && pair.roomCode) {
     api.getState().then(applyServerSnapshot).catch(() => {});
     return;
   }
-  if (routeName === "matching" && (previousTicketState !== ticket?.state || previousPairState !== pair?.state)) render();
+  if (routeName === "matching" && previousShape !== matchmakingShape(nextMatch)) render();
 }
 
 function applyServerSnapshot(data) {
   const routeName = parseRoute().name;
+  const previousMatchShape = matchmakingShape(state.match);
   const patch = {
     match: { ...state.match, pool: data.matching ?? data.online ?? state.match.pool, playing: data.playing ?? state.match.playing },
     matchRequestId: data.matchRequestId || null,
@@ -1075,6 +1095,7 @@ function applyServerSnapshot(data) {
   }
   const roomChanged = patch.room ? roomShapeChanged(patch.room, state.room) : false;
   update(patch);
+  const matchmakingChanged = previousMatchShape !== matchmakingShape(state.match);
   if (["home", "hero"].includes(routeName)) {
     const onlineEl = document.getElementById("home-online-count");
     const heroOnlineEl = document.getElementById("hero-online-count");
@@ -1090,6 +1111,7 @@ function applyServerSnapshot(data) {
   } else if (patch.room && routeName === "room" && roomChanged) {
     render();
   }
+  if (routeName === "matching" && matchmakingChanged && !patch.room) render();
   if (!data.matchmaking && ["matching", "home"].includes(routeName) && (patch.match?.candidates || []).length) navigate("#/results");
   if (patch.session) render();
 }
@@ -1165,6 +1187,15 @@ function handleServerRoom(room) {
 function handleServerGameOver(session) {
   if (!["completed", "cancelled", "active"].includes(session?.status)) return;
   if (state.session && state.session.roomCode === session.roomCode) return;
+  if (session.status === "cancelled") {
+    update({
+      room: null,
+      session: null,
+      match: { ...state.match, status: "idle", lifecycle: null, pair: null, candidate: null, candidates: [] },
+    });
+    navigate("#/home");
+    return;
+  }
   const partner = state.room?.partner || state.session?.partner || {};
   const now = new Date();
   const time = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
@@ -1506,7 +1537,12 @@ async function startMatch() {
 }
 
 function startMatchingFlow() {
-  const started = Date.now();
+  const rawStarted = state.match.lifecycle?.search_started_at
+    || state.match.lifecycle?.searchStartedAt
+    || state.match.lifecycle?.created_at
+    || state.match.lifecycle?.createdAt;
+  const parsedStarted = rawStarted ? new Date(rawStarted).getTime() : NaN;
+  const started = Number.isFinite(parsedStarted) ? Math.min(parsedStarted, Date.now()) : Date.now();
   const interval = window.setInterval(() => {
     const elapsed = (Date.now() - started) / 1000;
     const poolEl = document.getElementById("pool-count");
@@ -1531,7 +1567,7 @@ function startMatchingFlow() {
     } catch {
       // Realtime remains primary; heartbeat polling is a resilience path.
     }
-  }, 10000);
+  }, 3000);
   timers.push(sync);
 }
 
@@ -1756,45 +1792,9 @@ async function setRoomWantAgain(wantAgain) {
 }
 
 async function rematchRecent(id) {
-  if (matchRequestPending) return;
   const item = state.recentConnections.find((c) => c.id === id);
   if (!item) return;
-  const game = GAMES.find((g) => g.id === item.gameId) || GAMES[0];
-  const need = { ...state.need, game: game.id, mode: game.modes[0], goal: "" };
-  if (!ONLINE) {
-    toast("服务暂不可用，请稍后重试");
-    return;
-  }
-  const previousMatch = { ...state.match };
-  update({
-    need,
-    match: { status: "active", pool: state.match.pool ?? 0, playing: state.match.playing ?? 0, candidates: [], pending: null },
-  });
-  matchRequestPending = true;
-  try {
-    await withProjectTransition(async () => {
-      const data = await api.postNeed(need);
-      update({
-        match: {
-          ...state.match,
-          status: "active",
-          pool: data.matching ?? data.online ?? state.match.pool,
-          playing: data.playing ?? state.match.playing,
-          matchRequestId: data.requestId || null,
-          candidates: normalizeCandidates(data.candidates || []),
-        },
-      });
-      navigate("#/matching");
-    }, {
-      label: "正在重新进入匹配池",
-      immediate: true,
-    });
-  } catch (err) {
-    update({ match: previousMatch });
-    toast(err.message);
-  } finally {
-    matchRequestPending = false;
-  }
+  prepareMatchingSetup(item.gameId || "deadlock");
 }
 
 function setOutcome(outcome) {
@@ -1829,94 +1829,41 @@ async function chooseRematch(value) {
 }
 
 async function rematchFriend(id) {
-  if (matchRequestPending) return;
   const friend = state.friends.find((f) => f.id === id);
   if (!friend) return;
   const game = GAMES.find((g) => (friend.lastGame || "").includes(g.name)) || GAMES[0];
-  const need = {
-    ...state.need,
-    game: game.id,
-    mode: game.modes[0],
-  };
-  if (!ONLINE) {
-    toast("服务暂不可用，请稍后重试");
-    return;
-  }
-  const previousMatch = { ...state.match };
-  update({
-    need: {
-      ...need,
-    },
-    match: {
-      status: "active",
-      pool: state.match.pool ?? 0,
-      playing: state.match.playing ?? 0,
-      candidates: [],
-      pending: null,
-    },
-  });
-  matchRequestPending = true;
-  try {
-    await withProjectTransition(async () => {
-      const data = await api.postNeed(need);
-      update({
-        match: {
-          ...state.match,
-          status: "active",
-          pool: data.matching ?? data.online ?? state.match.pool,
-          playing: data.playing ?? state.match.playing,
-          matchRequestId: data.requestId || null,
-          candidates: normalizeCandidates(data.candidates || []),
-        },
-      });
-      navigate("#/matching");
-    }, {
-      label: "正在重新进入匹配池",
-      immediate: true,
-    });
-  } catch (err) {
-    update({ match: previousMatch });
-    toast(err.message);
-  } finally {
-    matchRequestPending = false;
-  }
+  prepareMatchingSetup(game.id);
 }
 
 async function rematchNow() {
-  if (matchRequestPending) return;
-  if (!ONLINE) {
-    toast("服务暂不可用，请稍后重试");
-    return;
-  }
-  const previousMatch = { ...state.match };
+  await startMatch();
+}
+
+function prepareMatchingSetup(gameId = "deadlock") {
+  HOME_FILTER.game = gameId;
+  HOME_FILTER.goal = "";
+  HOME_FILTER.rank = "";
+  HOME_FILTER.step = 0;
+  HOME_FILTER.direction = -1;
   update({
-    match: { ...state.match, status: "active", candidates: [], pending: null, pool: state.match.pool ?? 0 },
+    room: null,
+    session: null,
+    match: { ...state.match, status: "idle", lifecycle: null, pair: null, candidate: null, candidates: [] },
   });
-  matchRequestPending = true;
-  try {
-    await withProjectTransition(async () => {
-      const data = await api.postNeed(state.need);
-      update({
-        match: {
-          ...state.match,
-          status: "active",
-          pool: data.matching ?? data.online ?? state.match.pool,
-          playing: data.playing ?? state.match.playing,
-          matchRequestId: data.requestId || null,
-          candidates: normalizeCandidates(data.candidates || []),
-        },
-      });
-      navigate("#/matching");
-    }, {
-      label: "正在重新进入匹配池",
-      immediate: true,
-    });
-  } catch (err) {
-    update({ match: previousMatch });
-    toast(err.message);
-  } finally {
-    matchRequestPending = false;
+  navigate("#/home");
+}
+
+async function returnToMatchingSetup() {
+  const roomCode = state.room?.code;
+  if (roomCode && ONLINE) {
+    try {
+      await api.roomAction(roomCode, "exit");
+    } catch (error) {
+      toast(error.message);
+      return;
+    }
   }
+  prepareMatchingSetup("deadlock");
 }
 
 async function cancelMatch() {
@@ -2664,7 +2611,7 @@ document.addEventListener("click", (event) => {
     "set-room-rating": (value) => setRoomRating(value),
     "set-room-want": (value) => setRoomWantAgain(value === "yes"),
     "rematch-recent": (id) => rematchRecent(id),
-    "back-to-match": () => navigate("#/need"),
+    "back-to-match": returnToMatchingSetup,
     "go-recent": () => navigate("#/connections"),
     "start-game": startGame,
     "finish-game": finishGame,
