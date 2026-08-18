@@ -2,6 +2,12 @@ import { icon } from "./icons.js";
 import { avatarWrap } from "./avatar.js";
 import { GAME_BY_ID } from "./data.js";
 
+let productRailHeldOpen = false;
+
+export function setProductRailHeldOpen(held) {
+  productRailHeldOpen = Boolean(held);
+}
+
 export function esc(value) {
   return String(value ?? "")
     .replaceAll("&", "&amp;")
@@ -149,7 +155,7 @@ export function homeShell(state, content, active = "home") {
     : `<div class="product-account"><span class="product-account-icon">${icon("user", 18)}</span><div><b>未登录</b><span><button type="button" data-action="open-auth-login">登录</button> / <button type="button" data-action="open-auth-register">注册</button></span></div></div>`;
 
   return `<div class="product-shell">
-    <aside class="product-rail" data-staggered-rail>
+    <aside class="product-rail ${productRailHeldOpen ? "is-staggered-open is-route-held" : ""}" data-staggered-rail>
       <div class="product-rail-layers" aria-hidden="true"><i class="product-rail-layer product-rail-layer--violet"></i><i class="product-rail-layer product-rail-layer--ink"></i></div>
       <a class="product-brand" href="#/home" aria-label="PROJECT-S 首页">${brandMark(54)}<strong>PROJECT-S</strong></a>
       <nav class="product-nav" aria-label="主导航">

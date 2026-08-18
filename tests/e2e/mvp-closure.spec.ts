@@ -185,7 +185,8 @@ test("navigation keeps icon-only rest state and staggers open on hover", async (
   await expect(page.locator(".product-nav-link > span").first()).toHaveCSS("opacity", "1");
   await rail.getByRole("link", { name: "社区", exact: true }).click();
   await expect(page).toHaveURL(/#\/community$/);
-  await expect(rail).toHaveClass(/is-staggered-open/);
+  await expect(rail).toHaveClass(/is-staggered-open.*is-route-held/);
+  await expect(rail).toHaveCSS("transition-duration", "0s");
   await expect.poll(() => rail.evaluate((el) => el.getBoundingClientRect().width)).toBeGreaterThan(150);
   await page.locator(".community-workspace").hover();
   await expect(rail).not.toHaveClass(/is-staggered-open/);
@@ -211,6 +212,12 @@ test("registration continues to player identity and stores the real profile payl
   await page.locator("#auth-username").fill("testplayer");
   await page.locator("#auth-password").fill("Phase1-test!");
   const passwordEye = page.locator('[data-action="toggle-password"][data-target="auth-password"]');
+  const eyeAlignment = await passwordEye.evaluate((element) => {
+    const button = element.getBoundingClientRect();
+    const field = element.parentElement!.getBoundingClientRect();
+    return Math.abs(button.top + button.height / 2 - (field.top + field.height / 2));
+  });
+  expect(eyeAlignment).toBeLessThan(1);
   await passwordEye.click();
   await expect(page.locator("#auth-password")).toHaveAttribute("type", "text");
   await expect(passwordEye).toHaveAttribute("aria-label", "隐藏密码");

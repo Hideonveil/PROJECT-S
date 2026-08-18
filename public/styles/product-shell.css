@@ -48,6 +48,8 @@ body:has(.product-shell) {
   box-shadow: 16px 0 34px rgba(18, 17, 24, 0.16);
 }
 
+.product-rail.is-route-held { transition: none; }
+
 .product-rail-layers {
   position: absolute;
   z-index: 0;
@@ -838,6 +840,10 @@ body:has(.product-shell) {
 .product-auth-field .icon { color: rgba(18, 17, 24, 0.4); }
 .product-auth-field .auth-password-toggle {
   position: relative;
+  top: auto;
+  right: auto;
+  bottom: auto;
+  left: auto;
   width: 30px;
   height: 30px;
   flex: 0 0 30px;
