@@ -727,7 +727,6 @@ body:has(.product-shell) {
   margin-bottom: 42px;
   padding-bottom: 30px;
   border-bottom: 1px solid var(--product-hairline);
-  animation: registerStepEnter 420ms cubic-bezier(.2,.8,.2,1) both;
 }
 
 .registration-step {
@@ -760,13 +759,12 @@ body:has(.product-shell) {
 .registration-step.is-complete em { color: rgba(18, 17, 24, 0.72); }
 
 .registration-step-line { position: relative; flex: 1; height: 2px; margin: 15px 8px 0; overflow: hidden; border-radius: 2px; background: rgba(18, 17, 24, 0.14); }
-.registration-step-line i { position: absolute; inset: 0; background: var(--product-violet); transform: scaleX(0); transform-origin: left; }
-.registration-step-line.is-complete i { animation: registerLineFill 400ms 100ms cubic-bezier(.2,.8,.2,1) forwards; }
+.registration-step-line i { position: absolute; inset: 0; background: var(--product-violet); transform: scaleX(0); transform-origin: left; transition: transform 420ms cubic-bezier(.22,1,.36,1); }
+.registration-step-line.is-complete i { transform: scaleX(1); }
 
 .identity-workspace > .registration-stepper { width: min(760px, 100%); margin: 6px auto 38px; }
 .identity-form { animation: registerStepEnter 420ms 60ms cubic-bezier(.2,.8,.2,1) both; }
 
-@keyframes registerLineFill { to { transform: scaleX(1); } }
 @keyframes registerStepEnter { from { opacity: 0; transform: translateX(-26px); } to { opacity: 1; transform: translateX(0); } }
 
 .product-auth-heading {
@@ -939,6 +937,10 @@ body:has(.product-shell) {
 .identity-choice-grid--three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .identity-choice-grid--four { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .identity-choice-grid--genres { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.identity-gender-field { width: 100%; display: flex; flex-direction: column; gap: 18px; }
+.identity-matching-note { min-height: 48px; padding: 11px 14px; display: flex; align-items: center; gap: 12px; border-left: 3px solid var(--product-violet); background: rgba(118, 89, 223, 0.07); color: rgba(18, 17, 24, 0.66); font-size: 12px; }
+.identity-matching-note span { color: var(--product-violet); font-family: var(--font-mono); font-size: 10px; font-weight: 850; letter-spacing: 0.08em; white-space: nowrap; }
+.identity-matching-note b { color: var(--product-black); font-weight: 700; }
 .identity-choice { min-width: 0; padding: 8px; display: flex; flex-direction: column; gap: 10px; border: 1px solid var(--product-hairline); border-radius: 6px; background: rgba(255, 255, 255, 0.38); text-align: left; transition: border-color 170ms ease, background 170ms ease, transform 170ms ease; }
 .identity-choice:hover { transform: translateY(-2px); border-color: rgba(118, 89, 223, 0.55); }
 .identity-choice.is-on { border: 2px solid var(--product-violet); padding: 7px; background: var(--product-violet-soft); }

@@ -44,9 +44,12 @@ function stepContent(step, draft) {
     ).join("")}</div>`;
   }
 
-  return `<div class="identity-choice-grid identity-choice-grid--four" data-identity-choice-group="gender">${GENDERS.map((gender) =>
-    futureArtChoice({ action: "onboard-choice", key: "gender", value: gender, label: gender, selected: draft.gender === gender }),
-  ).join("")}</div>`;
+  return `<div class="identity-gender-field">
+    <p class="identity-matching-note" role="note"><span>匹配说明</span><b>目前版本会优先匹配同性玩家。</b></p>
+    <div class="identity-choice-grid identity-choice-grid--four" data-identity-choice-group="gender">${GENDERS.map((gender) =>
+      futureArtChoice({ action: "onboard-choice", key: "gender", value: gender, label: gender, selected: draft.gender === gender }),
+    ).join("")}</div>
+  </div>`;
 }
 
 export function welcomePage(state, draft) {
@@ -57,7 +60,7 @@ export function welcomePage(state, draft) {
     "不再提供预制头像。你可以保持空白，也可以上传自己的图片。",
     "这里只记录常用设备，选项图片之后再补充。",
     "可以选择多个类型；图片位置已经预留。",
-    "性别只用于完善玩家身份，不参与匹配排序。",
+    "这项信息用于当前版本的匹配偏好，以后可以随时修改。",
   ];
 
   return homeShell(

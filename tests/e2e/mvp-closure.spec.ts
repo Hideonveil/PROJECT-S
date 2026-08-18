@@ -279,10 +279,12 @@ test("registration continues to player identity and stores the real profile payl
 
   await expect(page).toHaveURL(/#\/welcome$/);
   await expect(page.locator('[data-registration-stepper][aria-label="身份创建进度：第 1 步，共 5 步"]')).toBeVisible();
+  await page.locator("[data-registration-stepper]").evaluate((element) => element.setAttribute("data-test-persisted", "yes"));
   await expect(page.getByRole("button", { name: /头像 1/ })).toHaveCount(0);
   await page.locator("#nickname").fill("新玩家");
   await page.getByRole("button", { name: "下一步", exact: true }).click();
   await expect(page.locator('[aria-label="身份创建进度：第 2 步，共 5 步"]')).toBeVisible();
+  await expect(page.locator("[data-registration-stepper]")).toHaveAttribute("data-test-persisted", "yes");
   await page.getByRole("button", { name: /暂不设置头像/ }).click();
   await page.getByRole("button", { name: "下一步", exact: true }).click();
   await page.getByRole("button", { name: "PC", exact: true }).click();
@@ -290,6 +292,7 @@ test("registration continues to player identity and stores the real profile payl
   await page.getByRole("button", { name: /FPS/ }).click();
   await page.getByRole("button", { name: "下一步", exact: true }).click();
   await page.getByRole("button", { name: "保密", exact: true }).click();
+  await expect(page.getByText("目前版本会优先匹配同性玩家。", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: /完成并进入 PROJECT-S/ }).click();
 
   await expect(page).toHaveURL(/#\/home$/);

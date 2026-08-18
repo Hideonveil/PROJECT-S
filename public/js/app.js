@@ -385,6 +385,8 @@ function persistentProductShell(html) {
   const nextRail = template.content.querySelector("[data-staggered-rail]");
   const currentTicker = app.querySelector("[data-product-ticker]");
   const nextTicker = template.content.querySelector("[data-product-ticker]");
+  const currentStepper = app.querySelector("[data-registration-stepper]");
+  const nextStepper = template.content.querySelector("[data-registration-stepper]");
 
   if (currentRail && nextRail) {
     currentRail.className = nextRail.className;
@@ -398,6 +400,18 @@ function persistentProductShell(html) {
     nextRail.replaceWith(currentRail);
   }
   if (currentTicker && nextTicker) nextTicker.replaceWith(currentTicker);
+  if (currentStepper && nextStepper) {
+    currentStepper.setAttribute("aria-label", nextStepper.getAttribute("aria-label") || "身份创建进度");
+    const nextSteps = [...nextStepper.querySelectorAll(".registration-step")];
+    [...currentStepper.querySelectorAll(".registration-step")].forEach((item, index) => {
+      item.className = nextSteps[index]?.className || item.className;
+    });
+    const nextLines = [...nextStepper.querySelectorAll(".registration-step-line")];
+    [...currentStepper.querySelectorAll(".registration-step-line")].forEach((line, index) => {
+      line.className = nextLines[index]?.className || line.className;
+    });
+    nextStepper.replaceWith(currentStepper);
+  }
   return template.content;
 }
 
