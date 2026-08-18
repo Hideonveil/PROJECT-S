@@ -167,17 +167,22 @@ async function mockProductBackend(
   );
   await page.route("**/api/friends/add", (route) => {
     capture.friendAdd = route.request().postDataJSON();
+    const requestedUser = {
+      id: "00000000-0000-0000-0000-000000000333",
+      nickname: "代码好友",
+      avatarKey: "",
+      online: true,
+      device: "PC",
+      friendCode: "NODE-ABCD-EFGH",
+    };
     return route.fulfill({
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({
-        friends: [{
-          id: "00000000-0000-0000-0000-000000000333",
-          nickname: "代码好友",
-          avatarKey: "",
-          online: true,
-          device: "PC",
-        }],
+        user: requestedUser,
+        status: "pending",
+        friends: [],
+        friendRequests: { incoming: [], outgoing: [{ user: requestedUser, createdAt: "2026-08-19T00:00:00.000Z" }] },
       }),
     });
   });
@@ -735,7 +740,7 @@ test("my page renders backend recent connections instead of stale local history"
   await expect(page.getByText(/Deadlock · 3 次/)).toBeVisible();
 });
 
-test("friend code search adds the exact searched profile without a fullscreen transition", async ({ page }) => {
+test("friend code search sends a request to the exact profile without a fullscreen transition", async ({ page }) => {
   const capture: { friendAdd?: Record<string, unknown> } = {};
   await mockProductBackend(page, capture);
   await page.goto("/index.html#/home");
@@ -752,6 +757,7 @@ test("friend code search adds the exact searched profile without a fullscreen tr
   expect(capture.friendAdd).toMatchObject({ targetUserId: "00000000-0000-0000-0000-000000000333" });
   await expect(page.getByRole("heading", { name: "朋友列表", exact: true })).toBeVisible();
   await expect(page.getByText("代码好友", { exact: true })).toBeVisible();
+  await expect(page.getByText("好友申请待确认", { exact: true })).toBeVisible();
 });
 
 test("community is a separate clean route", async ({ page }) => {

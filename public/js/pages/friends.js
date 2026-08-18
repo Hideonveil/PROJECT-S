@@ -11,6 +11,7 @@ export function friendsPage(state) {
   const adding = state.friendSearchStatus === "adding";
   const incoming = state.friendRequests?.incoming || [];
   const outgoing = state.friendRequests?.outgoing || [];
+  const pendingFriend = searchResult && outgoing.some((request) => request.user?.id === searchResult.id);
 
   return homeShell(
     state,
@@ -57,6 +58,8 @@ export function friendsPage(state) {
                 ${
                   alreadyFriend
                     ? statusPill("CONNECTED")
+                    : pendingFriend
+                      ? `<span class="connection-friend-state">${icon("clock", 16)}好友申请待确认</span>`
                     : button({ label: adding ? "添加中…" : "添加好友", action: "add-friend", value: searchResult.id, kind: "primary", iconName: "userPlus", disabled: adding })
                 }
               </div>
