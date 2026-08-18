@@ -962,6 +962,39 @@ function updateRoomView(nextRoom) {
   return true;
 }
 
+function updateGameoverView() {
+  const root = document.querySelector("[data-gameover-root]");
+  const partner = state.session?.partner || {};
+  if (!root) return false;
+  const like = root.querySelector("[data-gameover-like]");
+  if (like) {
+    const liked = Boolean(state.session?.liked);
+    like.classList.toggle("is-liked", liked);
+    like.dataset.value = liked ? "no" : "yes";
+    like.setAttribute("aria-pressed", String(liked));
+    like.innerHTML = `${icon("heart", 22)}<span>${liked ? "已点赞" : "为 TA 点赞"}</span>`;
+  }
+  root.querySelectorAll('[data-action="set-room-rating"]').forEach((choice) => {
+    const selected = choice.dataset.value === state.session?.rating;
+    choice.classList.toggle("is-selected", selected);
+    choice.setAttribute("aria-pressed", String(selected));
+  });
+  const friendship = root.querySelector("[data-gameover-friendship]");
+  if (friendship && partner.id) {
+    const accepted = (state.friends || []).some((friend) => friend.id === partner.id);
+    const incoming = (state.friendRequests?.incoming || []).some((request) => request.user?.id === partner.id);
+    const outgoing = (state.friendRequests?.outgoing || []).some((request) => request.user?.id === partner.id);
+    friendship.innerHTML = accepted
+      ? `<span class="connection-friend-state is-connected">${icon("userCheck", 16)}已是好友</span>`
+      : incoming
+        ? `<div class="connection-friend-request"><span>对方申请加你为 PROJECT-S 好友</span><div class="inline-actions">${button({ label: "接受", action: "accept-friend", value: partner.id, kind: "primary", size: "sm", iconName: "check" })}${button({ label: "暂不", action: "reject-friend", value: partner.id, kind: "ghost", size: "sm", iconName: "x" })}</div></div>`
+        : outgoing
+          ? `<span class="connection-friend-state">${icon("clock", 16)}好友申请待确认</span>`
+          : button({ label: "添加为 PROJECT-S 好友", action: "add-project-friend", value: partner.id, kind: "outline", iconName: "userPlus" });
+  }
+  return true;
+}
+
 function matchmakingShape(match) {
   const confirmations = (match?.pair?.confirmations || [])
     .map((confirmation) => `${confirmation.user_id}:${confirmation.decision || "pending"}`)
@@ -1563,7 +1596,7 @@ async function setRoomLiked(liked) {
   try {
     await api.roomFeedback(code, { liked });
     update({ session: { ...state.session, liked } });
-    render();
+    updateGameoverView();
     if (liked) toast("已给对方点赞");
   } catch (err) {
     toast(err.message);
@@ -1667,20 +1700,7 @@ async function setRoomRating(rating) {
   try {
     await api.roomFeedback(code, { rating });
     update({ session: { ...state.session, rating } });
-    render();
-  } catch (err) {
-    toast(err.message);
-  }
-}
-
-async function setRoomWantAgain(wantAgain) {
-  const code = state.session?.roomCode || state.lastRoomCode;
-  if (!code || !ONLINE) return;
-  try {
-    await api.roomFeedback(code, { wantAgain });
-    update({ session: { ...state.session, wantAgain } });
-    render();
-    if (wantAgain) toast("已记录，下次可以再来找 TA");
+    updateGameoverView();
   } catch (err) {
     toast(err.message);
   }
@@ -1922,6 +1942,7 @@ async function addProjectFriend(targetUserId, { fromRoom = false } = {}) {
       friendSearchStatus: "idle",
     });
     if (parseRoute().name === "room") updateRoomView(state.room);
+    else if (parseRoute().name === "gameover") updateGameoverView();
     else render();
     toast(data.status === "accepted" ? `你和 ${data.user.nickname || "对方"} 已成为 PROJECT-S 好友` : "好友申请已发送，等待对方确认");
   } catch (err) {
@@ -1937,6 +1958,7 @@ async function respondProjectFriend(requesterId, decision) {
     const data = await api.respondFriend(requesterId, decision);
     update({ friends: mapServerFriends(data.friends), friendRequests: mapServerFriendRequests(data.friendRequests) });
     if (parseRoute().name === "room") updateRoomView(state.room);
+    else if (parseRoute().name === "gameover") updateGameoverView();
     else render();
     toast(decision === "accepted" ? "已接受好友申请" : "已拒绝好友申请");
   } catch (err) {
@@ -2465,7 +2487,6 @@ document.addEventListener("click", (event) => {
     },
     "add-project-friend": (value) => addProjectFriend(value, { fromRoom: true }),
     "set-room-rating": (value) => setRoomRating(value),
-    "set-room-want": (value) => setRoomWantAgain(value === "yes"),
     "rematch-recent": (id) => rematchRecent(id),
     "back-to-match": returnToMatchingSetup,
     "go-recent": () => navigate("#/connections"),
