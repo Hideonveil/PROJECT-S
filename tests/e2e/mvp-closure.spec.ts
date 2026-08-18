@@ -246,7 +246,7 @@ test("Deadlock rank and casual paths expose different step systems", async ({ pa
   await expect(page.getByRole("button", { name: "现在", exact: true })).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByRole("button", { name: "开始匹配", exact: true })).toBeVisible();
 
-  await page.getByRole("button", { name: "重新选择游戏", exact: true }).click();
+  await page.getByRole("button", { name: "返回选择游戏", exact: true }).click();
   await expect(page.getByRole("button", { name: /Deadlock/ })).toBeVisible();
   await expect(page.getByRole("button", { name: /我的世界/ })).toBeVisible();
 
@@ -266,12 +266,17 @@ test("Deadlock rank and casual paths expose different step systems", async ({ pa
 test("navigation keeps icon-only rest state and staggers open on hover", async ({ page }) => {
   await page.goto("/index.html#/home");
   const rail = page.locator("[data-staggered-rail]");
+  const signedOutIcon = rail.locator(".product-account-icon");
   await expect(rail.locator(".product-brand")).toHaveAttribute("href", "#/hero");
   await expect.poll(() => rail.evaluate((el) => el.getBoundingClientRect().width)).toBeLessThan(100);
+  const collapsedSignedOutIcon = await signedOutIcon.boundingBox();
   await rail.hover();
   await expect(rail).toHaveClass(/is-staggered-open/);
   await expect.poll(() => rail.evaluate((el) => el.getBoundingClientRect().width)).toBeGreaterThan(150);
   await expect(page.locator(".product-nav-link > span").first()).toHaveCSS("opacity", "1");
+  const expandedSignedOutIcon = await signedOutIcon.boundingBox();
+  expect(expandedSignedOutIcon?.width).toBe(collapsedSignedOutIcon?.width);
+  expect(expandedSignedOutIcon?.height).toBe(collapsedSignedOutIcon?.height);
   const railBox = await rail.boundingBox();
   const matchEyebrowBox = await page.locator(".match-head .match-eyebrow").boundingBox();
   expect((railBox?.x || 0) + (railBox?.width || 0)).toBeLessThanOrEqual(matchEyebrowBox?.x || 0);
@@ -303,6 +308,29 @@ test("navigation keeps icon-only rest state and staggers open on hover", async (
   await page.locator(".home-main").hover({ position: { x: 500, y: 220 } });
   await expect(rail).not.toHaveClass(/is-staggered-open/);
   await expect.poll(() => rail.evaluate((el) => el.getBoundingClientRect().width)).toBeLessThan(100);
+  const recollapsedSignedOutIcon = await signedOutIcon.boundingBox();
+  expect(recollapsedSignedOutIcon?.width).toBe(collapsedSignedOutIcon?.width);
+  expect(recollapsedSignedOutIcon?.height).toBe(collapsedSignedOutIcon?.height);
+
+  await rail.hover();
+  await expect.poll(() => rail.evaluate((el) => el.getBoundingClientRect().width)).toBeGreaterThan(150);
+  await page.locator(".home-main").hover({ position: { x: 500, y: 220 } });
+  await page.waitForTimeout(50);
+  await rail.evaluate((element) => {
+    element.setAttribute("data-test-rapid-reentry-resets", "0");
+    const layers = [...element.querySelectorAll<HTMLElement>(".product-rail-layer")];
+    const observer = new MutationObserver((records) => {
+      if (records.some((record) => (record.target as HTMLElement).style.transform.includes("-112%"))) {
+        const count = Number(element.getAttribute("data-test-rapid-reentry-resets") || 0);
+        element.setAttribute("data-test-rapid-reentry-resets", String(count + 1));
+      }
+    });
+    layers.forEach((layer) => observer.observe(layer, { attributes: true, attributeFilter: ["style"] }));
+  });
+  const rapidRailBox = await rail.boundingBox();
+  await page.mouse.move((rapidRailBox?.x || 0) + 24, (rapidRailBox?.y || 0) + 220);
+  await page.waitForTimeout(120);
+  await expect(rail).toHaveAttribute("data-test-rapid-reentry-resets", "0");
 });
 
 test("login and registration switch inside a stable account workspace", async ({ page }) => {
