@@ -205,11 +205,24 @@ test("desktop match controls use target cursor but the primary action does not",
   await expect(page.locator(".target-cursor")).not.toHaveClass(/is-visible/);
 });
 
-test("mobile visitors see the PC-only gate in the same product language", async ({ page }) => {
-  await page.setViewportSize({ width: 390, height: 844 });
+test("mobile visitors see the PC-only gate in the same product language", async ({ browser }) => {
+  const context = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    hasTouch: true,
+    isMobile: true,
+  });
+  const page = await context.newPage();
   await page.goto("/index.html");
   await expect(page.getByRole("heading", { name: "请使用电脑打开" })).toBeVisible();
   await expect(page.getByText(/Windows \/ macOS/)).toBeVisible();
+  await context.close();
+});
+
+test("a narrow desktop window is not mistaken for a phone", async ({ page }) => {
+  await page.setViewportSize({ width: 760, height: 844 });
+  await page.goto("/index.html");
+  await expect(page.getByRole("heading", { name: "摇人" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "请使用电脑打开" })).toBeHidden();
 });
 
 test("signed-in top bar exposes player id and logout", async ({ page }) => {

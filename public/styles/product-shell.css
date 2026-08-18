@@ -935,7 +935,7 @@ body:has(.product-shell) {
 .pc-only-warning { position: absolute; left: -8%; right: -8%; bottom: 7vh; height: 42px; display: flex; align-items: center; justify-content: center; gap: 22px; transform: rotate(-3deg); border-block: 2px solid var(--product-black); background: #b9a5ff; font-size: 12px; font-weight: 800; white-space: nowrap; }
 .pc-only-warning i { font-style: normal; font-weight: 500; }
 
-@media (max-width: 900px), (hover: none) and (pointer: coarse) {
+@media (max-width: 900px) and (hover: none) and (pointer: coarse) {
   .pc-only-gate {
     position: fixed;
     z-index: 1200;
