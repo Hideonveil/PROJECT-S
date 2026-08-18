@@ -707,7 +707,9 @@ body:has(.landing-shell) {
 .match-options--roles .match-option, .match-options--team .match-option { min-height: 92px; }
 .match-option > small { color: rgba(18, 17, 24, 0.42); font-size: 9px; }
 .match-role-picker { display: flex; flex-direction: column; gap: 14px; }
+.match-role-groups { display: grid; gap: 22px; }
 .match-role-multi { min-height: 30px; display: flex; align-items: center; gap: 10px; }
+.match-role-multi strong { min-width: 92px; color: var(--product-black); font-size: 13px; }
 .match-role-multi b { padding: 5px 9px; border: 1px solid var(--product-violet); border-radius: 999px; color: var(--product-violet); font-family: var(--font-mono); font-size: 10px; letter-spacing: .08em; }
 .match-role-multi span { color: rgba(18, 17, 24, .48); font-size: 11px; }
 .match-role-option { align-items: center !important; text-align: center !important; }
@@ -1641,6 +1643,28 @@ body.is-project-transitioning { overflow: hidden; }
   .landing-match { width: min(22vw, 260px); }
   .product-topbar { height: 96px; }
   .product-surface .home-main { padding-top: 10px; padding-bottom: 48px; }
+  .match-workspace { padding-bottom: 72px; }
+  .match-head { min-height: 132px; padding-bottom: 24px; }
+  .match-head h1 { font-size: clamp(50px, 5vw, 68px); }
+  .match-head p { margin-top: 14px; font-size: 17px; }
+  .match-wizard { padding-top: 12px; }
+  .match-wizard-stepper { min-height: 58px; margin-bottom: 10px; }
+  .match-wizard-stage { min-height: 386px; }
+  .match-wizard-copy { padding-block: 30px; }
+  .match-wizard-copy h2 { font-size: clamp(30px, 3vw, 42px); }
+  .match-wizard-options {
+    height: 292px;
+    min-height: 0;
+    padding-block: 24px;
+    align-items: flex-start;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+  }
+  .match-wizard-actions { min-height: 78px; }
+  .match-role-groups { gap: 16px; }
+  .match-options--roles .match-option { min-height: 68px; }
+  .match-role-number { font-size: 30px; }
   .product-auth-workspace { min-height: 520px; }
   .product-auth-intro { padding: 44px; }
   .product-auth-intro h1 { font-size: clamp(46px, 4.3vw, 64px); }

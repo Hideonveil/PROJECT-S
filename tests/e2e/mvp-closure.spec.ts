@@ -170,7 +170,7 @@ async function reachDeadlockCasualFinal(page: Page) {
   await page.getByRole("button", { name: /Deadlock/ }).click();
   await page.getByRole("button", { name: "娱乐", exact: true }).click();
   await page.getByRole("button", { name: "下一步", exact: true }).click();
-  await page.getByRole("button", { name: "不限", exact: true }).click();
+  await page.getByRole("button", { name: "找 1 人", exact: true }).click();
   await page.getByRole("button", { name: "下一步", exact: true }).click();
   await expect(page.getByRole("button", { name: "开麦", exact: true })).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByRole("button", { name: "开始匹配", exact: true })).toBeVisible();
@@ -491,7 +491,7 @@ test("desktop match controls use target cursor but the primary action does not",
 
   await page.getByRole("button", { name: "娱乐", exact: true }).click();
   await page.getByRole("button", { name: "下一步", exact: true }).click();
-  await page.getByRole("button", { name: "不限", exact: true }).click();
+  await page.getByRole("button", { name: "找 1 人", exact: true }).click();
   await page.getByRole("button", { name: "下一步", exact: true }).click();
   await page.getByRole("button", { name: "开始匹配", exact: true }).hover();
   await expect(page.locator(".target-cursor")).not.toHaveClass(/is-visible/);

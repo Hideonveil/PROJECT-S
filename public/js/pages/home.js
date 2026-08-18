@@ -23,12 +23,12 @@ const DEADLOCK_PATHS = {
   rank: [
     { key: "goal", label: "游戏目的" },
     { key: "rank", label: "段位" },
-    { key: "teammateRoles", label: "队友位置" },
+    { key: "roles", label: "位置" },
     { key: "voice", label: "是否开麦" },
   ],
   casual: [
     { key: "goal", label: "游戏目的" },
-    { key: "teammateRoles", label: "队友位置" },
+    { key: "team", label: "队友人数" },
     { key: "voice", label: "是否开麦" },
   ],
 };
@@ -66,10 +66,10 @@ export function homeFlowStepper(filter) {
   return flowStepper(step, path);
 }
 
-function roleOptions(values, selected, action) {
+function roleOptions(values, selected, action, label) {
   return `<div class="match-role-picker">
-    <div class="match-role-multi" role="note"><b>可多选</b><span>选择一个或多个号位</span></div>
-    <div class="match-options match-options--roles" role="group" aria-label="位置，可多选">${["不限", ...values].map((value) => {
+    <div class="match-role-multi" role="note"><strong>${esc(label)}</strong><b>可多选</b><span>选择一个或多个号位</span></div>
+    <div class="match-options match-options--roles" role="group" aria-label="${esc(label)}，可多选">${["不限", ...values].map((value) => {
       const number = value.replace("号位", "");
       const on = selected.includes(value);
       return `<button type="button" class="cursor-target home-filter-tag match-option match-role-option ${on ? "is-on" : ""}" data-action="${action}" data-value="${esc(value)}" aria-label="${esc(value)}" aria-pressed="${on}">
@@ -97,8 +97,12 @@ function wizardContent(filter, stepKey) {
     </div>`;
   }
   if (stepKey === "rank") return rankOptions(filter.rank);
-  if (stepKey === "ownRoles") return roleOptions(DEADLOCK_ROLES, filter.ownRoles, "home-own-role");
-  if (stepKey === "teammateRoles") return roleOptions(DEADLOCK_ROLES, filter.teammateRoles, "home-teammate-role");
+  if (stepKey === "roles") {
+    return `<div class="match-role-groups">
+      ${roleOptions(DEADLOCK_ROLES, filter.ownRoles, "home-own-role", "我的位置")}
+      ${roleOptions(DEADLOCK_ROLES, filter.teammateRoles, "home-teammate-role", "希望队友位置")}
+    </div>`;
+  }
   if (stepKey === "voice") {
     return `<div class="match-choice-stack">
       ${filter.goal === "rank" ? `<p class="match-rank-note" role="note">${icon("mic", 18)}<span><b>上分最好开麦哦</b><small>及时沟通位置与团战信息，配合会更稳定。</small></span></p>` : ""}
@@ -119,7 +123,8 @@ function wizardCopy(stepKey, goal) {
   const copy = {
     goal: ["先决定这局为了什么。", "选择上分会进入位置配置；选择娱乐则直接寻找轻松开黑的玩家。"],
     rank: ["你现在是什么段位？", "选择当前段位，后续用于寻找进度更接近的队友。"],
-    teammateRoles: ["希望队友补哪个位置？", "可以多选；选择不限时不会限制队友位置。"],
+    roles: ["你们分别玩哪个位置？", "你的位置与希望队友的位置都可以多选；不限与具体号位互斥。"],
+    team: ["这次想找几位队友？", "娱乐模式不限制位置，只按你需要的队友人数寻找。"],
     voice: ["这局要不要开麦？", goal === "rank" ? "上分默认开麦，你仍然可以改成不开麦。" : "娱乐局默认开麦，不做额外要求。"],
   };
   return copy[stepKey] || copy.goal;

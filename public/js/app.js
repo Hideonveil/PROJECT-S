@@ -707,8 +707,8 @@ function prepareNeedDraft() {
 
 function homeWizardPath() {
   return HOME_FILTER.goal === "casual"
-    ? ["goal", "teammateRoles", "voice"]
-    : ["goal", "rank", "teammateRoles", "voice"];
+    ? ["goal", "team", "voice"]
+    : ["goal", "rank", "roles", "voice"];
 }
 
 function homeWizardStepKey() {
@@ -777,7 +777,12 @@ function syncHomeFilterToDraft() {
   DRAFT.voice = HOME_FILTER.voice !== "off";
   DRAFT.voicePref = HOME_FILTER.voice;
   DRAFT.role = "";
-  DRAFT.selectedTags = HOME_FILTER.teammateRoles.map((role) => `希望队友：${role}`);
+  DRAFT.selectedTags = HOME_FILTER.goal === "casual"
+    ? [`队友人数：${DRAFT.needed}`]
+    : [
+        ...HOME_FILTER.ownRoles.map((role) => `我的位置：${role}`),
+        ...HOME_FILTER.teammateRoles.map((role) => `希望队友：${role}`),
+      ];
   DRAFT.dirty = true;
 }
 
@@ -2306,7 +2311,9 @@ document.addEventListener("click", (event) => {
     const error =
       stepKey === "goal" && !HOME_FILTER.goal ? "请选择游戏目的" :
       stepKey === "rank" && !HOME_FILTER.rank ? "请选择当前段位" :
-      stepKey === "teammateRoles" && !HOME_FILTER.teammateRoles.length ? "请选择希望队友的位置，或选择不限" : "";
+      stepKey === "roles" && !HOME_FILTER.ownRoles.length ? "请选择自己的位置，或选择不限" :
+      stepKey === "roles" && !HOME_FILTER.teammateRoles.length ? "请选择希望队友的位置，或选择不限" :
+      stepKey === "team" && !Number(HOME_FILTER.team) ? "请选择希望寻找的队友人数" : "";
     if (error) {
       toast(error);
       return;
