@@ -519,6 +519,31 @@ function navigate(path) {
   }
 }
 
+function resetHomeFilter() {
+  HOME_FILTER.game = "";
+  HOME_FILTER.goal = "";
+  HOME_FILTER.rank = "";
+  HOME_FILTER.step = 0;
+  HOME_FILTER.direction = 1;
+  HOME_FILTER.ownRoles = [];
+  HOME_FILTER.teammateRoles = [];
+  HOME_FILTER.time = "现在";
+  HOME_FILTER.team = "1";
+  HOME_FILTER.voice = "on";
+}
+
+async function enterMatchFromHero() {
+  resetHomeFilter();
+  await withProjectTransition(async () => {
+    await new Promise((resolve) => window.setTimeout(resolve, 120));
+    navigate("#/home");
+  }, {
+    label: "正在进入摇人",
+    immediate: true,
+    minDuration: 620,
+  });
+}
+
 function parseRoute() {
   const path = (location.hash || "#/hero").replace(/^#/, "") || "/hero";
   const parts = path.split("/").filter(Boolean);
@@ -2480,7 +2505,7 @@ document.addEventListener("click", (event) => {
   }
 
   const actions = {
-    "enter-match": () => navigate("#/home"),
+    "enter-match": enterMatchFromHero,
     "scroll-landing-more": () => document.getElementById("landing-more")?.scrollIntoView({ behavior: "smooth", block: "start" }),
     "go-home": () => navigate("#/home"),
     "go-me": () => navigate("#/me"),
