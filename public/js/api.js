@@ -73,6 +73,10 @@ async function getSupabase() {
 export async function getSession() {
   const sb = await getSupabase();
   const { data } = await sb.auth.getSession();
+  // Cache as soon as a persisted login is restored. This lets pagehide send
+  // the final offline beacon even if the first regular API call is still in
+  // flight when someone immediately closes the browser.
+  cachedAccessToken = data.session?.access_token || "";
   return data.session;
 }
 
