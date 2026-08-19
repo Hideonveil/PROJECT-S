@@ -2,16 +2,20 @@
   <title id="title">机缘</title>
   <desc id="desc">简洁的紫色耳机标记</desc>
   <defs>
-    <linearGradient id="jiyuan-violet" x1="8" y1="40" x2="40" y2="8" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#7659df"/>
-      <stop offset=".55" stop-color="#a98af4"/>
-      <stop offset="1" stop-color="#9edff0"/>
+    <linearGradient id="jiyuan-violet" x1="7" y1="41" x2="38" y2="7" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#966cde"/>
+      <stop offset=".5" stop-color="#b67fe6"/>
+      <stop offset="1" stop-color="#cd9aed"/>
     </linearGradient>
   </defs>
   <g fill="none" stroke="url(#jiyuan-violet)" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M10.2 9.1c11.6 0 20.1 6.9 20.1 17.2" stroke-width="4.1"/>
-    <path d="M16.5 17.3c-4.2 1.8-6.2 5.7-6.2 11.5v5.1c0 4.1 2.7 6.5 7 6.5h11.2" stroke-width="4.1"/>
+    <path d="M11.7 8.2c12.1 0 21.1 7.2 21.1 18.2" stroke-width="4.35"/>
+    <path d="M18.3 17.1c-4.9 1.7-7.1 6-7.1 11.8v2.8c0 5.8 4.8 9.3 11.2 9.3h9.7" stroke-width="4.35"/>
   </g>
-  <rect x="5.5" y="24" width="7.7" height="12.8" rx="3.7" fill="#7659df"/>
-  <rect x="31.1" y="24.2" width="8" height="13" rx="3.9" fill="#a98af4" transform="rotate(27 35.1 30.7)"/>
+  <g fill="url(#jiyuan-violet)">
+    <rect x="5.4" y="22.1" width="5.35" height="11.7" rx="2.55"/>
+    <rect x="11.25" y="21.9" width="3.15" height="12.1" rx="1.45"/>
+    <rect x="29.7" y="22.3" width="7.25" height="11.9" rx="3.25" transform="rotate(23 33.325 28.25)"/>
+    <rect x="35.45" y="23.4" width="5.05" height="10.3" rx="2.45" transform="rotate(23 37.975 28.55)"/>
+  </g>
 </svg>
