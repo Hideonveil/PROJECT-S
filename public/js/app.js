@@ -2019,34 +2019,27 @@ async function respondProjectFriend(requesterId, decision) {
 
 function openFeedback() {
   showSheet(`
-    <div class="sheet" role="dialog" aria-modal="true" aria-label="反馈">
-      <div class="sheet-head">
-        <h2 class="sheet-title">反馈问题或建议</h2>
-        <button class="sheet-close" data-action="close-sheet" aria-label="关闭">${icon("x", 18)}</button>
-      </div>
-      <form data-form="feedback" style="display:flex;flex-direction:column;gap:16px">
-        <div class="field">
-          <label class="label" for="feedback-category">类型</label>
-          <select class="select" id="feedback-category" name="category">
-            <option value="bug">发现 Bug</option>
-            <option value="suggestion">功能建议</option>
-            <option value="other">其他</option>
-          </select>
-        </div>
-        <div class="field">
-          <label class="label" for="feedback-message">描述</label>
-          <textarea class="textarea" id="feedback-message" name="message" placeholder="发生了什么，或你希望怎么改进" required></textarea>
-        </div>
-        <div class="field">
-          <label class="label" for="feedback-contact">联系方式 <span class="label-note">可选，方便回复你</span></label>
-          <input class="input" id="feedback-contact" name="contact" placeholder="微信号 / QQ / 邮箱" />
-        </div>
-        <div class="form-actions">
-          ${button({ label: "提交反馈", action: "submit-feedback", kind: "primary", iconName: "send", extra: "btn--block" })}
-        </div>
+    <div class="sheet contact-sheet" role="dialog" aria-modal="true" aria-labelledby="contact-title">
+      <aside class="contact-sheet-rail">
+        <span class="contact-sheet-code">CONTACT / OPS / 01</span>
+        <div class="contact-sheet-mark">${icon("messageSquare", 38)}</div>
+        <div><p>不是发邮件。</p><h2 id="contact-title">把问题直接<br>留给机缘。</h2></div>
+        <small>提交后会直接进入运营台，我们会连同当前页面一起查看。</small>
+      </aside>
+      <form data-form="feedback" class="contact-form">
+        <header class="contact-form-head"><div><span>SIGNAL INBOX</span><h3>联系我们</h3></div><button class="contact-sheet-close" type="button" data-action="close-sheet" aria-label="关闭">${icon("x", 20)}</button></header>
+        <fieldset class="contact-types"><legend>这是什么问题？</legend>
+          <label><input type="radio" name="category" value="bug" checked><span>发现问题</span></label>
+          <label><input type="radio" name="category" value="suggestion"><span>功能建议</span></label>
+          <label><input type="radio" name="category" value="other"><span>其他</span></label>
+        </fieldset>
+        <label class="contact-field" for="feedback-message"><span>告诉我们发生了什么</span><textarea id="feedback-message" name="message" minlength="10" maxlength="2000" placeholder="尽量写清楚你刚才做了什么、看到了什么……" required></textarea><small>至少 10 个字 · 最多 2000 个字</small></label>
+        <label class="contact-field" for="feedback-contact"><span>如何联系你 <i>可选</i></span><input id="feedback-contact" name="contact" placeholder="微信号 / QQ / 邮箱"></label>
+        <div class="contact-form-foot"><p>${icon("shieldCheck", 16)}<span>当前页面会自动记录；未登录也可以提交。</span></p>${button({ label: "发送到运营台", action: "submit-feedback", kind: "primary", iconName: "send" })}</div>
       </form>
     </div>
   `);
+  window.setTimeout(() => document.querySelector("#feedback-message")?.focus(), 80);
 }
 
 async function submitFeedback() {
@@ -2069,18 +2062,16 @@ async function submitFeedback() {
       ? window.crypto.randomUUID()
       : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
     try {
-      await withProjectTransition(async () => {
-        await api.sendFeedback({
-          category: fd.get("category") || "bug",
-          message,
-          contact: String(fd.get("contact") || "").trim(),
-          requestId,
-          currentPage: location.hash || "/",
-          currentGame: state.need?.game || state.user?.games?.[0]?.gameId || null,
-        });
-        closeSheet();
-        toast("反馈已收到，感谢你的反馈。");
-      }, { label: "正在提交反馈" });
+      await api.sendFeedback({
+        category: fd.get("category") || "bug",
+        message,
+        contact: String(fd.get("contact") || "").trim(),
+        requestId,
+        currentPage: location.hash || "/",
+        currentGame: state.need?.game || state.user?.games?.[0]?.gameId || null,
+      });
+      closeSheet();
+      toast("已经送到运营台，我们会在这里处理。");
     } catch (err) {
       toast(err.message);
     } finally {

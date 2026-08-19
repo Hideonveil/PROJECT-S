@@ -34,4 +34,20 @@ describe("P1 operations contract", () => {
     expect(metrics).toContain('eventName: "server_error"');
     expect(app).toContain('api.trackEvent("client_error"');
   });
+
+  it("sends contact reports straight to the protected OPS inbox without email", () => {
+    const feedbackRoute = read("src/app/api/feedback/route.ts");
+    const feedbackLib = read("src/lib/feedback.ts");
+    const metricsRoute = read("src/app/api/ops/metrics/route.ts");
+    const opsPage = read("src/app/ops/page.tsx");
+    const homePage = read("public/js/pages/home.js");
+    expect(homePage).toContain("match-contact");
+    expect(homePage).toContain("open-feedback");
+    expect(feedbackRoute).toContain("authUser ? await profileByAuthId");
+    expect(feedbackRoute).not.toContain("sendFeedbackEmail");
+    expect(feedbackLib).not.toContain("Resend");
+    expect(metricsRoute).toContain('.from("feedback")');
+    expect(metricsRoute).toContain("recentFeedback");
+    expect(opsPage).toContain("联系我们收件箱");
+  });
 });

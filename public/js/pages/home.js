@@ -180,7 +180,10 @@ export function homePage(state, filter) {
   return homeShell(state, `<div class="match-workspace">
     <header class="match-head">
       <div><div class="match-eyebrow">01 / MATCH</div><h1>摇人</h1><p>总有人想一起玩</p></div>
-      <div class="match-live" aria-label="匹配池状态"><span></span><b>匹配池在线</b><i>·</i><em>${pool ? `${pool} 人正在找队友` : "等待新的玩家"}</em></div>
+      <div class="match-head-tools">
+        <button type="button" class="match-contact" data-action="open-feedback">${icon("messageSquare", 18)}<span><b>联系我们</b><small>CONTACT / OPS</small></span></button>
+        <div class="match-live" aria-label="匹配池状态"><span></span><b>匹配池在线</b><i>·</i><em>${pool ? `${pool} 人正在找队友` : "等待新的玩家"}</em></div>
+      </div>
     </header>
     ${stage}
   </div>`, "home");

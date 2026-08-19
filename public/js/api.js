@@ -131,7 +131,15 @@ export const roomFeedback = (code, payload) => authedRequest(`/api/room/${code}/
 export const searchFriend = (code) => authedRequest("/api/friends/search", { code });
 export const addFriend = ({ friendCode, targetUserId } = {}) => authedRequest("/api/friends/add", { friendCode, targetUserId });
 export const respondFriend = (requesterId, decision) => authedRequest("/api/friends/respond", { requesterId, decision });
-export const sendFeedback = (payload) => authedRequest("/api/feedback", payload);
+export const sendFeedback = async (payload) => {
+  let token = null;
+  try {
+    token = await currentToken();
+  } catch {
+    // 登录故障本身也可能需要反馈，所以这里允许匿名提交。
+  }
+  return request("/api/feedback", payload, token);
+};
 export const trackEvent = (eventName, properties = {}) =>
   authedRequest("/api/events", { eventName, properties }).catch(() => null);
 

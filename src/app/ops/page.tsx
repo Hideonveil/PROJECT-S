@@ -33,11 +33,23 @@ type ErrorItem = {
   occurred_at: string;
 };
 
+type FeedbackItem = {
+  id: string;
+  username?: string | null;
+  feedback_type: string;
+  content: string;
+  contact_email?: string | null;
+  current_page?: string | null;
+  current_game?: string | null;
+  created_at: string;
+};
+
 type DashboardData = {
   days: number;
   metrics: Snapshot;
   series: SeriesPoint[];
   recentErrors: ErrorItem[];
+  recentFeedback: FeedbackItem[];
 };
 
 type Health = {
@@ -294,6 +306,30 @@ export default function OpsPage() {
             <TrendChart data={data?.series || []} />
             <div className={styles.legend}><span className={styles.searchLegend}>开始摇人</span><span className={styles.matchLegend}>匹配成功</span><span className={styles.completeLegend}>完成游玩</span></div>
           </article>
+        </section>
+
+        <section className={`${styles.panel} ${styles.feedbackPanel}`}>
+          <div className={styles.panelTitle}>
+            <div><span>用户来信</span><h2>联系我们收件箱</h2></div>
+            <small>{data?.recentFeedback?.length || 0} 条 / {days}天 · 自动刷新</small>
+          </div>
+          <div className={styles.feedbackList}>
+            {data?.recentFeedback?.length ? data.recentFeedback.map((item) => (
+              <article className={styles.feedbackRow} key={item.id}>
+                <div className={styles.feedbackMeta}>
+                  <span className={styles.feedbackType}>{item.feedback_type === "bug" ? "发现问题" : item.feedback_type === "suggestion" ? "功能建议" : "其他"}</span>
+                  <b>{item.username || "未登录访客"}</b>
+                  <time>{time(item.created_at)}</time>
+                </div>
+                <p className={styles.feedbackContent}>{item.content}</p>
+                <div className={styles.feedbackContext}>
+                  <span>页面 <b>{item.current_page || "未记录"}</b></span>
+                  {item.current_game && <span>游戏 <b>{item.current_game}</b></span>}
+                  {item.contact_email && <span>联系方式 <b>{item.contact_email}</b></span>}
+                </div>
+              </article>
+            )) : <div className={styles.empty}>这段时间还没有用户提交问题。</div>}
+          </div>
         </section>
 
         <section className={styles.bottomGrid}>

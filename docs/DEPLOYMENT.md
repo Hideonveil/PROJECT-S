@@ -33,16 +33,7 @@
 Realtime 表已由 migration 加入 `supabase_realtime` publication。若在 Dashboard 检查：Database → Replication，确认这些表被选中：
 `profiles, match_requests, matches, applications, rooms, room_members, messages, sessions, session_responses, friendships, recent_connections`
 
-## 2. Resend
-
-1. 注册 https://resend.com 。
-2. 打开 **API Keys**，创建 Key，例如 `re_xxxxxxxx`，保存为 `RESEND_API_KEY`。
-3. MVP 阶段发送地址直接使用 Resend 提供的 `onboarding@resend.dev`：
-   - `RESEND_FROM_EMAIL=NODE <onboarding@resend.dev>`
-   - 该地址只能向你的账号邮箱发送，因此接收邮箱填你自己的 `FEEDBACK_TO_EMAIL=2716374688@qq.com`。
-4. 如果以后想给任意用户发邮件，需要验证自己的域名（Resend → Domains → Add Domain，添加 DNS 记录），然后把 `RESEND_FROM_EMAIL` 改成 `NODE <noreply@你的域名>`。
-
-## 3. 本地配置
+## 2. 本地配置
 
 ```bash
 cd project-s
@@ -55,9 +46,6 @@ cp .env.example .env.local
 NEXT_PUBLIC_SUPABASE_URL=https://xxxx.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...
 SUPABASE_SERVICE_ROLE_KEY=eyJ...
-RESEND_API_KEY=re_...
-FEEDBACK_TO_EMAIL=2716374688@qq.com
-RESEND_FROM_EMAIL=NODE <onboarding@resend.dev>
 ```
 
 启动：
@@ -92,9 +80,6 @@ git push origin main
 | `NEXT_PUBLIC_SUPABASE_URL` | Supabase Project URL |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase anon key |
 | `SUPABASE_SERVICE_ROLE_KEY` | Supabase service role key |
-| `RESEND_API_KEY` | Resend API key |
-| `FEEDBACK_TO_EMAIL` | `2716374688@qq.com` |
-| `RESEND_FROM_EMAIL` | `NODE <onboarding@resend.dev>` |
 
 5. 点击 **Deploy**。
 6. 当前生产地址为 https://project-s-iota.vercel.app；以后可绑定正式域名，不需要改代码。
@@ -109,13 +94,13 @@ git push origin main
 4. A 点“申请一起玩”，B 收到申请 → 接受 → 进入临时房间。
 5. 房间里可实时文字聊天；任一方结束游戏，双方选择是否再次一起玩。
 6. 双方都选“愿意”后，自动进入好友/搭子列表。
-7. 任一账号在“我的 → 提交反馈”，检查 2716374688@qq.com 是否收到邮件。
+7. 任一账号在摇人页提交“联系我们”，检查 `/ops` 收件箱是否自动出现新记录。
 
-## 7. 反馈邮件验证
+## 7. 用户反馈验证
 
-- 正常：提交反馈后立即收到 `[MVP Feedback] 昵称 - 反馈类型` 邮件。
-- 数据库：Supabase Dashboard → Table Editor → `feedback`，能看到新行，`email_status=sent`、`email_sent_at` 有值。
-- 邮件失败但不丢数据：临时把 `RESEND_API_KEY` 改成无效值，再提交一条反馈。反馈行仍然存在，`email_status=failed`，`email_error` 有错误信息，页面仍提示“反馈已收到”。
+- 正常：提交反馈后页面提示已进入运营台。
+- OPS：最迟 30 秒后“联系我们收件箱”出现新记录，切回 OPS 标签页时会立即刷新。
+- 数据库：Supabase Dashboard → Table Editor → `feedback` 能看到对应新行。
 
 ## 8. RLS 验证
 

@@ -14,5 +14,6 @@ describe("OPS live counts", () => {
     expect(page).toContain("30_000");
     expect(page).toContain("load(days, true)");
     expect(page).toContain('document.addEventListener("visibilitychange"');
+    expect(page).toContain("recentFeedback");
   });
 });

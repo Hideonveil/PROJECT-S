@@ -279,6 +279,25 @@ test("game selection opens Deadlock steps and keeps other games coming soon", as
   expect(errors).toEqual([]);
 });
 
+test("matching contact opens the OPS inbox form and submits without a fullscreen transition", async ({ page }) => {
+  await mockProductBackend(page);
+  let feedback: Record<string, unknown> | null = null;
+  await page.route("**/api/feedback", (route) => {
+    feedback = route.request().postDataJSON();
+    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true }) });
+  });
+  await page.goto("/index.html?contact=1#/home");
+  await page.getByRole("button", { name: /联系我们/ }).click();
+  await expect(page.locator(".contact-sheet")).toBeVisible();
+  await expect(page.getByText("不是发邮件。", { exact: true })).toBeVisible();
+  await page.locator("#feedback-message").fill("这是一次联系我们收件箱的自动化测试反馈");
+  await page.locator("#feedback-contact").fill("test-contact");
+  await page.getByRole("button", { name: "发送到运营台" }).click();
+  await expect(page.locator("[data-project-transition]")).toHaveCount(0);
+  await expect(page.getByText("已经送到运营台，我们会在这里处理。", { exact: true })).toBeVisible();
+  expect(feedback).toMatchObject({ category: "bug", currentPage: "#/home", contact: "test-contact" });
+});
+
 test("Deadlock rank and casual paths expose different step systems", async ({ page }) => {
   await page.setViewportSize({ width: 1366, height: 768 });
   await page.goto("/index.html#/home");

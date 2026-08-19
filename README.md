@@ -76,23 +76,19 @@ pnpm dev
 NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
-RESEND_API_KEY=
-FEEDBACK_TO_EMAIL=2716374688@qq.com
-RESEND_FROM_EMAIL=NODE <onboarding@resend.dev>
 OPS_TOKEN=
 ALERT_WEBHOOK_URL=
 ```
 
-`SUPABASE_SERVICE_ROLE_KEY` 和 `RESEND_API_KEY` 只允许出现在服务端环境变量，绝不能放进 `NEXT_PUBLIC_*`。
+`SUPABASE_SERVICE_ROLE_KEY` 只允许出现在服务端环境变量，绝不能放进 `NEXT_PUBLIC_*`。
 
-## 反馈邮件
+## 用户反馈
 
 提交反馈时：
 
 1. 先写入 Supabase `feedback` 表
-2. 服务端再调用 Resend 发送邮件到 `FEEDBACK_TO_EMAIL`
-3. 邮件成功 → `email_status = sent`
-4. 邮件失败 → `email_status = failed`，反馈数据仍然保留，用户仍看到“反馈已收到”
+2. `/ops` 的“联系我们收件箱”直接读取并展示
+3. OPS 每 30 秒静默刷新；反馈不再发送邮件
 
 完整部署与测试步骤见 docs/DEPLOYMENT.md。
 

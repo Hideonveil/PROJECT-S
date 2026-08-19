@@ -58,17 +58,10 @@ journalctl -u jiyuan-monitor.service
 时仍会由 systemd 记录执行结果，但无法把提醒发送给人。设置
 `ALERT_WEBHOOK_URL` 后重启下一次检查即可生效。
 
-## 4. 反馈邮件
+## 4. 用户反馈收件箱
 
-反馈始终先写数据库，邮件只是通知。生产环境补齐：
-
-```text
-RESEND_API_KEY=re_...
-FEEDBACK_TO_EMAIL=接收反馈的邮箱
-RESEND_FROM_EMAIL=机缘 <onboarding@resend.dev>
-```
-
-`/api/health` 的 `feedbackEmailConfigured` 会明确显示邮件是否配齐，但不会泄露密钥。
+反馈写入数据库后直接出现在 `/ops` 的“联系我们收件箱”，不经过邮件。OPS 每 30 秒
+静默刷新，并在标签页重新可见时立即刷新。
 
 ## 5. PC 与国内网络验收
 

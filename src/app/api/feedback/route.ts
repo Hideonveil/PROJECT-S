@@ -1,16 +1,14 @@
 import { NextResponse } from "next/server";
 import { authUserFromToken, profileByAuthId } from "@/lib/auth";
 import { bearerToken } from "@/lib/http";
-import { saveFeedback, sendFeedbackEmail, updateEmailStatus } from "@/lib/feedback";
+import { saveFeedback } from "@/lib/feedback";
 
 export async function POST(request: Request) {
   try {
     const body = await request.json();
     const token = bearerToken(request, body);
     const authUser = await authUserFromToken(token);
-    if (!authUser) return NextResponse.json({ error: "请先登录后再提交反馈" }, { status: 401 });
-
-    const profile = await profileByAuthId(authUser.id);
+    const profile = authUser ? await profileByAuthId(authUser.id) : null;
 
     const payload = {
       feedbackType: String(body.category || body.feedbackType || "other"),
@@ -25,7 +23,7 @@ export async function POST(request: Request) {
 
     let saved;
     try {
-      saved = await saveFeedback(profile, payload, authUser.email);
+      saved = await saveFeedback(profile, payload, authUser?.email);
     } catch (error) {
       const message = error instanceof Error ? error.message : "提交失败，请稍后重试";
       return NextResponse.json({ error: message }, { status: 400 });
@@ -33,14 +31,6 @@ export async function POST(request: Request) {
 
     if (saved.duplicate) {
       return NextResponse.json({ ok: true, duplicate: true });
-    }
-
-    try {
-      await sendFeedbackEmail(saved.row);
-      await updateEmailStatus(saved.row.id, "sent", null);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "email failed";
-      await updateEmailStatus(saved.row.id, "failed", message);
     }
 
     return NextResponse.json({ ok: true });
