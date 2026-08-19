@@ -21,7 +21,7 @@ function escAttr(value) {
 }
 
 export function brandMark(size = 32) {
-  return `<img class="brand-mark" src="/assets/jiyuan-mark.svg" width="${size}" height="${size}" alt="机缘" aria-hidden="true" />`;
+  return `<img class="brand-mark" src="/assets/jiyuan-logo.png?v=3" width="${size}" height="${size}" alt="机缘" aria-hidden="true" />`;
 }
 
 export function registrationStepper(currentStep = 1, steps = ["昵称", "头像", "设备", "游戏类型", "性别"]) {
