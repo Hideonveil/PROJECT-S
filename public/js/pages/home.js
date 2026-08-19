@@ -114,7 +114,12 @@ function wizardContent(filter, stepKey) {
     </div>`;
   }
   if (stepKey === "team") {
-    return `<div class="match-options match-options--team" role="group" aria-label="找几个人">${[1, 2, 3, 4, 5].map((count) => option(String(count), `找 ${count} 人`, Number(filter.team) === count, "home-team", "users")).join("")}</div>`;
+    return `<div class="match-options match-options--team" role="group" aria-label="找几个人">${[1, 2, 3, 4, 5].map((count) => {
+      const on = Number(filter.team) === count;
+      return `<button type="button" class="cursor-target home-filter-tag match-option match-team-option ${on ? "is-on" : ""}" data-action="home-team" data-value="${count}" aria-label="找 ${count} 人" aria-pressed="${on}">
+        <span class="match-team-number">${count}</span><span class="match-option-check">${icon("check", 12)}</span>
+      </button>`;
+    }).join("")}</div>`;
   }
   return `<div class="match-options match-options--time" role="group" aria-label="什么时候玩">${DEADLOCK_TIMES.map((time, index) => option(time, time, filter.time === time, "home-time", index === 0 ? "zap" : "clock")).join("")}</div>`;
 }

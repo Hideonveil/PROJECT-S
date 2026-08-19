@@ -1075,7 +1075,7 @@ function applyMatchmakingSnapshot(snapshot, options = {}) {
   };
   update({ match: nextMatch });
   const routeName = parseRoute().name;
-  if (pair?.state === "matched" && pair.roomCode) {
+  if (["matched", "playing"].includes(pair?.state) && pair.roomCode) {
     api.getState().then((snapshot) => {
       applyServerSnapshot(snapshot);
       if (snapshot.room && parseRoute().name === "matching") navigate("#/room");
@@ -1159,7 +1159,9 @@ function applyServerSnapshot(data) {
     if (heroOnlineEl) heroOnlineEl.textContent = state.match.pool ? `${Math.max(0, state.match.pool)} 人正在摇人` : "正在等待下一位玩家";
     if (playingEl) playingEl.textContent = String(Math.max(0, state.match.playing ?? 0));
   }
-  if (patch.room === null && routeName === "room") {
+  if (patch.room && routeName === "matching") {
+    navigate("#/room");
+  } else if (patch.room === null && routeName === "room") {
     render();
   } else if (patch.room && routeName === "room" && (roomChanged || friendRequestsChanged)) {
     updateRoomView(state.room);
@@ -1176,7 +1178,7 @@ async function confirmMatch(decision) {
     const snapshot = await api.confirmMatchmaking(pairId, decision);
     applyMatchmakingSnapshot(snapshot, { notice: decision === "rejected" ? "已跳过这位玩家，正在继续寻找。" : "" });
     if (decision === "rejected") toast("已拒绝，继续为你寻找其他玩家");
-    if (snapshot.pair?.state === "matched") {
+    if (["matched", "playing"].includes(snapshot.pair?.state) || snapshot.room) {
       const fullState = await api.getState();
       applyServerSnapshot(fullState);
       if (fullState.room) navigate("#/room");
@@ -1593,12 +1595,17 @@ async function setGoodbyeRequest(requested) {
 async function setRoomLiked(liked) {
   const code = state.session?.roomCode || state.lastRoomCode;
   if (!code || !ONLINE) return;
+  const previousLiked = state.session?.liked;
+  update({ session: { ...state.session, liked } });
+  updateGameoverView();
   try {
     await api.roomFeedback(code, { liked });
-    update({ session: { ...state.session, liked } });
-    updateGameoverView();
     if (liked) toast("已给对方点赞");
   } catch (err) {
+    if (state.session?.liked === liked) {
+      update({ session: { ...state.session, liked: previousLiked } });
+      updateGameoverView();
+    }
     toast(err.message);
   }
 }
@@ -1697,11 +1704,16 @@ async function saveRoomGameAccount() {
 async function setRoomRating(rating) {
   const code = state.session?.roomCode || state.lastRoomCode;
   if (!code || !ONLINE) return;
+  const previousRating = state.session?.rating;
+  update({ session: { ...state.session, rating } });
+  updateGameoverView();
   try {
     await api.roomFeedback(code, { rating });
-    update({ session: { ...state.session, rating } });
-    updateGameoverView();
   } catch (err) {
+    if (state.session?.rating === rating) {
+      update({ session: { ...state.session, rating: previousRating } });
+      updateGameoverView();
+    }
     toast(err.message);
   }
 }
