@@ -210,7 +210,7 @@ async function reachDeadlockCasualFinal(page: Page) {
 test("first-time visitors land on the hero and enter the matching workspace", async ({ page }) => {
   await page.goto("/index.html");
 
-  await expect(page).toHaveTitle(/project S beta/);
+  await expect(page).toHaveTitle(/机缘/);
   await expect(page.locator(".landing-shell")).toBeVisible();
   await expect(page.locator(".product-rail")).toHaveCount(0);
   await expect(page.locator(".landing-brand")).toHaveAttribute("href", "#/hero");
@@ -497,7 +497,7 @@ test("registration continues to player identity and stores the real profile payl
   await page.getByRole("button", { name: "下一步", exact: true }).click();
   await page.getByRole("button", { name: "保密", exact: true }).click();
   await expect(page.getByText("目前版本会优先匹配同性玩家。", { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: /完成并进入 PROJECT-S/ }).click();
+  await page.getByRole("button", { name: /完成并进入机缘/ }).click();
 
   await expect(page).toHaveURL(/#\/home$/);
   expect(capture.profile).toMatchObject({
@@ -739,7 +739,7 @@ test("an active room resumes directly and goodbye patches the existing connectio
   await expect(page).toHaveURL(/#\/room$/);
   const room = page.locator("[data-connection-room]");
   await expect(room).toBeVisible();
-  await expect(page.getByText("对方申请加你为 PROJECT-S 好友", { exact: true })).toBeVisible();
+  await expect(page.getByText("对方申请加你为机缘好友", { exact: true })).toBeVisible();
   await room.evaluate((element) => element.setAttribute("data-test-persisted", "yes"));
   await page.getByRole("button", { name: "拜拜", exact: true }).click();
   await expect(page.getByRole("heading", { name: "确定要拜拜吗？", exact: true })).toBeVisible();
@@ -854,7 +854,7 @@ test("completed sessions restore friendship controls and feedback responds befor
   await page.goto("/index.html#/home");
   await login(page);
   await expect(page).toHaveURL(/#\/gameover$/);
-  await expect(page.getByRole("button", { name: "添加为 PROJECT-S 好友", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "添加为机缘好友", exact: true })).toBeVisible();
 
   const like = page.getByRole("button", { name: "为 TA 点赞", exact: true });
   await like.click();

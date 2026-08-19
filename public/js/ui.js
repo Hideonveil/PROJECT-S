@@ -21,7 +21,7 @@ function escAttr(value) {
 }
 
 export function brandMark(size = 32) {
-  return `<img class="brand-mark" src="/assets/project-s-mark.svg" width="${size}" height="${size}" alt="" aria-hidden="true" />`;
+  return `<img class="brand-mark" src="/assets/jiyuan-mark.svg" width="${size}" height="${size}" alt="机缘" aria-hidden="true" />`;
 }
 
 export function registrationStepper(currentStep = 1, steps = ["昵称", "头像", "设备", "游戏类型", "性别"]) {
@@ -128,7 +128,7 @@ export function homeShell(state, content, active = "home") {
   return `<div class="product-shell">
     <aside class="product-rail ${productRailHeldOpen ? "is-staggered-open is-route-held" : ""}" data-staggered-rail>
       <div class="product-rail-layers" aria-hidden="true"><i class="product-rail-layer product-rail-layer--violet"></i><i class="product-rail-layer product-rail-layer--ink"></i></div>
-      <a class="product-brand" href="#/hero" aria-label="PROJECT-S 首页">${brandMark(54)}<strong>PROJECT-S</strong></a>
+      <a class="product-brand" href="#/hero" aria-label="机缘首页">${brandMark(54)}<strong>机缘</strong></a>
       <nav class="product-nav" aria-label="主导航">
         ${navItems.map((n) => `<a class="product-nav-link ${resolvedActive === n.id ? "is-active" : ""}" href="${n.href}" data-nav>${icon(n.icon, 24)}<span>${n.label}</span></a>`).join("")}
       </nav>
@@ -136,7 +136,7 @@ export function homeShell(state, content, active = "home") {
     </aside>
     <div class="product-surface">
       <header class="product-topbar">
-        <span class="product-topbar-kicker"><i>PROJECT-S /</i><b>${sectionLabel}</b></span>
+        <span class="product-topbar-kicker"><i>机缘 /</i><b>${sectionLabel}</b></span>
         ${state.authenticated
           ? `<div class="product-user-actions"><button type="button" class="product-topbar-user" data-action="go-me"><span>${esc(state.user.nickname)}</span><small>${esc(state.user.handle || state.user.friendCode || state.user.id || "PLAYER")}</small></button><button type="button" class="product-topbar-logout" data-action="logout">${icon("logOut", 15)}<span>登出</span></button></div>`
           : `<div class="product-auth-actions"><button type="button" data-action="open-auth-login">登录</button><button class="product-register" type="button" data-action="open-auth-register">注册</button></div>`}
@@ -150,7 +150,7 @@ export function homeShell(state, content, active = "home") {
       </div>
     </div>
     <section class="pc-only-gate" role="dialog" aria-modal="true" aria-labelledby="pc-only-title">
-      <div class="pc-only-card"><div class="pc-only-mark">${brandMark(58)}</div><div class="match-eyebrow">PC EXPERIENCE / PROJECT-S</div><h1 id="pc-only-title">请使用电脑打开</h1><p>PROJECT-S 当前只开放 PC 版。用电脑浏览器进入，才能完整使用摇人、匹配与 Session 房间。</p><div class="pc-only-device">${icon("monitor", 30)}<span><b>推荐设备</b><small>Windows / macOS · Chrome / Edge</small></span></div></div>
+      <div class="pc-only-card"><div class="pc-only-mark">${brandMark(58)}</div><div class="match-eyebrow">PC EXPERIENCE / 机缘</div><h1 id="pc-only-title">请使用电脑打开</h1><p>机缘当前只开放 PC 版。用电脑浏览器进入，才能完整使用摇人、匹配与 Session 房间。</p><div class="pc-only-device">${icon("monitor", 30)}<span><b>推荐设备</b><small>Windows / macOS · Chrome / Edge</small></span></div></div>
       <div class="pc-only-warning"><span>总有人想一起玩</span><i>/</i><b>NEVER PLAY ALONE</b><i>/</i></div>
     </section>
   </div>`;

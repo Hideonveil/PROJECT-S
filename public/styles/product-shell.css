@@ -1,4 +1,4 @@
-/* PROJECT-S product shell — selected Product Design direction */
+/* 机缘 product shell — selected Product Design direction */
 :root {
   --product-rail: 76px;
   --product-rail-expanded: 184px;
@@ -765,7 +765,7 @@ body:has(.landing-shell) {
 @keyframes matchMarkerEcho { 0% { opacity: 0; transform: scale(.72); } 34% { opacity: .75; } 100% { opacity: 0; transform: scale(1.42); } }
 @keyframes matchLineSignal { 0%, 18% { opacity: 0; transform: translateY(-50%) scale(.35); } 48% { opacity: 1; transform: translateY(-50%) scale(1); } 100% { opacity: 0; transform: translateY(-50%) scale(.45); } }
 
-/* A shared PROJECT-S waiting transition: gaming hardware cycles while two live caution tapes keep the system moving. */
+/* 机缘 waiting transition: gaming hardware cycles while two live caution tapes keep the system moving. */
 body.is-project-transitioning { overflow: hidden; }
 
 .project-transition {

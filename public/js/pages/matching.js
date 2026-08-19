@@ -33,7 +33,7 @@ export function matchingPage(state) {
     <div class="matching-modal-backdrop" aria-hidden="true"></div>
     <section class="matching-modal" data-matching-modal>
       <header class="matching-modal-head">
-        <div><span class="matching-modal-live"><i></i>MATCHING / LIVE</span><p>PROJECT-S 正在读取当前匹配池</p></div>
+        <div><span class="matching-modal-live"><i></i>MATCHING / LIVE</span><p>机缘正在读取当前匹配池</p></div>
         <button type="button" class="matching-modal-close" data-action="cancel-match" aria-label="退出匹配">${icon("x", 20)}</button>
       </header>
 

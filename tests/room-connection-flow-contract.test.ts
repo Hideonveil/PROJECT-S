@@ -17,7 +17,7 @@ describe("room connection flow contract", () => {
     expect(existsSync("src/app/api/room/[code]/start/route.ts")).toBe(false);
   });
 
-  it("requires the receiver to accept a PROJECT-S friend request", () => {
+  it("requires the receiver to accept a 机缘 friend request", () => {
     const add = read("src/app/api/friends/add/route.ts");
     expect(add).toContain("phase1_request_friendship");
     expect(existsSync("src/app/api/friends/respond/route.ts")).toBe(true);

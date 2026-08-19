@@ -70,7 +70,7 @@ export function friendsPage(state) {
       ${incoming.length ? `<section class="prism-section">
         <div class="section-head"><h2 class="section-title">待确认的好友申请</h2><span class="section-note">${incoming.length} 个</span></div>
         <div class="friends-list">${incoming.map(({ user }) => `<div class="friend-row">
-          <div class="friend-main">${avatarWrap(user.avatarKey, 52, user.online)}<div class="friend-meta"><div class="friend-name">${esc(user.name || user.nickname)}</div><div class="friend-last">想添加你为 PROJECT-S 好友</div></div></div>
+          <div class="friend-main">${avatarWrap(user.avatarKey, 52, user.online)}<div class="friend-meta"><div class="friend-name">${esc(user.name || user.nickname)}</div><div class="friend-last">想添加你为机缘好友</div></div></div>
           <div class="inline-actions">${button({ label: "接受", action: "accept-friend", value: user.id, kind: "primary", size: "sm", iconName: "check" })}${button({ label: "拒绝", action: "reject-friend", value: user.id, kind: "ghost", size: "sm", iconName: "x" })}</div>
         </div>`).join("")}</div>
       </section>` : ""}
@@ -87,7 +87,7 @@ export function friendsPage(state) {
             ? `<div class="empty-state">
                 ${icon("users", 30)}
                 <strong>还没有朋友</strong>
-                <span>可以在上方输入好友代码，或在匹配房间中把对方添加为 PROJECT-S 好友。</span>
+                <span>可以在上方输入好友代码，或在匹配房间中把对方添加为机缘好友。</span>
               </div>`
             : `<div class="friends-list">
                 ${friends

@@ -958,12 +958,12 @@ function updateRoomView(nextRoom) {
     const incoming = (state.friendRequests?.incoming || []).some((request) => request.user?.id === partner.id);
     const outgoing = (state.friendRequests?.outgoing || []).some((request) => request.user?.id === partner.id);
     friendship.innerHTML = accepted
-      ? `<span class="status-pill status-pill--live"><span class="dot"></span>已是 PROJECT-S 好友</span>`
+      ? `<span class="status-pill status-pill--live"><span class="dot"></span>已是机缘好友</span>`
       : incoming
         ? `<div class="room-friend-request"><strong>对方申请加你为好友</strong><div class="inline-actions">${button({ label: "接受", action: "accept-friend", value: partner.id, kind: "primary", size: "sm", iconName: "check" })}${button({ label: "拒绝", action: "reject-friend", value: partner.id, kind: "ghost", size: "sm", iconName: "x" })}</div></div>`
         : outgoing
           ? `<span class="status-pill"><span class="dot"></span>好友申请待确认</span>`
-          : button({ label: "添加为 PROJECT-S 好友", action: "add-project-friend", value: partner.id, kind: "outline", iconName: "userPlus" });
+          : button({ label: "添加为机缘好友", action: "add-project-friend", value: partner.id, kind: "outline", iconName: "userPlus" });
   }
   const goodbye = root.querySelector("[data-room-goodbye-status]");
   if (goodbye) {
@@ -1001,10 +1001,10 @@ function updateGameoverView() {
     friendship.innerHTML = accepted
       ? `<span class="connection-friend-state is-connected">${icon("userCheck", 16)}已是好友</span>`
       : incoming
-        ? `<div class="connection-friend-request"><span>对方申请加你为 PROJECT-S 好友</span><div class="inline-actions">${button({ label: "接受", action: "accept-friend", value: partner.id, kind: "primary", size: "sm", iconName: "check" })}${button({ label: "暂不", action: "reject-friend", value: partner.id, kind: "ghost", size: "sm", iconName: "x" })}</div></div>`
+        ? `<div class="connection-friend-request"><span>对方申请加你为机缘好友</span><div class="inline-actions">${button({ label: "接受", action: "accept-friend", value: partner.id, kind: "primary", size: "sm", iconName: "check" })}${button({ label: "暂不", action: "reject-friend", value: partner.id, kind: "ghost", size: "sm", iconName: "x" })}</div></div>`
         : outgoing
           ? `<span class="connection-friend-state">${icon("clock", 16)}好友申请待确认</span>`
-          : button({ label: "添加为 PROJECT-S 好友", action: "add-project-friend", value: partner.id, kind: "outline", iconName: "userPlus" });
+          : button({ label: "添加为机缘好友", action: "add-project-friend", value: partner.id, kind: "outline", iconName: "userPlus" });
   }
   return true;
 }
@@ -1973,7 +1973,7 @@ async function addProjectFriend(targetUserId, { fromRoom = false } = {}) {
     if (parseRoute().name === "room") updateRoomView(state.room);
     else if (parseRoute().name === "gameover") updateGameoverView();
     else render();
-    toast(data.status === "accepted" ? `你和 ${data.user.nickname || "对方"} 已成为 PROJECT-S 好友` : "好友申请已发送，等待对方确认");
+    toast(data.status === "accepted" ? `你和 ${data.user.nickname || "对方"} 已成为机缘好友` : "好友申请已发送，等待对方确认");
   } catch (err) {
     update({ friendSearchStatus: "idle", friendSearchError: err.message });
     if (!fromRoom) render();

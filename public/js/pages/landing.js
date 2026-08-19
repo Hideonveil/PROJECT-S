@@ -21,7 +21,7 @@ export function landingPage(state) {
 
   return `<div class="landing-shell">
     <header class="landing-header">
-      <a class="landing-brand" href="#/hero" aria-label="PROJECT-S 首页">${brandMark(44)}<strong>PROJECT-S</strong></a>
+      <a class="landing-brand" href="#/hero" aria-label="机缘首页">${brandMark(44)}<strong>机缘</strong></a>
       ${accountActions(state)}
     </header>
 
@@ -35,18 +35,18 @@ export function landingPage(state) {
         </div>
 
         <button class="landing-match" type="button" data-action="enter-match" aria-label="进入摇人匹配">
-          <span class="landing-match-code">PROJECT-S / MATCH</span>
+          <span class="landing-match-code">机缘 / MATCH</span>
           <strong>摇人</strong>
           <span class="landing-match-action">进入匹配 ${icon("arrowRight", 28)}</span>
           <i aria-hidden="true"></i>
         </button>
       </section>
 
-      <section class="landing-more" id="landing-more" aria-label="关于 PROJECT-S">
+      <section class="landing-more" id="landing-more" aria-label="关于机缘">
         <div class="landing-statement"><span>不是随机遇见。</span><strong>是此刻刚好都想玩。</strong></div>
         <div class="landing-lower-grid">
-          <button class="landing-contact" type="button" data-action="open-feedback"><span>联系我们</span><small>建议、合作或一起完善 PROJECT-S</small>${icon("arrowRight", 24)}</button>
-          <div class="landing-reserved" aria-label="后续内容预留"><span>PROJECT-S / NEXT</span><i></i><i></i></div>
+          <button class="landing-contact" type="button" data-action="open-feedback"><span>联系我们</span><small>建议、合作或一起完善机缘</small>${icon("arrowRight", 24)}</button>
+          <div class="landing-reserved" aria-label="后续内容预留"><span>机缘 / NEXT</span><i></i><i></i></div>
         </div>
       </section>
     </main>
@@ -59,7 +59,7 @@ export function landingPage(state) {
     </div>
 
     <section class="pc-only-gate" role="dialog" aria-modal="true" aria-labelledby="pc-only-title">
-      <div class="pc-only-card"><div class="pc-only-mark">${brandMark(58)}</div><div class="match-eyebrow">PC EXPERIENCE / PROJECT-S</div><h1 id="pc-only-title">请使用电脑打开</h1><p>PROJECT-S 当前只开放 PC 版。用电脑浏览器进入，才能完整使用摇人、匹配与 Session 房间。</p><div class="pc-only-device">${icon("monitor", 30)}<span><b>推荐设备</b><small>Windows / macOS · Chrome / Edge</small></span></div></div>
+      <div class="pc-only-card"><div class="pc-only-mark">${brandMark(58)}</div><div class="match-eyebrow">PC EXPERIENCE / 机缘</div><h1 id="pc-only-title">请使用电脑打开</h1><p>机缘当前只开放 PC 版。用电脑浏览器进入，才能完整使用摇人、匹配与 Session 房间。</p><div class="pc-only-device">${icon("monitor", 30)}<span><b>推荐设备</b><small>Windows / macOS · Chrome / Edge</small></span></div></div>
       <div class="pc-only-warning"><span>总有人想一起玩</span><i>/</i><b>NEVER PLAY ALONE</b><i>/</i></div>
     </section>
   </div>`;

@@ -15,15 +15,15 @@ const fieldsFor = (gameId) => ACCOUNT_FIELDS[gameId] || [{ key: "gameId", label:
 function friendControl(state, partner) {
   if (!partner.id) return "";
   if ((state.friends || []).some((friend) => friend.id === partner.id)) {
-    return `<span class="connection-friend-state is-connected">${icon("userCheck", 16)}已是 PROJECT-S 好友</span>`;
+    return `<span class="connection-friend-state is-connected">${icon("userCheck", 16)}已是机缘好友</span>`;
   }
   const incoming = (state.friendRequests?.incoming || []).some((request) => request.user?.id === partner.id);
   const outgoing = (state.friendRequests?.outgoing || []).some((request) => request.user?.id === partner.id);
   if (incoming) {
-    return `<div class="connection-friend-request"><span>对方申请加你为 PROJECT-S 好友</span><div class="inline-actions">${button({ label: "接受", action: "accept-friend", value: partner.id, kind: "primary", size: "sm", iconName: "check" })}${button({ label: "暂不", action: "reject-friend", value: partner.id, kind: "ghost", size: "sm", iconName: "x" })}</div></div>`;
+  return `<div class="connection-friend-request"><span>对方申请加你为机缘好友</span><div class="inline-actions">${button({ label: "接受", action: "accept-friend", value: partner.id, kind: "primary", size: "sm", iconName: "check" })}${button({ label: "暂不", action: "reject-friend", value: partner.id, kind: "ghost", size: "sm", iconName: "x" })}</div></div>`;
   }
   if (outgoing) return `<span class="connection-friend-state">${icon("clock", 16)}好友申请待确认</span>`;
-  return button({ label: "添加为 PROJECT-S 好友", action: "add-project-friend", value: partner.id, kind: "outline", iconName: "userPlus" });
+  return button({ label: "添加为机缘好友", action: "add-project-friend", value: partner.id, kind: "outline", iconName: "userPlus" });
 }
 
 export function roomPage(state) {
