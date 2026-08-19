@@ -1,8 +1,8 @@
 import { icon } from "../icons.js";
 import { esc, homeShell } from "../ui.js";
-import { GAMES, HOME_GAME_IDS } from "../data.js";
+import { GAMES } from "../data.js";
 
-const GAME_ICONS = { hok: "trophy", valorant: "target", deadlock: "swords", minecraft: "gamepad2" };
+const GAME_ICONS = { deadlock: "swords" };
 const DEADLOCK_ROLES = ["1号位", "2号位", "3号位", "4号位", "5号位", "6号位"];
 const DEADLOCK_RANKS = [
   ["新人", "砖石"],
@@ -40,15 +40,13 @@ function option(value, label, on, action, iconName = "", multiple = false) {
 }
 
 function gameOptions(selected) {
-  return HOME_GAME_IDS.map((id) => {
-    const game = GAMES.find((item) => item.id === id);
-    if (!game) return "";
-    const on = id === selected;
-    const ready = id === "deadlock";
-    return `<button type="button" class="cursor-target match-option match-game-option home-filter-game-row ${on ? "is-on" : ""} ${ready ? "is-ready" : "is-soon"}" data-home-game="${esc(id)}" data-action="home-game" data-value="${esc(id)}" aria-pressed="${on}">
-      <span class="match-option-icon">${icon(GAME_ICONS[id] || "gamepad2", 22)}</span><span>${esc(game.name)}</span><small>${ready ? "AVAILABLE / 01" : "COMING SOON"}</small><span class="match-option-check">${icon("arrowRight", 12)}</span>
-    </button>`;
-  }).join("");
+  const game = GAMES.find((item) => item.id === "deadlock");
+  const on = selected === "deadlock";
+  return `<button type="button" class="cursor-target match-option match-game-option match-game-option--deadlock home-filter-game-row ${on ? "is-on" : ""}" data-home-game="deadlock" data-action="home-game" data-value="deadlock" aria-pressed="${on}">
+      <span class="match-game-art-slot" aria-hidden="true"><i>GAME ART / DEADLOCK</i></span>
+      <span class="match-game-option-main"><span class="match-option-icon">${icon(GAME_ICONS.deadlock, 22)}</span><b>${esc(game?.name || "Deadlock")}</b><small>AVAILABLE / 01</small></span><span class="match-option-check">${icon("arrowRight", 12)}</span>
+    </button>
+    <div class="match-games-soon" role="note"><span>OTHER GAMES</span><b>COMING SOON</b><small>王者荣耀、无畏契约、我的世界正在准备中</small></div>`;
 }
 
 function flowStepper(currentStep, steps) {
@@ -137,7 +135,7 @@ function wizardCopy(stepKey, goal) {
 
 function gameStage(selectedGame) {
   return `<section class="match-game-stage match-stage-enter" aria-labelledby="match-game-title">
-    <div class="match-stage-copy"><span>GAME SELECT / 00</span><h2 id="match-game-title">先选一个游戏。</h2><p>目前先开放 Deadlock 的匹配配置。其他游戏的入口保留，后续逐个上线。</p></div>
+    <div class="match-stage-copy"><span>GAME SELECT / 00</span><h2 id="match-game-title">选择这次要玩的游戏。</h2><p>目前只开放 Deadlock。其他游戏会逐个进入匹配池。</p></div>
     <div class="match-options match-options--games match-target-zone" data-target-cursor-zone role="group" aria-label="选择游戏">${gameOptions(selectedGame)}</div>
   </section>`;
 }
@@ -174,17 +172,36 @@ function deadlockStage(filter) {
   </section>`;
 }
 
+function rolesLabel(roles) {
+  const list = Array.isArray(roles) ? roles : [];
+  return list.length ? list.map((role) => `${role}号位`).join(" / ") : "位置不限";
+}
+
+function matchingDirectory(entries) {
+  const people = Array.isArray(entries) ? entries : [];
+  return `<aside class="match-directory" aria-label="正在摇人的玩家">
+    <header><span><i></i>NOW MATCHING</span><b>正在摇人</b></header>
+    <div class="match-directory-list">
+      ${people.length
+        ? people.map((person) => `<article class="match-directory-player">
+            <div class="match-directory-player-top"><b>${esc(person.nickname || "玩家")}</b><span>${person.mode === "casual" ? "娱乐" : "上分"}</span></div>
+            <p>${person.mode === "casual" ? "轻松开黑" : esc(person.rankCode || "段位待定")}</p>
+            <footer><span>${esc(rolesLabel(person.desiredRoles))}</span><i>${person.microphonePreference === "on" ? "开麦" : person.microphonePreference === "off" ? "不开麦" : "都可以"}</i></footer>
+          </article>`).join("")
+        : `<div class="match-directory-empty"><b>还没有公开的匹配请求</b><span>第一个开始摇人的人，会出现在这里。</span></div>`}
+    </div>
+  </aside>`;
+}
+
 export function homePage(state, filter) {
-  const pool = Math.max(0, Number(state.match.pool || 0));
   const stage = !filter.game ? gameStage("") : filter.game === "deadlock" ? deadlockStage(filter) : comingSoonStage(filter);
   return homeShell(state, `<div class="match-workspace">
     <header class="match-head">
       <div><div class="match-eyebrow">01 / MATCH</div><h1>摇人</h1><p>总有人想一起玩</p></div>
       <div class="match-head-tools">
         <button type="button" class="match-contact" data-action="open-feedback">${icon("messageSquare", 18)}<span><b>联系我们</b><small>CONTACT / OPS</small></span></button>
-        <div class="match-live" aria-label="匹配池状态"><span></span><b>匹配池在线</b><i>·</i><em>${pool ? `${pool} 人正在找队友` : "等待新的玩家"}</em></div>
       </div>
     </header>
-    ${stage}
+    <div class="match-content-grid"><div class="match-primary-stage">${stage}</div>${matchingDirectory(state.match.directory)}</div>
   </div>`, "home");
 }

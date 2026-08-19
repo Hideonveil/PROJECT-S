@@ -35,6 +35,7 @@ export function defaultState() {
       pair: null,
       candidate: null,
       matchable: 0,
+      directory: [],
     },
     lastRoomCode: null,
     friendSearchResult: null,

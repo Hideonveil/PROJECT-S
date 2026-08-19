@@ -133,12 +133,36 @@ export async function matchmakingStatus(userId: string, heartbeat = true) {
   }
   const ticket = await activeTicketRow(userId);
 
-  const [{ count: matching }, { count: matchable }] = await Promise.all([
+  const [{ count: matching }, { count: matchable }, { data: directoryRows }] = await Promise.all([
     admin.from("matchmaking_tickets").select("id", { count: "exact", head: true }).eq("state", "searching").gt("expires_at", new Date().toISOString()),
     admin.from("matchmaking_tickets").select("id", { count: "exact", head: true }).eq("state", "searching").eq("game_id", "deadlock").gt("expires_at", new Date().toISOString()),
+    admin
+      .from("matchmaking_tickets")
+      .select("user_id,mode,rank_code,desired_roles,microphone_preference,search_started_at")
+      .eq("state", "searching")
+      .eq("game_id", "deadlock")
+      .gt("expires_at", new Date().toISOString())
+      .neq("user_id", userId)
+      .order("search_started_at", { ascending: true })
+      .limit(8),
   ]);
 
-  if (!ticket) return { ticket: null, pair: null, candidate: null, matching: matching || 0, matchable: matchable || 0 };
+  // This is a deliberately small, privacy-safe lobby preview. It reveals only
+  // the preferences a player has already made public by entering the pool.
+  const directoryTickets = (directoryRows || []) as TicketRow[];
+  const directoryProfiles = await publicProfilesFor(directoryTickets.map((row) => row.user_id));
+  const directoryProfileById = new Map(directoryProfiles.filter((profile) => profile.online).map((profile) => [profile.id, profile]));
+  const directory = directoryTickets
+    .filter((row) => directoryProfileById.has(row.user_id))
+    .map((row) => ({
+      nickname: directoryProfileById.get(row.user_id)?.nickname || "玩家",
+      mode: row.mode,
+      rankCode: row.rank_code || null,
+      desiredRoles: row.desired_roles || [],
+      microphonePreference: row.microphone_preference || "any",
+    }));
+
+  if (!ticket) return { ticket: null, pair: null, candidate: null, matching: matching || 0, matchable: matchable || 0, directory };
   let pair: TicketRow | null = null;
   let candidate = null;
   if (ticket.pair_id) {
@@ -157,7 +181,7 @@ export async function matchmakingStatus(userId: string, heartbeat = true) {
       pair = { ...pair, confirmations: confirmations || [], roomCode };
     }
   }
-  return { ticket, pair, candidate, matching: matching || 0, matchable: matchable || 0 };
+  return { ticket, pair, candidate, matching: matching || 0, matchable: matchable || 0, directory };
 }
 
 export async function cancelTicket(userId: string, reason: string, requestId: string | null) {

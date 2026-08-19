@@ -2,18 +2,8 @@ import { icon } from "../icons.js";
 import { avatarWrap } from "../avatar.js";
 import { button, esc, homeShell } from "../ui.js";
 
-function friendshipControl(state, partner) {
-  if (!partner.id) return "";
-  if ((state.friends || []).some((friend) => friend.id === partner.id)) {
-    return `<span class="connection-friend-state is-connected">${icon("userCheck", 16)}已是好友</span>`;
-  }
-  const incoming = (state.friendRequests?.incoming || []).some((request) => request.user?.id === partner.id);
-  const outgoing = (state.friendRequests?.outgoing || []).some((request) => request.user?.id === partner.id);
-  if (incoming) {
-    return `<div class="connection-friend-request"><span>对方申请加你为机缘好友</span><div class="inline-actions">${button({ label: "接受", action: "accept-friend", value: partner.id, kind: "primary", size: "sm", iconName: "check" })}${button({ label: "暂不", action: "reject-friend", value: partner.id, kind: "ghost", size: "sm", iconName: "x" })}</div></div>`;
-  }
-  if (outgoing) return `<span class="connection-friend-state">${icon("clock", 16)}好友申请待确认</span>`;
-  return button({ label: "添加为机缘好友", action: "add-project-friend", value: partner.id, kind: "outline", iconName: "userPlus" });
+function friendshipControl() {
+  return `<span class="connection-friend-paused">${icon("users", 16)}好友系统 COMING SOON</span>`;
 }
 
 export function gameoverPage(state) {
@@ -46,7 +36,7 @@ export function gameoverPage(state) {
         <button type="button" class="connection-like ${session.liked ? "is-liked" : ""}" data-action="set-room-like" data-value="${session.liked ? "no" : "yes"}" data-gameover-like aria-pressed="${Boolean(session.liked)}">
           ${icon("heart", 22)}<span>${session.liked ? "已点赞" : "为 TA 点赞"}</span>
         </button>
-        <div class="connection-gameover__friend" data-gameover-friendship>${friendshipControl(state, partner)}</div>
+        <div class="connection-gameover__friend" data-gameover-friendship>${friendshipControl()}</div>
       </section>
 
       <section class="connection-gameover__experience">

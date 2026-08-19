@@ -12,18 +12,8 @@ const ACCOUNT_FIELDS = {
 
 const fieldsFor = (gameId) => ACCOUNT_FIELDS[gameId] || [{ key: "gameId", label: "游戏 ID" }];
 
-function friendControl(state, partner) {
-  if (!partner.id) return "";
-  if ((state.friends || []).some((friend) => friend.id === partner.id)) {
-    return `<span class="connection-friend-state is-connected">${icon("userCheck", 16)}已是机缘好友</span>`;
-  }
-  const incoming = (state.friendRequests?.incoming || []).some((request) => request.user?.id === partner.id);
-  const outgoing = (state.friendRequests?.outgoing || []).some((request) => request.user?.id === partner.id);
-  if (incoming) {
-  return `<div class="connection-friend-request"><span>对方申请加你为机缘好友</span><div class="inline-actions">${button({ label: "接受", action: "accept-friend", value: partner.id, kind: "primary", size: "sm", iconName: "check" })}${button({ label: "暂不", action: "reject-friend", value: partner.id, kind: "ghost", size: "sm", iconName: "x" })}</div></div>`;
-  }
-  if (outgoing) return `<span class="connection-friend-state">${icon("clock", 16)}好友申请待确认</span>`;
-  return button({ label: "添加为机缘好友", action: "add-project-friend", value: partner.id, kind: "outline", iconName: "userPlus" });
+function friendControl() {
+  return `<span class="connection-friend-paused">${icon("users", 16)}好友系统 COMING SOON</span>`;
 }
 
 export function roomPage(state) {
@@ -76,7 +66,7 @@ export function roomPage(state) {
 
     <section class="connection-room__exchange">
       <div class="connection-exchange-column is-me"><div class="connection-section-title"><span>01</span><div><h2>我的 ${esc(game.name)} 账号</h2><p>保存后，对方会在当前页面直接看到。</p></div></div><form data-form="room-account">${myInputs}${button({ label: "保存账号信息", action: "save-room-account", kind: "primary", iconName: "check" })}</form></div>
-      <div class="connection-exchange-column is-partner"><div class="connection-section-title"><span>02</span><div><h2>${esc(partner.name || "对方")} 的账号</h2><p>复制后去游戏内添加。</p></div></div><div class="connection-partner-accounts">${partnerRows}</div><div data-room-friendship>${friendControl(state, partner)}</div></div>
+      <div class="connection-exchange-column is-partner"><div class="connection-section-title"><span>02</span><div><h2>${esc(partner.name || "对方")} 的账号</h2><p>复制后去游戏内添加。</p></div></div><div class="connection-partner-accounts">${partnerRows}</div><div data-room-friendship>${friendControl()}</div></div>
     </section>
 
     <section class="connection-room__chat">

@@ -715,7 +715,7 @@ function render() {
       break;
     }
     case "friends":
-      html = friendsPage(state);
+      html = mePage(state);
       break;
     case "me":
       html = mePage(state);
@@ -1003,19 +1003,6 @@ function updateRoomView(nextRoom) {
       : "对方还没填写";
   });
 
-  const friendship = root.querySelector("[data-room-friendship]");
-  if (friendship && partner.id) {
-    const accepted = (state.friends || []).some((friend) => friend.id === partner.id);
-    const incoming = (state.friendRequests?.incoming || []).some((request) => request.user?.id === partner.id);
-    const outgoing = (state.friendRequests?.outgoing || []).some((request) => request.user?.id === partner.id);
-    friendship.innerHTML = accepted
-      ? `<span class="status-pill status-pill--live"><span class="dot"></span>已是机缘好友</span>`
-      : incoming
-        ? `<div class="room-friend-request"><strong>对方申请加你为好友</strong><div class="inline-actions">${button({ label: "接受", action: "accept-friend", value: partner.id, kind: "primary", size: "sm", iconName: "check" })}${button({ label: "拒绝", action: "reject-friend", value: partner.id, kind: "ghost", size: "sm", iconName: "x" })}</div></div>`
-        : outgoing
-          ? `<span class="status-pill"><span class="dot"></span>好友申请待确认</span>`
-          : button({ label: "添加为机缘好友", action: "add-project-friend", value: partner.id, kind: "outline", iconName: "userPlus" });
-  }
   const goodbye = root.querySelector("[data-room-goodbye-status]");
   if (goodbye) {
     const mine = (nextRoom.goodbyeRequests || []).some((request) => request.userId === state.user.id);
@@ -1029,7 +1016,6 @@ function updateRoomView(nextRoom) {
 
 function updateGameoverView() {
   const root = document.querySelector("[data-gameover-root]");
-  const partner = state.session?.partner || {};
   if (!root) return false;
   const like = root.querySelector("[data-gameover-like]");
   if (like) {
@@ -1044,19 +1030,6 @@ function updateGameoverView() {
     choice.classList.toggle("is-selected", selected);
     choice.setAttribute("aria-pressed", String(selected));
   });
-  const friendship = root.querySelector("[data-gameover-friendship]");
-  if (friendship && partner.id) {
-    const accepted = (state.friends || []).some((friend) => friend.id === partner.id);
-    const incoming = (state.friendRequests?.incoming || []).some((request) => request.user?.id === partner.id);
-    const outgoing = (state.friendRequests?.outgoing || []).some((request) => request.user?.id === partner.id);
-    friendship.innerHTML = accepted
-      ? `<span class="connection-friend-state is-connected">${icon("userCheck", 16)}已是好友</span>`
-      : incoming
-        ? `<div class="connection-friend-request"><span>对方申请加你为机缘好友</span><div class="inline-actions">${button({ label: "接受", action: "accept-friend", value: partner.id, kind: "primary", size: "sm", iconName: "check" })}${button({ label: "暂不", action: "reject-friend", value: partner.id, kind: "ghost", size: "sm", iconName: "x" })}</div></div>`
-        : outgoing
-          ? `<span class="connection-friend-state">${icon("clock", 16)}好友申请待确认</span>`
-          : button({ label: "添加为机缘好友", action: "add-project-friend", value: partner.id, kind: "outline", iconName: "userPlus" });
-  }
   return true;
 }
 
@@ -1135,6 +1108,7 @@ function applyMatchmakingSnapshot(snapshot, options = {}) {
       status: active ? "active" : "idle",
       pool: snapshot.matching ?? state.match.pool,
       matchable: snapshot.matchable ?? state.match.matchable ?? 0,
+      directory: Array.isArray(snapshot.directory) ? snapshot.directory : state.match.directory || [],
       lifecycle: ticket,
       pair,
       candidate,
@@ -1168,6 +1142,7 @@ function applyServerSnapshot(data) {
       status: mm.ticket ? "active" : "idle",
       pool: mm.matching ?? patch.match.pool,
       matchable: mm.matchable ?? 0,
+      directory: Array.isArray(mm.directory) ? mm.directory : state.match.directory || [],
       lifecycle: mm.ticket || null,
       pair: mm.pair || null,
       candidate: mm.candidate || null,
@@ -1228,6 +1203,7 @@ function applyServerSnapshot(data) {
     if (onlineEl) onlineEl.textContent = String(Math.max(0, state.match.pool ?? 0));
     if (heroOnlineEl) heroOnlineEl.textContent = state.match.pool ? `${Math.max(0, state.match.pool)} 人正在摇人` : "正在等待下一位玩家";
     if (playingEl) playingEl.textContent = String(Math.max(0, state.match.playing ?? 0));
+    if (routeName === "home" && Array.isArray(data.matchmaking?.directory)) render();
   }
   if (patch.room && routeName === "matching") {
     navigate("#/room");
@@ -2575,7 +2551,7 @@ document.addEventListener("click", (event) => {
     "scroll-landing-more": () => document.getElementById("landing-more")?.scrollIntoView({ behavior: "smooth", block: "start" }),
     "go-home": () => navigate("#/home"),
     "go-me": () => navigate("#/me"),
-    "go-friends": () => navigate("#/friends"),
+    "go-friends": () => navigate("#/me"),
     "toggle-account-menu": () => toggleProductAccountMenu(actionEl),
     "open-auth-login": () => enterAuth("login"),
     "open-auth-register": () => enterAuth("register"),

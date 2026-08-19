@@ -134,7 +134,6 @@ export function homeShell(state, content, active = "home") {
           </header>
           <div class="product-account-popover-group">
             <button type="button" data-action="go-me" role="menuitem">${icon("user", 17)}<span>我的资料</span></button>
-            <button type="button" data-action="go-friends" role="menuitem">${icon("users", 17)}<span>朋友列表</span></button>
           </div>
           <div class="product-account-popover-seal" aria-hidden="true"><span>JIYUAN PLAYER / NEVER PLAY ALONE /</span></div>
           <div class="product-account-popover-group product-account-popover-group--exit">
