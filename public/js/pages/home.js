@@ -42,9 +42,9 @@ function option(value, label, on, action, iconName = "", multiple = false) {
 function gameOptions(selected) {
   const game = GAMES.find((item) => item.id === "deadlock");
   const on = selected === "deadlock";
-  return `<button type="button" class="cursor-target match-option match-game-option match-game-option--deadlock home-filter-game-row ${on ? "is-on" : ""}" data-home-game="deadlock" data-action="home-game" data-value="deadlock" aria-pressed="${on}">
-      <span class="match-game-art-slot" aria-hidden="true"><i>GAME ART / DEADLOCK</i></span>
-      <span class="match-game-option-main"><span class="match-option-icon">${icon(GAME_ICONS.deadlock, 22)}</span><b>${esc(game?.name || "Deadlock")}</b><small>AVAILABLE / 01</small></span><span class="match-option-check">${icon("arrowRight", 12)}</span>
+  return `<button type="button" class="cursor-target match-option match-game-option match-game-option--deadlock match-game-card home-filter-game-row ${on ? "is-on" : ""}" data-home-game="deadlock" data-action="home-game" data-value="deadlock" aria-pressed="${on}">
+      <span class="match-game-art-slot match-game-card-media" aria-hidden="true"><i>GAME ART / DEADLOCK</i></span>
+      <span class="match-game-option-main match-game-card-info"><small class="match-game-card-kicker">DEADLOCK / ACTIVE</small><span class="match-game-card-title-row"><span class="match-option-icon">${icon(GAME_ICONS.deadlock, 22)}</span><b>${esc(game?.name || "Deadlock")}</b><span class="match-option-check">${icon("arrowRight", 12)}</span></span><small class="match-game-card-caption">进入匹配配置</small></span>
     </button>
     <div class="match-games-soon" role="note"><span>OTHER GAMES</span><b>COMING SOON</b></div>`;
 }

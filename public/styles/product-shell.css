@@ -1,4 +1,4 @@
-/* 机缘 product shell — selected Product Design direction */
+/* “机”缘 product shell — selected Product Design direction */
 :root {
   --product-rail: 76px;
   --product-rail-expanded: 184px;
@@ -724,16 +724,19 @@ body:has(.landing-shell) {
 .match-content-grid { display: grid; grid-template-columns: minmax(0, 1fr) 252px; gap: 28px; align-items: start; padding-top: 28px; }
 .match-primary-stage { min-width: 0; }
 .product-shell .match-game-option { min-height: 250px; }
-.product-shell .match-game-option--deadlock { position: relative; display: flex; align-items: stretch; padding: 0; overflow: hidden; border: 2px solid var(--product-black); border-radius: 0; background: var(--product-black); box-shadow: 6px 6px 0 rgba(118,89,223,.3); text-align: center; }
-.product-shell .match-game-option--deadlock:hover, .product-shell .match-game-option--deadlock.is-on { border-color: var(--product-violet); background: var(--product-black); box-shadow: 6px 6px 0 rgba(118,89,223,.5); }
-.match-game-art-slot { position: absolute; inset: 0 0 0 40%; display: grid; place-items: center; overflow: hidden; border-left: 3px solid var(--product-violet); background: #132f31 url("/assets/games/deadlock-card.png") center / cover no-repeat; transition: filter 220ms ease; }
-.match-game-option--deadlock:hover .match-game-art-slot, .match-game-option--deadlock.is-on .match-game-art-slot { filter: saturate(1.08) brightness(1.04); }
+.product-shell .match-game-option--deadlock { position: relative; display: flex; flex-direction: column; align-items: stretch; padding: 0; overflow: hidden; border: 1px solid rgba(18,17,24,.32); border-radius: 0; background: #fff; box-shadow: 5px 5px 0 rgba(118,89,223,.26); text-align: left; transition: transform 220ms ease, border-color 220ms ease, box-shadow 220ms ease; }
+.product-shell .match-game-option--deadlock:hover, .product-shell .match-game-option--deadlock.is-on { border-color: var(--product-violet); background: #fff; box-shadow: 8px 8px 0 rgba(118,89,223,.4); transform: translateY(-3px); }
+.match-game-art-slot { position: relative; inset: auto; width: 100%; height: 232px; display: grid; place-items: center; flex: none; overflow: hidden; border: 0; border-bottom: 1px solid rgba(18,17,24,.32); background: #132f31 url("/assets/games/deadlock-card.png") center / cover no-repeat; transition: filter 220ms ease, transform 340ms cubic-bezier(.2,.8,.2,1); }
+.match-game-art-slot::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(9,18,20,.02), rgba(9,18,20,.26)); pointer-events: none; }
+.match-game-option--deadlock:hover .match-game-art-slot, .match-game-option--deadlock.is-on .match-game-art-slot { filter: saturate(1.08) brightness(1.04); transform: scale(1.025); }
 .match-game-art-slot i { display: none; }
-.match-game-option-main { position: relative; z-index: 1; width: 40%; min-width: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 9px; padding: 20px 18px; background: var(--product-black); color: #fff; }
-.match-game-option-main .match-option-icon { width: 38px; height: 38px; display: grid; place-items: center; border: 1px solid rgba(185,165,255,.58); color: #c7b5ff; }
-.match-game-option-main b { font-size: 22px; letter-spacing: -.04em; line-height: 1; }
-.match-game-option-main small { margin-top: 1px; color: rgba(255,255,255,.54); }
-.match-game-option--deadlock .match-option-check { position: absolute; right: 14px; bottom: 14px; z-index: 1; background: var(--product-violet); box-shadow: 0 0 0 3px rgba(18,17,24,.78); }
+.match-game-option-main { position: relative; z-index: 1; width: 100%; min-width: 0; min-height: 116px; display: flex; flex-direction: column; align-items: stretch; justify-content: center; gap: 9px; padding: 15px 18px 17px; background: #fff; color: var(--product-black); }
+.match-game-card-kicker { color: rgba(18,17,24,.44); font-family: var(--font-mono); font-size: 9px; font-weight: 850; letter-spacing: .11em; }
+.match-game-card-title-row { display: flex; align-items: center; gap: 10px; }
+.match-game-option-main .match-option-icon { width: 34px; height: 34px; display: grid; place-items: center; border: 1px solid rgba(118,89,223,.55); color: var(--product-violet); }
+.match-game-option-main b { font-size: 23px; letter-spacing: -.04em; line-height: 1; }
+.match-game-option-main .match-option-check { position: static; margin-left: auto; display: grid; place-items: center; width: 28px; height: 28px; background: var(--product-violet); color: var(--product-black); box-shadow: none; }
+.match-game-card-caption { color: rgba(18,17,24,.54); font-size: 11px; }
 .match-games-soon { min-height: 72px; padding: 14px 16px; display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; align-content: center; border: 1px dashed rgba(18,17,24,.25); background: rgba(18,17,24,.025); }
 .match-games-soon span { color: var(--product-violet); font-family: var(--font-mono); font-size: 9px; font-weight: 850; letter-spacing: .12em; }
 .match-games-soon b { font-size: 13px; }
@@ -921,7 +924,7 @@ body:has(.landing-shell) {
 @keyframes matchMarkerEcho { 0% { opacity: 0; transform: scale(.72); } 34% { opacity: .75; } 100% { opacity: 0; transform: scale(1.42); } }
 @keyframes matchLineSignal { 0%, 18% { opacity: 0; transform: translateY(-50%) scale(.35); } 48% { opacity: 1; transform: translateY(-50%) scale(1); } 100% { opacity: 0; transform: translateY(-50%) scale(.45); } }
 
-/* 机缘 waiting transition: gaming hardware cycles while two live caution tapes keep the system moving. */
+/* “机”缘 waiting transition: gaming hardware cycles while two live caution tapes keep the system moving. */
 body.is-project-transitioning { overflow: hidden; }
 
 .project-transition {

@@ -74,7 +74,7 @@ export function welcomePage(state, draft) {
           <div class="identity-step-body">${stepContent(step, draft)}</div>
           <footer class="identity-step-actions">
             ${step > 0 ? `<button type="button" class="identity-back" data-action="onboard-back">${icon("arrowRight", 18)}<span>上一步</span></button>` : `<span></span>`}
-            <button type="button" class="identity-submit" data-action="${step === IDENTITY_STEPS.length - 1 ? "complete-onboard" : "onboard-next"}"><span>${step === IDENTITY_STEPS.length - 1 ? "完成并进入机缘" : "下一步"}</span>${icon("arrowRight", 22)}</button>
+            <button type="button" class="identity-submit" data-action="${step === IDENTITY_STEPS.length - 1 ? "complete-onboard" : "onboard-next"}"><span>${step === IDENTITY_STEPS.length - 1 ? "完成并进入“机”缘" : "下一步"}</span>${icon("arrowRight", 22)}</button>
           </footer>
         </section>
       </form>

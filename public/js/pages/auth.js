@@ -16,7 +16,7 @@ export function authPage(state) {
     state,
     `<section class="product-auth-workspace ${isLogin ? "is-login" : "is-register"}" data-auth-workspace>
       <div class="product-auth-intro">
-        <div class="match-eyebrow">PLAYER ACCESS / 机缘</div>
+        <div class="match-eyebrow">PLAYER ACCESS / “机”缘</div>
         <h1>回来继续摇人。</h1>
         <p>登录或创建账号，都从这里进入。你的游戏身份、最近连接和匹配记录会留在同一个地方。</p>
         <div class="auth-warning-rule"><span>REAL PLAYERS</span><i>/</i><span>NEVER PLAY ALONE</span><i>/</i><span>真实玩家</span></div>

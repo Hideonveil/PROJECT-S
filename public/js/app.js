@@ -2048,7 +2048,7 @@ async function addProjectFriend(targetUserId, { fromRoom = false } = {}) {
     if (parseRoute().name === "room") updateRoomView(state.room);
     else if (parseRoute().name === "gameover") updateGameoverView();
     else render();
-    toast(data.status === "accepted" ? `你和 ${data.user.nickname || "对方"} 已成为机缘好友` : "好友申请已发送，等待对方确认");
+    toast(data.status === "accepted" ? `你和 ${data.user.nickname || "对方"} 已成为“机”缘好友` : "好友申请已发送，等待对方确认");
   } catch (err) {
     update({ friendSearchStatus: "idle", friendSearchError: err.message });
     if (!fromRoom) render();
@@ -2081,8 +2081,8 @@ function openFeedback() {
       <aside class="contact-sheet-rail">
         <span class="contact-sheet-code">CONTACT / OPS / 01</span>
         <div class="contact-sheet-mark">${icon("messageSquare", 38)}</div>
-        <div><p>不是发邮件。</p><h2 id="contact-title">把问题直接<br>留给机缘。</h2></div>
-        <small>提交后会直接进入运营台，由机缘团队统一查看和处理。</small>
+        <div><p>不是发邮件。</p><h2 id="contact-title">把问题直接<br>留给“机”缘。</h2></div>
+        <small>提交后会直接进入运营台，由“机”缘团队统一查看和处理。</small>
       </aside>
       <form data-form="feedback" class="contact-form">
         <header class="contact-form-head"><div><span>SIGNAL INBOX</span><h3>联系我们</h3></div><button class="contact-sheet-close" type="button" data-action="close-sheet" aria-label="关闭">${icon("x", 20)}</button></header>

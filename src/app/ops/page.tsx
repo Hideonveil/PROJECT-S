@@ -212,7 +212,7 @@ export default function OpsPage() {
       <main className={styles.lockPage}>
         <div className={styles.lockRail} aria-hidden="true"><span>JIYUAN / OPS / PRIVATE /</span></div>
         <form className={styles.lockCard} onSubmit={login}>
-          <img src="/assets/jiyuan-logo-v5.png" alt="机缘" className={styles.lockLogo} />
+          <img src="/assets/jiyuan-logo-v5.png" alt="“机”缘" className={styles.lockLogo} />
           <p className={styles.eyebrow}>PRIVATE OPERATIONS</p>
           <h1>看清匹配机器<br />现在怎么转。</h1>
           <label htmlFor="ops-password">运营密码</label>
@@ -230,7 +230,7 @@ export default function OpsPage() {
   return (
     <div className={styles.shell}>
       <aside className={styles.rail}>
-        <a href="/index.html#/hero" aria-label="返回机缘首页"><img src="/assets/jiyuan-logo-v5.png" alt="" /></a>
+        <a href="/index.html#/hero" aria-label="返回“机”缘首页"><img src="/assets/jiyuan-logo-v5.png" alt="" /></a>
         <div className={styles.railWord}>OPS</div>
         <button type="button" onClick={logout}>退出</button>
       </aside>
@@ -238,7 +238,7 @@ export default function OpsPage() {
       <main className={styles.main}>
         <header className={styles.header}>
           <div>
-            <p className={styles.eyebrow}>机缘 · 匹配运营台</p>
+            <p className={styles.eyebrow}>“机”缘 · 匹配运营台</p>
             <h1>匹配机器，正在怎么转</h1>
           </div>
           <div className={styles.headerActions}>
