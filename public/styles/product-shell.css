@@ -697,13 +697,13 @@ body:has(.landing-shell) {
 .match-stage-copy h2,
 .match-wizard-copy h2,
 .match-coming-soon h2 {
-  max-width: 330px;
+  max-width: none;
   margin-top: 18px;
-  font-size: clamp(34px, 3.8vw, 54px);
+  font-size: 32px;
   line-height: 1.02;
-  letter-spacing: -0.05em;
+  letter-spacing: -0.07em;
+  white-space: nowrap;
 }
-.match-stage-copy h2 { max-width: none; font-size: clamp(28px, 2.6vw, 38px); letter-spacing: -0.08em; white-space: nowrap; }
 
 .match-stage-copy p,
 .match-wizard-copy p,
@@ -844,7 +844,7 @@ body:has(.landing-shell) {
   position: relative;
   min-height: 430px;
   display: grid;
-  grid-template-columns: minmax(190px, 0.27fr) minmax(0, 0.73fr);
+  grid-template-columns: minmax(300px, 0.31fr) minmax(0, 0.69fr);
   overflow: hidden;
   border-block: 1px solid var(--product-hairline);
 }
@@ -857,7 +857,7 @@ body:has(.landing-shell) {
 .match-options--ranks { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .match-options--roles { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .match-options--team { grid-template-columns: repeat(5, minmax(0, 1fr)); }
-.match-options--roles .match-option { min-height: 56px; padding: 8px 10px; gap: 4px; }
+.match-options--roles .match-option { min-height: 48px; padding: 6px 8px; gap: 2px; }
 .match-options--team .match-option { min-height: 70px; }
 .product-shell .match-team-option { align-items: center; justify-content: center; text-align: center; }
 .match-team-number { font-family: var(--font-display); font-size: clamp(34px, 3.2vw, 48px); font-weight: 780; line-height: 1; letter-spacing: -.05em; }
@@ -869,12 +869,12 @@ body:has(.landing-shell) {
 .match-role-multi b { padding: 4px 7px; border: 1px solid var(--product-violet); border-radius: 999px; color: var(--product-violet); font-family: var(--font-mono); font-size: 9px; letter-spacing: .08em; }
 .match-role-multi span { color: rgba(18, 17, 24, .48); font-size: 10px; }
 .match-role-option { align-items: center !important; text-align: center !important; }
-.match-role-number { display: inline-flex; align-items: baseline; gap: 3px; font-family: var(--font-display); font-size: 23px; font-weight: 780; line-height: 1; letter-spacing: -.05em; }
-.match-role-number small { color: rgba(18, 17, 24, .48); font-family: var(--font-sans); font-size: 10px; font-weight: 720; letter-spacing: 0; }
+.match-role-number { display: inline-flex; align-items: baseline; gap: 3px; font-family: var(--font-display); font-size: 20px; font-weight: 780; line-height: 1; letter-spacing: -.05em; }
+.match-role-number small { color: rgba(18, 17, 24, .48); font-family: var(--font-sans); font-size: 9px; font-weight: 720; letter-spacing: 0; }
 .match-role-option.is-on .match-role-number small { color: var(--product-violet); }
-.match-rank-option { min-height: 68px; align-content: center; }
-.match-rank-option .match-rank-name { font-weight: 760; }
-.match-rank-option > small { margin-top: 3px; font-family: var(--font-mono); font-size: 9px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+.product-shell .match-rank-option { min-height: 54px; padding: 8px 10px; gap: 3px; align-content: center; }
+.match-rank-option .match-rank-name { font-size: 12px; font-weight: 760; }
+.match-rank-option > small { margin-top: 1px; font-family: var(--font-mono); font-size: 8px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
 .match-rank-option.is-on > small { color: var(--product-violet); }
 .match-choice-stack { display: flex; flex-direction: column; gap: 18px; }
 
@@ -1887,7 +1887,7 @@ body.is-project-transitioning { overflow: hidden; }
   .match-wizard-stepper { min-height: 58px; margin-bottom: 10px; }
   .match-wizard-stage { min-height: 386px; }
   .match-wizard-copy { padding-block: 30px; }
-  .match-wizard-copy h2 { font-size: clamp(30px, 3vw, 42px); }
+  .match-wizard-copy h2 { font-size: 32px; }
   .match-wizard-options {
     height: auto;
     min-height: 292px;
@@ -1897,8 +1897,8 @@ body.is-project-transitioning { overflow: hidden; }
   }
   .match-wizard-actions { min-height: 78px; }
   .match-role-groups { gap: 16px; }
-  .match-options--roles .match-option { min-height: 56px; padding: 8px 10px; gap: 4px; }
-  .match-role-number { font-size: 23px; }
+  .match-options--roles .match-option { min-height: 48px; padding: 6px 8px; gap: 2px; }
+  .match-role-number { font-size: 20px; }
   .product-auth-workspace { min-height: 520px; }
   .product-auth-intro { padding: 44px; }
   .product-auth-intro h1 { font-size: clamp(46px, 4.3vw, 64px); }
