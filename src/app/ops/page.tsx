@@ -103,8 +103,8 @@ export default function OpsPage() {
   const [passwordMessage, setPasswordMessage] = useState("");
   const [passwordError, setPasswordError] = useState("");
 
-  const load = useCallback(async (range = days) => {
-    setLoading(true);
+  const load = useCallback(async (range: number, silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const [metricsResponse, healthResponse] = await Promise.all([
         fetch(`/api/ops/metrics?days=${range}`, { cache: "no-store" }),
@@ -120,11 +120,22 @@ export default function OpsPage() {
       if (healthResponse.ok) setHealth(await healthResponse.json());
       setLocked(false);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
-  }, [days]);
+  }, []);
 
-  useEffect(() => { void load(days); }, [days, load]);
+  useEffect(() => {
+    void load(days);
+    const refresh = window.setInterval(() => { void load(days, true); }, 30_000);
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") void load(days, true);
+    };
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    return () => {
+      window.clearInterval(refresh);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+    };
+  }, [days, load]);
 
   async function login(event: FormEvent) {
     event.preventDefault();
@@ -224,7 +235,10 @@ export default function OpsPage() {
             <div className={styles.periods} aria-label="统计时间范围">
               {periods.map((period) => <button key={period} className={days === period ? styles.activePeriod : ""} onClick={() => setDays(period)}>{period}天</button>)}
             </div>
-            <button className={styles.refresh} onClick={() => void load(days)} disabled={loading}>{loading ? "读取中" : "刷新数据"}</button>
+            <div className={styles.refreshGroup}>
+              <button className={styles.refresh} onClick={() => void load(days)} disabled={loading}>{loading ? "读取中" : "刷新数据"}</button>
+              <small>每 30 秒自动更新</small>
+            </div>
           </div>
         </header>
 

@@ -9,6 +9,8 @@
 .eyebrow { margin: 0 0 12px; color: #6842d8; font: 700 11px/1.2 ui-monospace, monospace; letter-spacing: .16em; }
 .header h1 { margin: 0; font-size: clamp(30px, 4vw, 56px); line-height: .95; letter-spacing: -.06em; }
 .headerActions { display: flex; gap: 10px; align-items: center; }
+.refreshGroup { display: grid; gap: 5px; justify-items: stretch; }
+.refreshGroup small { color: #77747b; font: 10px/1 ui-monospace, monospace; text-align: center; }
 .periods { display: flex; padding: 4px; background: #dedbd4; }
 .periods button, .refresh { border: 0; cursor: pointer; font-weight: 650; }
 .periods button { padding: 10px 13px; color: #65636a; background: transparent; }
@@ -62,5 +64,5 @@
 @keyframes pulseLine { 0%,100% { transform: scaleY(.35); opacity: .45; } 50% { transform: scaleY(1); opacity: 1; } }
 @keyframes passwordReveal { from { opacity: 0; transform: translateY(-8px) scaleY(.96); } to { opacity: 1; transform: none; } }
 @media (max-width: 1100px) { .metricGrid { grid-template-columns: repeat(3, 1fr); }.twoColumn { grid-template-columns: 1fr; }.liveBand { grid-template-columns: 1fr; }.liveStats { border-left: 0; border-top: 1px solid #343640; } }
-@media (max-width: 720px) { .rail { width: 58px; }.main { margin-left: 58px; padding: 26px 16px 50px; }.header { align-items: flex-start; flex-direction: column; }.headerActions { width: 100%; flex-wrap: wrap; }.metricGrid { grid-template-columns: repeat(2,1fr); }.bottomGrid { grid-template-columns: 1fr; }.livePrimary { padding: 30px 22px; }.liveStats div { padding: 14px; }.panel { padding: 20px; }.lockCard { padding: 32px 24px; box-shadow: 9px 9px 0 #111217; } }
+@media (max-width: 720px) { .rail { width: 58px; }.main { margin-left: 58px; padding: 26px 16px 50px; }.header { align-items: flex-start; flex-direction: column; }.headerActions { width: 100%; flex-wrap: wrap; }.refreshGroup { flex: 1; }.metricGrid { grid-template-columns: repeat(2,1fr); }.bottomGrid { grid-template-columns: 1fr; }.livePrimary { padding: 30px 22px; }.liveStats div { padding: 14px; }.panel { padding: 20px; }.lockCard { padding: 32px 24px; box-shadow: 9px 9px 0 #111217; } }
 @media (prefers-reduced-motion: reduce) { .liveDot, .systemPulse i, .changePassword { animation: none; }.funnelRow i { transition: none; } }

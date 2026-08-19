@@ -22,13 +22,16 @@ export function generateFriendCode(): string {
 
 export async function poolCounts(): Promise<{ online: number; matching: number; users: number; playing: number }> {
   const recentCutoff = new Date(Date.now() - 2 * 60 * 1000).toISOString();
-  const [{ count: matching }, { count: online }, { count: users }, { data: playingRooms }] = await Promise.all([
+  const [{ count: matching }, { count: online }, { count: users }, { data: playingSessions }] = await Promise.all([
     supabaseAdmin().from("matchmaking_tickets").select("id", { count: "exact", head: true }).in("state", ["searching", "candidate_found", "waiting_confirmation"]),
     supabaseAdmin().from("profiles").select("id", { count: "exact", head: true }).eq("online", true).gte("last_seen", recentCutoff),
     supabaseAdmin().from("profiles").select("id", { count: "exact", head: true }),
-    supabaseAdmin().from("rooms").select("id").eq("status", "playing"),
+    supabaseAdmin().from("sessions").select("room_id").eq("status", "playing"),
   ]);
-  const roomIds = (playingRooms || []).map((r) => r.id);
+  // A room shell intentionally remains visible after one member exits so the
+  // other member can see what happened. Only a genuinely playing Session is
+  // therefore allowed to contribute to the live playing count.
+  const roomIds = Array.from(new Set((playingSessions || []).map((session) => session.room_id).filter(Boolean)));
   const { count: playing } = roomIds.length
     ? await supabaseAdmin().from("room_members").select("id", { count: "exact", head: true }).eq("status", "active").in("room_id", roomIds)
     : { count: 0 };
