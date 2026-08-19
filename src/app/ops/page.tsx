@@ -39,8 +39,6 @@ type FeedbackItem = {
   feedback_type: string;
   content: string;
   contact_email?: string | null;
-  current_page?: string | null;
-  current_game?: string | null;
   created_at: string;
 };
 
@@ -318,13 +316,11 @@ export default function OpsPage() {
               <article className={styles.feedbackRow} key={item.id}>
                 <div className={styles.feedbackMeta}>
                   <span className={styles.feedbackType}>{item.feedback_type === "bug" ? "发现问题" : item.feedback_type === "suggestion" ? "功能建议" : "其他"}</span>
-                  <b>{item.username || "未登录访客"}</b>
+                  <b>{item.username || "注册玩家"}</b>
                   <time>{time(item.created_at)}</time>
                 </div>
                 <p className={styles.feedbackContent}>{item.content}</p>
                 <div className={styles.feedbackContext}>
-                  <span>页面 <b>{item.current_page || "未记录"}</b></span>
-                  {item.current_game && <span>游戏 <b>{item.current_game}</b></span>}
                   {item.contact_email && <span>联系方式 <b>{item.contact_email}</b></span>}
                 </div>
               </article>

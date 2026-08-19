@@ -32,8 +32,8 @@ export async function saveFeedback(
 ): Promise<{ row: FeedbackRow; duplicate: boolean }> {
   const content = String(payload.content || "").trim();
   const feedbackType = String(payload.feedbackType || "other").trim();
-  if (content.length < 10 || content.length > 2000) {
-    throw new Error("反馈内容需要在 10 到 2000 个字符之间");
+  if (content.length < 10 || content.length > 500) {
+    throw new Error("反馈内容需要在 10 到 500 个字符之间");
   }
   if (!ALLOWED_TYPES.has(feedbackType)) {
     throw new Error("反馈类型无效");

@@ -1,7 +1,7 @@
 let supabase = null;
 let configCache = null;
 
-async function request(path, body, token = null) {
+async function request(path, body, token = null, { timeoutMs = 15000 } = {}) {
   const headers = {};
   if (body !== undefined) {
     headers["Content-Type"] = "application/json";
@@ -11,7 +11,7 @@ async function request(path, body, token = null) {
   }
   if (token) headers.Authorization = `Bearer ${token}`;
   const controller = new AbortController();
-  const timeout = window.setTimeout(() => controller.abort(), 15000);
+  const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
   let res;
   try {
     res = await fetch(path, {
@@ -22,7 +22,11 @@ async function request(path, body, token = null) {
       signal: controller.signal,
     });
   } catch (error) {
-    if (error?.name === "AbortError") throw new Error("连接超时，请稍后重试");
+    if (error?.name === "AbortError") {
+      const timeoutError = new Error("连接超时，正在核对服务器状态");
+      timeoutError.code = "CONNECTION_TIMEOUT";
+      throw timeoutError;
+    }
     throw error;
   } finally {
     window.clearTimeout(timeout);
@@ -108,10 +112,10 @@ export const register = async (profile) => {
 };
 
 export const updateProfile = (profile) => authedRequest("/api/profile", profile);
-export const startMatchmaking = (match) => authedRequest("/api/matchmaking/start", { match });
-export const getMatchmakingStatus = () => authedRequest("/api/matchmaking/status");
-export const cancelMatchmaking = (reason = "user_cancelled") => authedRequest("/api/matchmaking/cancel", { reason });
-export const confirmMatchmaking = (pairId, decision) => authedRequest("/api/matchmaking/confirm", { pairId, decision });
+export const startMatchmaking = async (match) => request("/api/matchmaking/start", { match }, await currentToken(), { timeoutMs: 30000 });
+export const getMatchmakingStatus = async () => request("/api/matchmaking/status", undefined, await currentToken(), { timeoutMs: 30000 });
+export const cancelMatchmaking = async (reason = "user_cancelled") => request("/api/matchmaking/cancel", { reason }, await currentToken(), { timeoutMs: 30000 });
+export const confirmMatchmaking = async (pairId, decision) => request("/api/matchmaking/confirm", { pairId, decision }, await currentToken(), { timeoutMs: 30000 });
 export const submitMatchmakingFeedback = (payload) => authedRequest("/api/matchmaking/feedback", payload);
 export const goOffline = async () => {
   try {
@@ -125,21 +129,14 @@ export const goOffline = async () => {
     // best-effort offline signal
   }
 };
+export const heartbeatPresence = () => authedRequest("/api/presence", {});
 export const roomAction = (code, action) => authedRequest(`/api/room/${code}/${action}`, {});
 export const requestRoomGoodbye = (code, requested) => authedRequest(`/api/room/${code}/goodbye`, { requested });
 export const roomFeedback = (code, payload) => authedRequest(`/api/room/${code}/feedback`, payload);
 export const searchFriend = (code) => authedRequest("/api/friends/search", { code });
 export const addFriend = ({ friendCode, targetUserId } = {}) => authedRequest("/api/friends/add", { friendCode, targetUserId });
 export const respondFriend = (requesterId, decision) => authedRequest("/api/friends/respond", { requesterId, decision });
-export const sendFeedback = async (payload) => {
-  let token = null;
-  try {
-    token = await currentToken();
-  } catch {
-    // 登录故障本身也可能需要反馈，所以这里允许匿名提交。
-  }
-  return request("/api/feedback", payload, token);
-};
+export const sendFeedback = async (payload) => request("/api/feedback", payload, await currentToken());
 export const trackEvent = (eventName, properties = {}) =>
   authedRequest("/api/events", { eventName, properties }).catch(() => null);
 

@@ -43,11 +43,22 @@ describe("P1 operations contract", () => {
     const homePage = read("public/js/pages/home.js");
     expect(homePage).toContain("match-contact");
     expect(homePage).toContain("open-feedback");
-    expect(feedbackRoute).toContain("authUser ? await profileByAuthId");
+    expect(feedbackRoute).toContain("requireRequestProfile");
     expect(feedbackRoute).not.toContain("sendFeedbackEmail");
+    expect(feedbackLib).toContain("10 到 500");
     expect(feedbackLib).not.toContain("Resend");
     expect(metricsRoute).toContain('.from("feedback")');
+    expect(metricsRoute).not.toContain("current_page,current_game");
     expect(metricsRoute).toContain("recentFeedback");
     expect(opsPage).toContain("联系我们收件箱");
+  });
+
+  it("keeps signed-in players visible with a lightweight presence heartbeat", () => {
+    const route = read("src/app/api/presence/route.ts");
+    const app = read("public/js/app.js");
+    expect(route).toContain("requireRequestProfile");
+    expect(route).toContain("last_seen");
+    expect(app).toContain("startPresenceHeartbeat");
+    expect(app).toContain("30000");
   });
 });

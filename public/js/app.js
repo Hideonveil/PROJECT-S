@@ -82,6 +82,7 @@ let matchRequestPending = false;
 let matchConfirmationPending = false;
 let staggeredRailCleanup = null;
 let staggeredRailHoldOpen = false;
+let presenceTimer = 0;
 let lastTrackedRoute = "";
 const trackedCandidatePairs = new Set();
 
@@ -1107,7 +1108,7 @@ function applyMatchmakingSnapshot(snapshot, options = {}) {
       lifecycle: ticket,
       pair,
       candidate,
-      notice: options.notice || (timedOut ? "对方没有接受，正在继续寻找其他玩家。" : (pair ? "" : state.match.notice || "")),
+      notice: options.notice || (timedOut ? "对方已离开匹配，正在继续寻找其他玩家。" : (pair ? "" : state.match.notice || "")),
   };
   update({ match: nextMatch });
   const routeName = parseRoute().name;
@@ -1140,7 +1141,7 @@ function applyServerSnapshot(data) {
       lifecycle: mm.ticket || null,
       pair: mm.pair || null,
       candidate: mm.candidate || null,
-      notice: mm.pair ? "" : (timedOut ? "对方没有接受，正在继续寻找其他玩家。" : previousMatch.notice || ""),
+      notice: mm.pair ? "" : (timedOut ? "对方已离开匹配，正在继续寻找其他玩家。" : previousMatch.notice || ""),
     };
   }
   if (data.user) patch.user = data.user;
@@ -1223,6 +1224,19 @@ async function confirmMatch(decision) {
       if (fullState.room) navigate("#/room");
     }
   } catch (error) {
+    if (error?.code === "CONNECTION_TIMEOUT") {
+      try {
+        const snapshot = await api.getMatchmakingStatus();
+        applyMatchmakingSnapshot(snapshot);
+        if (snapshot?.pair?.state === "matched" || snapshot?.pair?.state === "playing") {
+          const fullState = await api.getState();
+          applyServerSnapshot(fullState);
+        }
+        return;
+      } catch {
+        // Keep the current confirmation UI if the reconciliation also fails.
+      }
+    }
     toast(error.message);
   } finally {
     matchConfirmationPending = false;
@@ -1280,6 +1294,7 @@ function handleServerGameOver(session) {
 
 function connectEvents() {
   if (!ONLINE || !state.authenticated) return;
+  startPresenceHeartbeat();
   if (eventSourceClose) eventSourceClose();
   eventSourceClose = api.openEvents({
     hello: applyServerSnapshot,
@@ -1306,6 +1321,19 @@ function connectEvents() {
     room: (data) => handleServerRoom(data.room),
     "game-over": (data) => handleServerGameOver(data.session),
   });
+}
+
+function stopPresenceHeartbeat() {
+  if (presenceTimer) window.clearInterval(presenceTimer);
+  presenceTimer = 0;
+}
+
+function startPresenceHeartbeat() {
+  if (!ONLINE || !state.authenticated || !state.onboarded) return;
+  stopPresenceHeartbeat();
+  const beat = () => api.heartbeatPresence().catch(() => {});
+  beat();
+  presenceTimer = window.setInterval(beat, 30000);
 }
 
 function showAuthError(message, { preservePassword = false } = {}) {
@@ -1538,6 +1566,21 @@ async function startMatch() {
       immediate: true,
     });
   } catch (err) {
+    // A browser timeout does not mean the server rolled back. Reconcile first
+    // so a successfully-created ticket cannot become a ghost candidate.
+    if (err?.code === "CONNECTION_TIMEOUT") {
+      try {
+        const snapshot = await api.getMatchmakingStatus();
+        if (snapshot?.ticket) {
+          applyMatchmakingSnapshot(snapshot);
+          navigate("#/matching");
+          toast("服务器已确认你在匹配池中");
+          return;
+        }
+      } catch {
+        // Fall through only when the server state cannot be recovered.
+      }
+    }
     update({ match: previousMatch });
     toast(err.message);
   } finally {
@@ -1570,11 +1613,16 @@ function startMatchingFlow() {
     }
   }, 350);
   timers.push(interval);
+  let syncPending = false;
   const sync = window.setInterval(async () => {
+    if (syncPending) return;
+    syncPending = true;
     try {
       applyMatchmakingSnapshot(await api.getMatchmakingStatus());
     } catch {
       // Realtime remains primary; heartbeat polling is a resilience path.
+    } finally {
+      syncPending = false;
     }
   }, 3000);
   timers.push(sync);
@@ -1928,6 +1976,7 @@ async function logout() {
     eventSourceClose();
     eventSourceClose = null;
   }
+  stopPresenceHeartbeat();
   await withProjectTransition(() => api.signOut().catch(() => {}), { label: "正在退出账号" });
   resetState();
   DRAFT.dirty = false;
@@ -2018,13 +2067,18 @@ async function respondProjectFriend(requesterId, decision) {
 }
 
 function openFeedback() {
+  if (!state.authenticated || !state.onboarded) {
+    toast("注册或登录后才能联系我们");
+    enterAuth("login");
+    return;
+  }
   showSheet(`
     <div class="sheet contact-sheet" role="dialog" aria-modal="true" aria-labelledby="contact-title">
       <aside class="contact-sheet-rail">
         <span class="contact-sheet-code">CONTACT / OPS / 01</span>
         <div class="contact-sheet-mark">${icon("messageSquare", 38)}</div>
         <div><p>不是发邮件。</p><h2 id="contact-title">把问题直接<br>留给机缘。</h2></div>
-        <small>提交后会直接进入运营台，我们会连同当前页面一起查看。</small>
+        <small>提交后会直接进入运营台，由机缘团队统一查看和处理。</small>
       </aside>
       <form data-form="feedback" class="contact-form">
         <header class="contact-form-head"><div><span>SIGNAL INBOX</span><h3>联系我们</h3></div><button class="contact-sheet-close" type="button" data-action="close-sheet" aria-label="关闭">${icon("x", 20)}</button></header>
@@ -2033,9 +2087,9 @@ function openFeedback() {
           <label><input type="radio" name="category" value="suggestion"><span>功能建议</span></label>
           <label><input type="radio" name="category" value="other"><span>其他</span></label>
         </fieldset>
-        <label class="contact-field" for="feedback-message"><span>告诉我们发生了什么</span><textarea id="feedback-message" name="message" minlength="10" maxlength="2000" placeholder="尽量写清楚你刚才做了什么、看到了什么……" required></textarea><small>至少 10 个字 · 最多 2000 个字</small></label>
+        <label class="contact-field" for="feedback-message"><span>告诉我们发生了什么</span><textarea id="feedback-message" name="message" minlength="10" maxlength="500" placeholder="尽量写清楚你刚才做了什么、看到了什么……" required></textarea><small>至少 10 个字 · 最多 500 个字</small></label>
         <label class="contact-field" for="feedback-contact"><span>如何联系你 <i>可选</i></span><input id="feedback-contact" name="contact" placeholder="微信号 / QQ / 邮箱"></label>
-        <div class="contact-form-foot"><p>${icon("shieldCheck", 16)}<span>当前页面会自动记录；未登录也可以提交。</span></p>${button({ label: "发送到运营台", action: "submit-feedback", kind: "primary", iconName: "send" })}</div>
+        <div class="contact-form-foot"><p>${icon("shieldCheck", 16)}<span>仅限已注册玩家提交，内容直接进入运营台。</span></p>${button({ label: "发送到运营台", action: "submit-feedback", kind: "primary", iconName: "send" })}</div>
       </form>
     </div>
   `);
@@ -2053,6 +2107,10 @@ async function submitFeedback() {
     toast("反馈内容至少 10 个字");
     return;
   }
+  if (message.length > 500) {
+    toast("反馈内容最多 500 个字");
+    return;
+  }
   if (ONLINE) {
     if (submitBtn) {
       submitBtn.disabled = true;
@@ -2067,8 +2125,6 @@ async function submitFeedback() {
         message,
         contact: String(fd.get("contact") || "").trim(),
         requestId,
-        currentPage: location.hash || "/",
-        currentGame: state.need?.game || state.user?.games?.[0]?.gameId || null,
       });
       closeSheet();
       toast("已经送到运营台，我们会在这里处理。");
@@ -2643,6 +2699,7 @@ window.addEventListener("beforeunload", () => {
   destroyField();
   if (chatClose) chatClose();
   if (eventSourceClose) eventSourceClose();
+  stopPresenceHeartbeat();
   if (ONLINE && state.authenticated) api.goOffline();
 });
 

@@ -24,7 +24,7 @@ export async function GET(request: Request) {
         .limit(20),
       admin
         .from("feedback")
-        .select("id,username,feedback_type,content,contact_email,current_page,current_game,created_at")
+        .select("id,username,feedback_type,content,contact_email,created_at")
         .gte("created_at", since)
         .order("created_at", { ascending: false })
         .limit(40),

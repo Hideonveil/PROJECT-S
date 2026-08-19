@@ -206,7 +206,7 @@ body:has(.landing-shell) {
 .product-brand .brand-mark {
   width: 54px;
   height: 54px;
-  filter: drop-shadow(0 10px 24px rgba(118, 89, 223, 0.18));
+  filter: brightness(.86) saturate(1.18) drop-shadow(0 10px 24px rgba(92, 63, 195, 0.22));
 }
 
 .product-brand strong {
@@ -1696,13 +1696,11 @@ body.is-project-transitioning { overflow: hidden; }
   .match-wizard-copy { padding-block: 30px; }
   .match-wizard-copy h2 { font-size: clamp(30px, 3vw, 42px); }
   .match-wizard-options {
-    height: 292px;
-    min-height: 0;
+    height: auto;
+    min-height: 292px;
     padding-block: 24px;
     align-items: flex-start;
-    overflow-y: auto;
-    overscroll-behavior: contain;
-    scrollbar-gutter: stable;
+    overflow: visible;
   }
   .match-wizard-actions { min-height: 78px; }
   .match-role-groups { gap: 16px; }

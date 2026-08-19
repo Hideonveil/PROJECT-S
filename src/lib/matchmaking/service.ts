@@ -80,7 +80,10 @@ async function attemptMatch(userId: string) {
       .from("matchmaking_pairs")
       .select("user_a_id,user_b_id")
       .in("state", ["cancelled", "expired"])
-      .in("cancel_reason", ["rejected", "confirmation_timeout"])
+      // A timeout often means a dropped/slow connection, not an intentional
+      // rejection. Let those two players meet again immediately; only a clear
+      // rejection starts the short pair cooldown.
+      .eq("cancel_reason", "rejected")
       .gte("updated_at", cutoff)
       .or(`user_a_id.eq.${userId},user_b_id.eq.${userId}`);
     for (const pair of recentRejected || []) {

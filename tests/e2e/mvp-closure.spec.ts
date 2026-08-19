@@ -287,6 +287,7 @@ test("matching contact opens the OPS inbox form and submits without a fullscreen
     return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true }) });
   });
   await page.goto("/index.html?contact=1#/home");
+  await login(page);
   await page.getByRole("button", { name: /联系我们/ }).click();
   await expect(page.locator(".contact-sheet")).toBeVisible();
   await expect(page.getByText("不是发邮件。", { exact: true })).toBeVisible();
@@ -295,7 +296,9 @@ test("matching contact opens the OPS inbox form and submits without a fullscreen
   await page.getByRole("button", { name: "发送到运营台" }).click();
   await expect(page.locator("[data-project-transition]")).toHaveCount(0);
   await expect(page.getByText("已经送到运营台，我们会在这里处理。", { exact: true })).toBeVisible();
-  expect(feedback).toMatchObject({ category: "bug", currentPage: "#/home", contact: "test-contact" });
+  expect(feedback).toMatchObject({ category: "bug", contact: "test-contact" });
+  expect(feedback).not.toHaveProperty("currentPage");
+  expect(feedback).not.toHaveProperty("currentGame");
 });
 
 test("Deadlock rank and casual paths expose different step systems", async ({ page }) => {
@@ -717,7 +720,7 @@ test("confirmation timeout updates the existing matching modal without resetting
   const modal = page.locator("[data-matching-modal]");
   await modal.evaluate((element) => element.setAttribute("data-test-persisted", "yes"));
   await expect(page.getByText("你已准备，正在等对方确定。", { exact: true })).toBeVisible();
-  await expect(page.locator("#match-desc")).toHaveText("对方没有接受，正在继续寻找其他玩家。", { timeout: 5000 });
+  await expect(page.locator("#match-desc")).toHaveText("对方已离开匹配，正在继续寻找其他玩家。", { timeout: 5000 });
   await expect(modal).toHaveAttribute("data-test-persisted", "yes");
   await expect(page.locator("#match-time")).not.toHaveText("0s");
 });

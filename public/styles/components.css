@@ -9,7 +9,7 @@
   display: inline-flex;
   color: var(--signal);
   flex: none;
-  filter: drop-shadow(0 4px 12px rgba(184, 160, 240, 0.26));
+  filter: brightness(.86) saturate(1.18) drop-shadow(0 4px 12px rgba(118, 89, 223, 0.22));
 }
 
 /* ---------- buttons: 90% modern web, 10% prism ---------- */
@@ -938,6 +938,9 @@ canvas[data-node-field] {
 .contact-form-foot { margin-top: auto; padding-top: 18px; display: flex; align-items: center; justify-content: space-between; gap: 18px; border-top: 1px solid #d3d0c9; }
 .contact-form-foot p { margin: 0; display: flex; align-items: center; gap: 8px; color: #77747c; font-size: 10px; line-height: 1.4; }
 .contact-form-foot .btn { flex: 0 0 auto; min-width: 176px; border-radius: 0; }
+.contact-form-foot .btn--primary { background: #5c3fc3; box-shadow: 0 10px 24px rgba(92, 63, 195, .28); }
+.contact-form-foot .btn--primary:hover,
+.contact-form-foot .btn--primary:focus-visible { background: #432896; box-shadow: 0 12px 28px rgba(67, 40, 150, .34); }
 
 @keyframes contact-sheet-in {
   from { opacity: 0; transform: translateY(22px) scale(.985); }

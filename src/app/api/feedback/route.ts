@@ -1,14 +1,13 @@
 import { NextResponse } from "next/server";
-import { authUserFromToken, profileByAuthId } from "@/lib/auth";
-import { bearerToken } from "@/lib/http";
+import { requireRequestProfile } from "@/lib/auth";
+import { errorResponse, requestId } from "@/lib/http";
 import { saveFeedback } from "@/lib/feedback";
 
 export async function POST(request: Request) {
+  const rid = requestId(request);
   try {
     const body = await request.json();
-    const token = bearerToken(request, body);
-    const authUser = await authUserFromToken(token);
-    const profile = authUser ? await profileByAuthId(authUser.id) : null;
+    const profile = await requireRequestProfile(request, body);
 
     const payload = {
       feedbackType: String(body.category || body.feedbackType || "other"),
@@ -23,7 +22,7 @@ export async function POST(request: Request) {
 
     let saved;
     try {
-      saved = await saveFeedback(profile, payload, authUser?.email);
+      saved = await saveFeedback(profile, payload);
     } catch (error) {
       const message = error instanceof Error ? error.message : "提交失败，请稍后重试";
       return NextResponse.json({ error: message }, { status: 400 });
@@ -35,6 +34,6 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ ok: true });
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "提交失败，请稍后重试" }, { status: 500 });
+    return errorResponse(error, rid, "提交失败，请稍后重试");
   }
 }
