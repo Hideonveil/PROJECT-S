@@ -55,6 +55,12 @@ ssh ubuntu@124.156.175.247 /opt/jiyuan/deploy/china-hk/deploy.sh
 保存在服务器，不应被 rsync、Git 或日志覆盖。后续如改为 GitHub Actions，应先
 把服务器改成 deploy key 管理的 Git 工作副本，再替换本流程。
 
+首次部署或监控文件发生变化后安装后台健康检查：
+
+```sh
+ssh ubuntu@124.156.175.247 /opt/jiyuan/deploy/china-hk/install-monitor.sh
+```
+
 ## 验收
 
 ```sh

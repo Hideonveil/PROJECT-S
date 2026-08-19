@@ -1,0 +1,14 @@
+[Unit]
+Description=Jiyuan public health check
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+Environment=PUBLIC_URL=https://jiyuan.online
+Environment=STATE_FILE=/var/lib/jiyuan-monitor/state
+EnvironmentFile=-/opt/jiyuan/deploy/china-hk/.env.production
+ExecStart=/opt/jiyuan/deploy/china-hk/monitor.sh
+StateDirectory=jiyuan-monitor
+

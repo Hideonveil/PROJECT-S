@@ -37,16 +37,17 @@ limit 100;
 ./scripts/check-public.sh https://jiyuan.online
 ```
 
-服务器可每分钟运行：
+服务器的 systemd timer 每分钟自动运行：
 
 ```sh
-PUBLIC_URL=https://jiyuan.online \
-ALERT_WEBHOOK_URL='你的企业微信或兼容 webhook' \
-./deploy/china-hk/monitor.sh
+./deploy/china-hk/install-monitor.sh
+systemctl list-timers jiyuan-monitor.timer
+journalctl -u jiyuan-monitor.service
 ```
 
 脚本只在状态由正常变故障或由故障恢复时通知，避免每分钟重复刷屏。没有 webhook
-时仍会写日志，但无法把提醒发送给人。
+时仍会由 systemd 记录执行结果，但无法把提醒发送给人。设置
+`ALERT_WEBHOOK_URL` 后重启下一次检查即可生效。
 
 ## 4. 反馈邮件
 
@@ -65,4 +66,3 @@ RESEND_FROM_EMAIL=机缘 <onboarding@resend.dev>
 - 手机和平板显示“请使用电脑打开”；窄窗口的 Windows/macOS 不会被误判成手机。
 - 发布后分别使用中国电信、联通、移动网络运行 `check-public.sh`，记录 DNS、TLS、
   首字节和总耗时。香港节点不需要备案，但不能保证所有地区跨境线路质量一致。
-
