@@ -725,17 +725,17 @@ body:has(.landing-shell) {
 .match-content-grid { display: grid; grid-template-columns: minmax(0, 1fr) 252px; gap: 28px; align-items: start; padding-top: 28px; }
 .match-primary-stage { min-width: 0; }
 .match-games-grid { width: 100%; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; align-items: start; }
-.product-shell .match-game-card { position: relative; min-height: 0; display: flex; flex-direction: column; align-items: stretch; padding: 14px; overflow: hidden; border: 1px solid rgba(18,17,24,.14); border-radius: 14px; background: rgba(255,255,255,.82); color: var(--product-black); box-shadow: 0 1px 0 rgba(18,17,24,.04); text-align: left; transition: transform 260ms cubic-bezier(.22,1,.36,1), background 220ms ease, border-color 220ms ease, box-shadow 260ms cubic-bezier(.22,1,.36,1); }
+.product-shell .match-game-card { position: relative; height: clamp(270px, 29vw, 320px); min-height: 0; display: flex; flex-direction: column; align-items: stretch; padding: 14px; overflow: hidden; border: 1px solid rgba(18,17,24,.14); border-radius: 14px; background: rgba(255,255,255,.82); color: var(--product-black); box-shadow: 0 1px 0 rgba(18,17,24,.04); text-align: left; transition: transform 260ms cubic-bezier(.22,1,.36,1), background 220ms ease, border-color 220ms ease, box-shadow 260ms cubic-bezier(.22,1,.36,1); }
 .product-shell .match-game-card:hover { border-color: rgba(118,89,223,.52); background: #fff; box-shadow: 0 14px 28px rgba(18,17,24,.1); transform: translateY(-5px); }
 .product-shell .match-game-card.is-on { border-color: var(--product-violet); background: #fff; box-shadow: 0 14px 28px rgba(118,89,223,.16), 0 0 0 2px rgba(118,89,223,.12); transform: translateY(-3px); }
 .product-shell .match-game-card--soon { cursor: default; }
 .product-shell .match-game-card--soon:hover { border-color: rgba(18,17,24,.22); background: rgba(255,255,255,.9); box-shadow: 0 10px 24px rgba(18,17,24,.07); }
-.match-game-art-slot { position: relative; width: 100%; height: clamp(150px, 17vw, 214px); display: grid; place-items: center; flex: none; overflow: hidden; border-radius: 10px; background: #132f31 url("/assets/games/deadlock-card.png") center / cover no-repeat; transition: filter 260ms ease, transform 420ms cubic-bezier(.22,1,.36,1); }
+.match-game-art-slot { position: relative; width: 100%; height: auto; aspect-ratio: 1.38; display: grid; place-items: center; flex: none; overflow: hidden; border-radius: 10px; background: #132f31 url("/assets/games/deadlock-card.png") center 65% / cover no-repeat; transition: filter 260ms ease, transform 420ms cubic-bezier(.22,1,.36,1); }
 .match-game-art-slot::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(9,18,20,.02), rgba(9,18,20,.28)); pointer-events: none; }
 .match-game-card:hover .match-game-art-slot, .match-game-card.is-on .match-game-art-slot { filter: saturate(1.08) brightness(1.04); transform: scale(1.025); }
 .match-game-card--soon .match-game-art-slot { background: linear-gradient(145deg, rgba(118,89,223,.14), rgba(18,17,24,.04)), repeating-linear-gradient(135deg, rgba(118,89,223,.16) 0 2px, transparent 2px 12px); }
 .match-game-art-slot i { position: relative; z-index: 1; color: rgba(18,17,24,.5); font-family: var(--font-mono); font-size: 9px; font-style: normal; font-weight: 850; letter-spacing: .12em; }
-.match-game-option-main { position: relative; z-index: 1; width: 100%; min-width: 0; min-height: 114px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 9px; padding: 16px 8px 4px; background: transparent; color: var(--product-black); text-align: center; }
+.match-game-option-main { position: relative; z-index: 1; width: 100%; min-width: 0; min-height: 78px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 7px; padding: 11px 8px 2px; background: transparent; color: var(--product-black); text-align: center; }
 .match-game-card-kicker { color: rgba(18,17,24,.42); font-family: var(--font-mono); font-size: 9px; font-weight: 850; letter-spacing: .11em; }
 .match-game-card-title-row { display: flex; align-items: center; justify-content: center; gap: 9px; width: 100%; }
 .match-game-option-main .match-option-icon { width: 31px; height: 31px; display: grid; place-items: center; border: 1px solid rgba(118,89,223,.5); color: var(--product-violet); }
@@ -1282,6 +1282,7 @@ body.is-project-transitioning { overflow: hidden; }
 
 /* Expandable-card treatment for game selection: keep both live and coming-soon cards on the same visual system. */
 .product-shell .match-option.match-game-card {
+  height: clamp(270px, 29vw, 320px);
   min-height: 0;
   padding: 14px;
   border: 1px solid rgba(18,17,24,.14);
