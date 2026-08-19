@@ -592,6 +592,70 @@ test("candidate confirmation shows each player's independent ready state", async
   await expect(page.getByRole("button", { name: "确定是 TA", exact: true })).toBeVisible();
 });
 
+test("a completed confirmation enters the created room without another button", async ({ page }) => {
+  await mockProductBackend(page);
+  await page.unroute("**/api/matchmaking/start");
+  await page.unroute("**/api/matchmaking/status");
+  const waitingSnapshot = {
+    ticket: { id: "ticket-1", state: "waiting_confirmation", search_started_at: new Date().toISOString() },
+    pair: {
+      id: "pair-1",
+      state: "waiting_confirmation",
+      confirmations: [
+        { user_id: mockProfile.id, decision: null },
+        { user_id: mockPartner.id, decision: "accepted" },
+      ],
+    },
+    candidate: mockPartner,
+    matching: 0,
+    matchable: 0,
+  };
+  await page.route("**/api/matchmaking/start", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify(waitingSnapshot),
+  }));
+  await page.route("**/api/matchmaking/status", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify(waitingSnapshot),
+  }));
+  await page.route("**/api/matchmaking/confirm", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({
+      ticket: { id: "ticket-1", state: "playing", search_started_at: new Date().toISOString() },
+      pair: { id: "pair-1", state: "playing", roomCode: "LINK42", confirmations: [] },
+      candidate: mockPartner,
+      matching: 0,
+      matchable: 0,
+    }),
+  }));
+  await page.goto("/index.html#/home");
+  await login(page);
+  await reachDeadlockCasualFinal(page);
+  await page.getByRole("button", { name: "开始匹配", exact: true }).click();
+  await page.unroute("**/api/state");
+  await page.route("**/api/state", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({
+      user: mockProfile,
+      friends: [],
+      friendRequests: { incoming: [], outgoing: [] },
+      recentConnections: [],
+      room: mockActiveRoom,
+      session: { id: "session-1", roomCode: "LINK42", status: "playing" },
+      matching: 0,
+      playing: 2,
+      matchmaking: { ticket: null, pair: null, candidate: null, matching: 0, matchable: 0 },
+    }),
+  }));
+  await page.getByRole("button", { name: "确定是 TA", exact: true }).click();
+  await expect(page).toHaveURL(/#\/room$/);
+  await expect(page.locator("[data-connection-room]")).toBeVisible();
+});
+
 test("confirmation timeout updates the existing matching modal without resetting it", async ({ page }) => {
   await mockProductBackend(page);
   const startedAt = new Date(Date.now() - 4000).toISOString();
@@ -639,7 +703,7 @@ test("confirmation timeout updates the existing matching modal without resetting
   await expect(page.locator("#match-time")).not.toHaveText("0s");
 });
 
-test("room navigation stays voluntary and goodbye patches the existing connection room", async ({ page }) => {
+test("an active room resumes directly and goodbye patches the existing connection room", async ({ page }) => {
   await mockProductBackend(page);
   let goodbyeRequested = false;
   await page.unroute("**/api/state");
@@ -672,9 +736,7 @@ test("room navigation stays voluntary and goodbye patches the existing connectio
 
   await page.goto("/index.html#/home");
   await login(page);
-  await expect(page).toHaveURL(/#\/home$/);
-  await page.locator("[data-staggered-rail]").hover();
-  await page.getByRole("link", { name: "进行中的房间", exact: true }).click();
+  await expect(page).toHaveURL(/#\/room$/);
   const room = page.locator("[data-connection-room]");
   await expect(room).toBeVisible();
   await expect(page.getByText("对方申请加你为 PROJECT-S 好友", { exact: true })).toBeVisible();
@@ -758,6 +820,49 @@ test("friend code search sends a request to the exact profile without a fullscre
   await expect(page.getByRole("heading", { name: "朋友列表", exact: true })).toBeVisible();
   await expect(page.getByText("代码好友", { exact: true })).toBeVisible();
   await expect(page.getByText("好友申请待确认", { exact: true })).toBeVisible();
+});
+
+test("completed sessions restore friendship controls and feedback responds before saving", async ({ page }) => {
+  await mockProductBackend(page);
+  await page.unroute("**/api/state");
+  await page.route("**/api/state", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({
+      user: mockProfile,
+      friends: [],
+      friendRequests: { incoming: [], outgoing: [] },
+      recentConnections: [mockRecentConnection],
+      room: null,
+      session: {
+        id: "session-completed",
+        roomCode: "DONE42",
+        players: [mockProfile.id, mockPartner.id],
+        need: { game: "deadlock", mode: "娱乐" },
+        status: "completed",
+      },
+      matching: 0,
+      playing: 0,
+      matchmaking: { ticket: null, pair: null, candidate: null, matching: 0, matchable: 0 },
+    }),
+  }));
+  await page.route("**/api/room/DONE42/feedback", async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 700));
+    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true }) });
+  });
+
+  await page.goto("/index.html#/home");
+  await login(page);
+  await expect(page).toHaveURL(/#\/gameover$/);
+  await expect(page.getByRole("button", { name: "添加为 PROJECT-S 好友", exact: true })).toBeVisible();
+
+  const like = page.getByRole("button", { name: "为 TA 点赞", exact: true });
+  await like.click();
+  await expect(page.getByRole("button", { name: "已点赞", exact: true })).toHaveAttribute("aria-pressed", "true", { timeout: 250 });
+
+  const rating = page.getByRole("button", { name: /01 很开心/ });
+  await rating.click();
+  await expect(rating).toHaveAttribute("aria-pressed", "true", { timeout: 250 });
 });
 
 test("community is a separate clean route", async ({ page }) => {

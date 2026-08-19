@@ -79,6 +79,7 @@ let matchStartObserver = null;
 let productTickerCleanup = null;
 let targetCursorCleanup = null;
 let matchRequestPending = false;
+let matchConfirmationPending = false;
 let staggeredRailCleanup = null;
 let staggeredRailHoldOpen = false;
 
@@ -902,6 +903,19 @@ function normalizeServerRoom(room) {
   };
 }
 
+function sessionPartnerFor(session) {
+  const partnerId = (session?.players || []).find((id) => id && id !== state.user.id) || "";
+  const roomPartner = state.room?.members?.find((member) => member.id === partnerId) || state.room?.partner;
+  const savedPartner = state.session?.partner;
+  const recentPartner = (state.recentConnections || []).find((connection) => connection.id === partnerId);
+  const source = roomPartner?.id ? roomPartner : savedPartner?.id ? savedPartner : recentPartner || roomPartner || savedPartner || {};
+  return {
+    ...source,
+    id: source.id || partnerId,
+    name: source.name || source.nickname || "对方玩家",
+  };
+}
+
 function roomShapeChanged(next, prev) {
   if (!next || !prev) return true;
   if (next.code !== prev.code || next.status !== prev.status) return true;
@@ -1146,6 +1160,9 @@ function applyServerSnapshot(data) {
       handleServerGameOver(session);
       return;
     }
+    if (!state.session.partner?.id) {
+      patch.session = { ...state.session, partner: sessionPartnerFor(session) };
+    }
   }
   const roomChanged = patch.room ? roomShapeChanged(patch.room, state.room) : false;
   update(patch);
@@ -1172,8 +1189,8 @@ function applyServerSnapshot(data) {
 
 async function confirmMatch(decision) {
   const pairId = state.match.pair?.id;
-  if (!pairId || matchRequestPending) return;
-  matchRequestPending = true;
+  if (!pairId || matchConfirmationPending) return;
+  matchConfirmationPending = true;
   try {
     const snapshot = await api.confirmMatchmaking(pairId, decision);
     applyMatchmakingSnapshot(snapshot, { notice: decision === "rejected" ? "已跳过这位玩家，正在继续寻找。" : "" });
@@ -1186,7 +1203,7 @@ async function confirmMatch(decision) {
   } catch (error) {
     toast(error.message);
   } finally {
-    matchRequestPending = false;
+    matchConfirmationPending = false;
   }
 }
 
@@ -1215,7 +1232,7 @@ function handleServerGameOver(session) {
     navigate("#/home");
     return;
   }
-  const partner = state.room?.partner || state.session?.partner || {};
+  const partner = sessionPartnerFor(session);
   const now = new Date();
   const time = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
   const gameName = GAME_BY_ID[session.need?.game]?.name || session.need?.game || state.need.game || "游戏";
@@ -2637,16 +2654,24 @@ async function handleAuthSuccess() {
     authNotice: "",
   });
   if (status.profile) {
+    let destination = "#/home";
     update({ user: status.profile });
     try {
       const snapshot = await api.getState();
       update({ user: snapshot.user });
       applyServerSnapshot(snapshot);
+      destination = snapshot.room
+        ? "#/room"
+        : snapshot.session?.status === "completed"
+          ? "#/gameover"
+          : snapshot.matchmaking?.ticket
+            ? "#/matching"
+            : "#/home";
     } catch {
       // profile-only state is enough to enter home
     }
     connectEvents();
-    navigate("#/home");
+    navigate(destination);
     toast(`欢迎回来，${state.user.nickname}`);
   } else {
     update({ user: { ...state.user, nickname: "", avatarKey: "", device: "", gender: "", games: [], genres: [], playStyle: "" } });
