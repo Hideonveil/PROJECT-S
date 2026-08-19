@@ -4,7 +4,9 @@ set -eu
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 cd "$SCRIPT_DIR"
 
-APP_VERSION=$(git -C "$SCRIPT_DIR/../.." rev-parse --short HEAD 2>/dev/null || printf 'unknown')
+if [ -z "${APP_VERSION:-}" ]; then
+  APP_VERSION=$(git -C "$SCRIPT_DIR/../.." rev-parse --short HEAD 2>/dev/null || printf 'unknown')
+fi
 export APP_VERSION
 
 if [ ! -f .env.production ]; then

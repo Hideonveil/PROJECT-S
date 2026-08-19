@@ -55,6 +55,9 @@ ssh ubuntu@124.156.175.247 /opt/jiyuan/deploy/china-hk/deploy.sh
 保存在服务器，不应被 rsync、Git 或日志覆盖。后续如改为 GitHub Actions，应先
 把服务器改成 deploy key 管理的 Git 工作副本，再替换本流程。
 
+每次发布前将本地短提交号写入服务器 `.env.production` 的 `APP_VERSION`，健康
+接口就能标记当前线上版本；不要把完整环境文件拉回本地或提交进 Git。
+
 首次部署或监控文件发生变化后安装后台健康检查：
 
 ```sh
