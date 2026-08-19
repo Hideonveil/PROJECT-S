@@ -1205,6 +1205,18 @@ body.is-project-transitioning { overflow: hidden; }
   transform: translateY(-2px);
 }
 
+/* Role choices are deliberately compact horizontal controls, not generic option cards. */
+.product-shell .match-options--roles { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.product-shell .match-options--roles .match-role-option {
+  min-height: 48px;
+  padding: 6px 8px;
+  flex-direction: row;
+  align-items: center !important;
+  justify-content: center;
+  gap: 3px;
+  text-align: center !important;
+}
+
 .match-target-zone.is-target-cursor-active,
 .match-target-zone.is-target-cursor-active .cursor-target { cursor: none; }
 .match-wizard-actions button,
