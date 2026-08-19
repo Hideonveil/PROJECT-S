@@ -725,9 +725,10 @@ body:has(.landing-shell) {
 .match-primary-stage { min-width: 0; }
 .product-shell .match-game-option { min-height: 250px; }
 .product-shell .match-game-option--deadlock { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; padding: 18px; overflow: hidden; text-align: left; }
-.match-game-art-slot { position: absolute; inset: 0; display: grid; place-items: center; overflow: hidden; border: 1px dashed rgba(18, 17, 24, .18); background: linear-gradient(135deg, rgba(118,89,223,.13), rgba(255,255,255,.46) 50%, rgba(18,17,24,.035)); }
-.match-game-art-slot::before { content: ""; position: absolute; inset: -25%; background: repeating-linear-gradient(135deg, transparent 0 28px, rgba(118,89,223,.08) 29px 30px); transform: rotate(-8deg); }
-.match-game-art-slot i { position: relative; color: rgba(18,17,24,.34); font-family: var(--font-mono); font-size: 10px; font-style: normal; font-weight: 800; letter-spacing: .13em; }
+.match-game-art-slot { position: absolute; inset: 0; display: grid; place-items: center; overflow: hidden; border: 1px solid rgba(18, 17, 24, .16); background: url("/assets/games/deadlock-card.png") center / cover no-repeat; }
+.match-game-art-slot::before { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, rgba(8, 15, 17, .48), rgba(8, 15, 17, .09) 58%, rgba(8, 15, 17, .35)); transition: background 220ms ease; }
+.match-game-option--deadlock:hover .match-game-art-slot::before, .match-game-option--deadlock.is-on .match-game-art-slot::before { background: linear-gradient(90deg, rgba(8, 15, 17, .3), rgba(8, 15, 17, .02) 58%, rgba(8, 15, 17, .18)); }
+.match-game-art-slot i { display: none; }
 .match-game-option-main { position: relative; z-index: 1; display: grid; grid-template-columns: auto 1fr; align-items: center; column-gap: 10px; }
 .match-game-option-main b { font-size: 22px; letter-spacing: -.04em; }
 .match-game-option-main small { grid-column: 2; margin-top: 4px; }
