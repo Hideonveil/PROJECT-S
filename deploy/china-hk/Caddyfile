@@ -1,0 +1,29 @@
+{$DOMAIN} {
+  encode zstd gzip
+
+  @supabase path \
+    /auth/v1/* \
+    /rest/v1/* \
+    /realtime/v1/* \
+    /storage/v1/* \
+    /functions/v1/*
+
+  handle @supabase {
+    reverse_proxy https://{$SUPABASE_UPSTREAM_HOST} {
+      header_up Host {$SUPABASE_UPSTREAM_HOST}
+      transport http {
+        tls_server_name {$SUPABASE_UPSTREAM_HOST}
+      }
+    }
+  }
+
+  handle {
+    reverse_proxy app:3000
+  }
+
+  header {
+    X-Content-Type-Options nosniff
+    Referrer-Policy strict-origin-when-cross-origin
+    -Server
+  }
+}

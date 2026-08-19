@@ -1,9 +1,13 @@
-# project S beta Web MVP 公网部署手册
+# 机缘 Web MVP 公网部署手册
 
 目标：把当前 MVP 部署到 Vercel，使用 Supabase 做真实数据库与实时通道，Resend 发送反馈邮件，最终得到公网地址。
 
 当前生产环境：https://project-s-iota.vercel.app
 当前代码仓库：https://github.com/Hideonveil/PROJECT-S.git
+
+中国用户验证阶段采用“双环境”方式：Vercel 保留作为回滚入口，腾讯云中国香港
+轻量服务器承载网页、API 与 Supabase 同域代理。香港部署说明见
+`deploy/china-hk/README.md`；验证完成前不迁移或清理现有 Supabase 数据。
 
 ---
 
