@@ -46,7 +46,7 @@ function gameOptions(selected) {
       <span class="match-game-art-slot" aria-hidden="true"><i>GAME ART / DEADLOCK</i></span>
       <span class="match-game-option-main"><span class="match-option-icon">${icon(GAME_ICONS.deadlock, 22)}</span><b>${esc(game?.name || "Deadlock")}</b><small>AVAILABLE / 01</small></span><span class="match-option-check">${icon("arrowRight", 12)}</span>
     </button>
-    <div class="match-games-soon" role="note"><span>OTHER GAMES</span><b>COMING SOON</b><small>王者荣耀、无畏契约、我的世界正在准备中</small></div>`;
+    <div class="match-games-soon" role="note"><span>OTHER GAMES</span><b>COMING SOON</b></div>`;
 }
 
 function flowStepper(currentStep, steps) {

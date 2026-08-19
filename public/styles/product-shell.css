@@ -724,15 +724,16 @@ body:has(.landing-shell) {
 .match-content-grid { display: grid; grid-template-columns: minmax(0, 1fr) 252px; gap: 28px; align-items: start; padding-top: 28px; }
 .match-primary-stage { min-width: 0; }
 .product-shell .match-game-option { min-height: 250px; }
-.product-shell .match-game-option--deadlock { position: relative; display: flex; align-items: stretch; padding: 0; overflow: hidden; text-align: left; }
-.match-game-art-slot { position: absolute; inset: 0 0 0 42%; display: grid; place-items: center; overflow: hidden; border-left: 1px solid rgba(18, 17, 24, .62); background: #132f31 url("/assets/games/deadlock-card.png") center / cover no-repeat; transition: filter 220ms ease; }
+.product-shell .match-game-option--deadlock { position: relative; display: flex; align-items: stretch; padding: 0; overflow: hidden; border: 2px solid var(--product-black); border-radius: 0; background: var(--product-black); box-shadow: 6px 6px 0 rgba(118,89,223,.3); text-align: center; }
+.product-shell .match-game-option--deadlock:hover, .product-shell .match-game-option--deadlock.is-on { border-color: var(--product-violet); background: var(--product-black); box-shadow: 6px 6px 0 rgba(118,89,223,.5); }
+.match-game-art-slot { position: absolute; inset: 0 0 0 40%; display: grid; place-items: center; overflow: hidden; border-left: 3px solid var(--product-violet); background: #132f31 url("/assets/games/deadlock-card.png") center / cover no-repeat; transition: filter 220ms ease; }
 .match-game-option--deadlock:hover .match-game-art-slot, .match-game-option--deadlock.is-on .match-game-art-slot { filter: saturate(1.08) brightness(1.04); }
 .match-game-art-slot i { display: none; }
-.match-game-option-main { position: relative; z-index: 1; width: 42%; min-width: 0; display: grid; grid-template-columns: auto 1fr; align-content: end; align-items: center; column-gap: 10px; padding: 20px 18px; background: rgba(255,255,255,.94); color: var(--product-black); }
-.match-game-option-main .match-option-icon { color: var(--product-violet); }
-.match-game-option-main b { font-size: 22px; letter-spacing: -.04em; }
-.match-game-option-main small { grid-column: 2; margin-top: 4px; color: rgba(18,17,24,.48); }
-.match-game-option--deadlock .match-option-check { position: absolute; right: 14px; bottom: 14px; z-index: 1; background: rgba(255,255,255,.9); }
+.match-game-option-main { position: relative; z-index: 1; width: 40%; min-width: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 9px; padding: 20px 18px; background: var(--product-black); color: #fff; }
+.match-game-option-main .match-option-icon { width: 38px; height: 38px; display: grid; place-items: center; border: 1px solid rgba(185,165,255,.58); color: #c7b5ff; }
+.match-game-option-main b { font-size: 22px; letter-spacing: -.04em; line-height: 1; }
+.match-game-option-main small { margin-top: 1px; color: rgba(255,255,255,.54); }
+.match-game-option--deadlock .match-option-check { position: absolute; right: 14px; bottom: 14px; z-index: 1; background: var(--product-violet); box-shadow: 0 0 0 3px rgba(18,17,24,.78); }
 .match-games-soon { min-height: 72px; padding: 14px 16px; display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; align-content: center; border: 1px dashed rgba(18,17,24,.25); background: rgba(18,17,24,.025); }
 .match-games-soon span { color: var(--product-violet); font-family: var(--font-mono); font-size: 9px; font-weight: 850; letter-spacing: .12em; }
 .match-games-soon b { font-size: 13px; }
