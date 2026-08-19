@@ -1615,7 +1615,7 @@ function startMatchingFlow() {
     } finally {
       syncPending = false;
     }
-  }, 3000);
+  }, 10000);
   timers.push(sync);
 }
 

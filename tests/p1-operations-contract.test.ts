@@ -63,4 +63,12 @@ describe("P1 operations contract", () => {
     expect(app).toContain('addEventListener("pagehide"');
     expect(app).not.toContain("setInterval(beat");
   });
+
+  it("keeps realtime state snapshots read-only to prevent request amplification", () => {
+    const stateRoute = read("src/app/api/state/route.ts");
+    const realtime = read("public/js/realtime.js");
+    expect(stateRoute).toContain("matchmakingStatus(profile.id, false)");
+    expect(stateRoute).not.toContain('update({ online: true');
+    expect(realtime).not.toContain('table: "profiles"');
+  });
 });

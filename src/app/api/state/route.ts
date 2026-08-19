@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireRequestProfile } from "@/lib/auth";
 import { activeRoomFor, activeSessionFor, friendsFor, poolCounts, profileWithGames, recentConnectionsFor } from "@/lib/api";
-import { supabaseAdmin } from "@/lib/supabase";
 import { errorResponse, requestId } from "@/lib/http";
 import { mapSession } from "@/lib/session";
 import { matchmakingStatus } from "@/lib/matchmaking/service";
@@ -11,13 +10,6 @@ export async function GET(request: Request) {
   const rid = requestId(request);
   try {
     const profile = await requireRequestProfile(request);
-    const admin = supabaseAdmin();
-
-    const nowIso = new Date().toISOString();
-    const lastSeenAt = profile.last_seen ? new Date(profile.last_seen).getTime() : 0;
-    if (Date.now() - lastSeenAt > 20000) {
-      await admin.from("profiles").update({ online: true, last_seen: nowIso }).eq("id", profile.id);
-    }
 
     const [counts, friends, friendRequests, room, session, recentConnections, matchmaking] = await Promise.all([
       poolCounts(),
@@ -26,7 +18,9 @@ export async function GET(request: Request) {
       activeRoomFor(profile.id),
       activeSessionFor(profile.id),
       recentConnectionsFor(profile.id),
-      matchmakingStatus(profile.id),
+      // A state snapshot is read-only. Updating matchmaking here creates a
+      // realtime feedback loop: table change -> snapshot -> table change.
+      matchmakingStatus(profile.id, false),
     ]);
 
     return NextResponse.json({

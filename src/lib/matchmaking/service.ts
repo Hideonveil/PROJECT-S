@@ -127,8 +127,10 @@ export async function startTicket(userId: string, input: MatchmakingInput, reque
 
 export async function matchmakingStatus(userId: string, heartbeat = true) {
   const admin = supabaseAdmin();
-  if (heartbeat) await admin.rpc("matchmaking_heartbeat", { p_user_id: userId });
-  await attemptMatch(userId);
+  if (heartbeat) {
+    await admin.rpc("matchmaking_heartbeat", { p_user_id: userId });
+    await admin.rpc("matchmaking_expire_stale");
+  }
   const ticket = await activeTicketRow(userId);
 
   const [{ count: matching }, { count: matchable }] = await Promise.all([

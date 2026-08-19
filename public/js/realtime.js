@@ -52,7 +52,6 @@ export async function openRealtime(handlers) {
   const schedule = () => debounceRefresh(handlers);
 
   channel
-    .on("postgres_changes", { event: "*", schema: "public", table: "profiles" }, schedule)
     .on("postgres_changes", { event: "*", schema: "public", table: "matchmaking_tickets" }, schedule)
     .on("postgres_changes", { event: "*", schema: "public", table: "matchmaking_pairs" }, schedule)
     .on("postgres_changes", { event: "*", schema: "public", table: "matchmaking_confirmations" }, schedule)
