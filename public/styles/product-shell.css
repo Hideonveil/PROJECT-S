@@ -729,9 +729,10 @@ body:has(.landing-shell) {
 .match-game-art-slot::before { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, rgba(8, 15, 17, .48), rgba(8, 15, 17, .09) 58%, rgba(8, 15, 17, .35)); transition: background 220ms ease; }
 .match-game-option--deadlock:hover .match-game-art-slot::before, .match-game-option--deadlock.is-on .match-game-art-slot::before { background: linear-gradient(90deg, rgba(8, 15, 17, .3), rgba(8, 15, 17, .02) 58%, rgba(8, 15, 17, .18)); }
 .match-game-art-slot i { display: none; }
-.match-game-option-main { position: relative; z-index: 1; display: grid; grid-template-columns: auto 1fr; align-items: center; column-gap: 10px; }
-.match-game-option-main b { font-size: 22px; letter-spacing: -.04em; }
-.match-game-option-main small { grid-column: 2; margin-top: 4px; }
+.match-game-option-main { position: relative; z-index: 1; display: grid; grid-template-columns: auto 1fr; align-items: center; column-gap: 10px; padding: 10px 12px; border: 1px solid rgba(255,255,255,.42); background: rgba(7, 13, 16, .78); box-shadow: 3px 3px 0 rgba(7, 13, 16, .38); color: #fff; }
+.match-game-option-main .match-option-icon { color: #d7c4ff; }
+.match-game-option-main b { font-size: 22px; letter-spacing: -.04em; text-shadow: 0 1px 0 rgba(0,0,0,.55); }
+.match-game-option-main small { grid-column: 2; margin-top: 4px; color: rgba(255,255,255,.68); }
 .match-game-option--deadlock .match-option-check { position: relative; z-index: 1; }
 .match-games-soon { min-height: 72px; padding: 14px 16px; display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; align-content: center; border: 1px dashed rgba(18,17,24,.25); background: rgba(18,17,24,.025); }
 .match-games-soon span { color: var(--product-violet); font-family: var(--font-mono); font-size: 9px; font-weight: 850; letter-spacing: .12em; }

@@ -212,7 +212,7 @@ export default function OpsPage() {
       <main className={styles.lockPage}>
         <div className={styles.lockRail} aria-hidden="true"><span>JIYUAN / OPS / PRIVATE /</span></div>
         <form className={styles.lockCard} onSubmit={login}>
-          <img src="/assets/jiyuan-logo.png" alt="机缘" className={styles.lockLogo} />
+          <img src="/assets/jiyuan-mark.svg?v=4" alt="机缘" className={styles.lockLogo} />
           <p className={styles.eyebrow}>PRIVATE OPERATIONS</p>
           <h1>看清匹配机器<br />现在怎么转。</h1>
           <label htmlFor="ops-password">运营密码</label>
@@ -230,7 +230,7 @@ export default function OpsPage() {
   return (
     <div className={styles.shell}>
       <aside className={styles.rail}>
-        <a href="/index.html#/hero" aria-label="返回机缘首页"><img src="/assets/jiyuan-logo.png" alt="" /></a>
+        <a href="/index.html#/hero" aria-label="返回机缘首页"><img src="/assets/jiyuan-mark.svg?v=4" alt="" /></a>
         <div className={styles.railWord}>OPS</div>
         <button type="button" onClick={logout}>退出</button>
       </aside>
