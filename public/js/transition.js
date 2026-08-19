@@ -45,12 +45,36 @@ async function hideTransition(overlay) {
   if (!overlay?.isConnected) return;
   overlay.classList.add("is-leaving");
   await Promise.race([
-    new Promise((resolve) => overlay.addEventListener("animationend", resolve, { once: true })),
+    new Promise((resolve) => {
+      const onEnd = (event) => {
+        if (event.target !== overlay) return;
+        overlay.removeEventListener("animationend", onEnd);
+        resolve();
+      };
+      overlay.addEventListener("animationend", onEnd);
+    }),
     wait(520),
   ]);
   overlay.remove();
   if (activeTransition === overlay) activeTransition = null;
   if (!activeTransition) document.body.classList.remove("is-project-transitioning");
+}
+
+export async function dismissHeroBoot() {
+  const overlay = document.querySelector("[data-hero-loader]");
+  if (!overlay) return;
+  if (document.documentElement.dataset.initialRoute !== "hero") {
+    overlay.remove();
+    return;
+  }
+  const startedAt = Number(window.__JIYUAN_BOOT_AT__) || performance.now();
+  await wait(520 - (performance.now() - startedAt));
+  overlay.classList.add("is-leaving");
+  await Promise.race([
+    new Promise((resolve) => overlay.addEventListener("animationend", resolve, { once: true })),
+    wait(760),
+  ]);
+  overlay.remove();
 }
 
 export async function withProjectTransition(task, options = {}) {

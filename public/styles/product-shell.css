@@ -1759,7 +1759,12 @@ body.is-project-transitioning { overflow: hidden; }
   .product-me-head { align-items: flex-start; flex-direction: column; }
 }
 
+.hero-boot { position: fixed; inset: 0; z-index: 10020; overflow: hidden; display: grid; grid-template-rows: 38px 1fr 38px; color: #17131f; background: var(--product-violet); }
+html:not([data-initial-route="hero"]) .hero-boot { display: none; }
+.hero-boot.is-leaving { animation: projectTransitionOut 400ms cubic-bezier(.55,0,1,.45) both; pointer-events: none; }
+
 @media (prefers-reduced-motion: reduce) {
+  .hero-boot.is-leaving { animation-duration: .15s; }
   .landing-live i { animation: none; }
   .landing-match { animation: none; }
   .landing-scroll-cue { scroll-behavior: auto; }

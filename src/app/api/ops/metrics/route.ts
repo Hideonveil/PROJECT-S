@@ -5,7 +5,7 @@ import { supabaseAdmin } from "@/lib/supabase";
 export async function GET(request: Request) {
   const rid = requestId(request);
   try {
-    if (!isOpsRequestAuthorized(request)) {
+    if (!(await isOpsRequestAuthorized(request))) {
       throw new AppError("OPS_UNAUTHORIZED", "没有权限查看运营数据", 401);
     }
     const rawDays = Number(new URL(request.url).searchParams.get("days") || 14);

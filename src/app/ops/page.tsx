@@ -95,6 +95,13 @@ export default function OpsPage() {
   const [loading, setLoading] = useState(true);
   const [password, setPassword] = useState("");
   const [loginError, setLoginError] = useState("");
+  const [passwordFormOpen, setPasswordFormOpen] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [passwordSaving, setPasswordSaving] = useState(false);
+  const [passwordMessage, setPasswordMessage] = useState("");
+  const [passwordError, setPasswordError] = useState("");
 
   const load = useCallback(async (range = days) => {
     setLoading(true);
@@ -142,6 +149,30 @@ export default function OpsPage() {
     await fetch("/api/ops/session", { method: "DELETE" });
     setData(null);
     setLocked(true);
+  }
+
+  async function changePassword(event: FormEvent) {
+    event.preventDefault();
+    setPasswordSaving(true);
+    setPasswordError("");
+    setPasswordMessage("");
+    try {
+      const response = await fetch("/api/ops/password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ currentPassword, newPassword, confirmPassword }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body?.error?.message || "密码修改失败");
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+      setPasswordMessage("密码已更新，其他设备上的运营会话已经退出。");
+    } catch (error) {
+      setPasswordError(error instanceof Error ? error.message : "密码修改失败");
+    } finally {
+      setPasswordSaving(false);
+    }
   }
 
   const funnel = useMemo(() => {
@@ -274,6 +305,29 @@ export default function OpsPage() {
               <div><dt>统计生成</dt><dd>{time(data?.metrics.generatedAt)}</dd></div>
             </dl>
             <a href="https://jiyuan.online" target="_blank" rel="noreferrer">打开正式网站 <span>↗</span></a>
+            <button
+              type="button"
+              className={styles.passwordToggle}
+              aria-expanded={passwordFormOpen}
+              onClick={() => {
+                setPasswordFormOpen((open) => !open);
+                setPasswordError("");
+                setPasswordMessage("");
+              }}
+            >
+              <span>修改运营密码</span><b>{passwordFormOpen ? "收起 −" : "打开 +"}</b>
+            </button>
+            {passwordFormOpen && (
+              <form className={styles.changePassword} onSubmit={changePassword}>
+                <label>当前密码<input type="password" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} autoComplete="current-password" required /></label>
+                <label>新密码<input type="password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} autoComplete="new-password" minLength={12} required /></label>
+                <label>再次输入<input type="password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} autoComplete="new-password" minLength={12} required /></label>
+                <button type="submit" disabled={passwordSaving}>{passwordSaving ? "正在保存…" : "确认修改"}</button>
+                {passwordError && <p className={styles.passwordError}>{passwordError}</p>}
+                {passwordMessage && <p className={styles.passwordSuccess}>{passwordMessage}</p>}
+                <small>至少 12 位。修改后当前设备保持登录，其他设备需要使用新密码重新进入。</small>
+              </form>
+            )}
           </article>
         </section>
       </main>

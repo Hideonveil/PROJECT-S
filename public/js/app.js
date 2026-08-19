@@ -17,7 +17,7 @@ import { gameoverPage } from "./pages/gameover.js";
 import { connectionsPage } from "./pages/connections.js";
 import { friendsPage } from "./pages/friends.js";
 import { mePage } from "./pages/me.js";
-import { withProjectTransition } from "./transition.js";
+import { dismissHeroBoot, withProjectTransition } from "./transition.js";
 
 const app = document.getElementById("app");
 
@@ -2825,3 +2825,4 @@ ONLINE = online;
 if (ONLINE && state.authenticated && state.onboarded) connectEvents();
 render();
 trackCurrentPage();
+await dismissHeroBoot();
