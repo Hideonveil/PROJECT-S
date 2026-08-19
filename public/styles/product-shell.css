@@ -1897,8 +1897,8 @@ body.is-project-transitioning { overflow: hidden; }
   }
   .match-wizard-actions { min-height: 78px; }
   .match-role-groups { gap: 16px; }
-  .match-options--roles .match-option { min-height: 68px; }
-  .match-role-number { font-size: 30px; }
+  .match-options--roles .match-option { min-height: 56px; padding: 8px 10px; gap: 4px; }
+  .match-role-number { font-size: 23px; }
   .product-auth-workspace { min-height: 520px; }
   .product-auth-intro { padding: 44px; }
   .product-auth-intro h1 { font-size: clamp(46px, 4.3vw, 64px); }
