@@ -1,4 +1,4 @@
-{$DOMAIN} {
+{$DOMAIN}, www.{$DOMAIN}, http://{$IP_ADDRESS} {
   encode zstd gzip
 
   @supabase path \
