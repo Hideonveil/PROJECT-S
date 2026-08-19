@@ -82,6 +82,7 @@ let matchRequestPending = false;
 let matchConfirmationPending = false;
 let staggeredRailCleanup = null;
 let staggeredRailHoldOpen = false;
+let presenceOfflineSent = false;
 let lastTrackedRoute = "";
 const trackedCandidatePairs = new Set();
 
@@ -313,6 +314,8 @@ function initStaggeredRail() {
   const layers = [...rail.querySelectorAll(".product-rail-layer")];
   const labels = [...rail.querySelectorAll(".product-nav-link > span")];
   const secondary = [...rail.querySelectorAll(".product-brand strong, .product-rail-footer .product-account > div, .product-rail-footer .product-account--signed > span:last-child")];
+  const accountPopover = rail.querySelector("[data-account-popover]");
+  const accountTrigger = rail.querySelector('[data-action="toggle-account-menu"]');
   let openTimeline = null;
   let closeTween = null;
   let focusOutTimer = null;
@@ -345,6 +348,9 @@ function initStaggeredRail() {
       void rail.offsetWidth;
     }
     rail.classList.remove("is-staggered-open");
+    rail.classList.remove("is-account-menu-open");
+    if (accountPopover) accountPopover.hidden = true;
+    accountTrigger?.setAttribute("aria-expanded", "false");
     closeTween?.kill();
     closeTween = gsap.to(layers, { xPercent: -112, duration: 0.3, ease: "power3.in", stagger: 0.035, overwrite: "auto" });
     gsap.to(labels, { yPercent: 55, opacity: 0, duration: 0.2, ease: "power2.in", stagger: { each: 0.025, from: "end" }, overwrite: "auto" });
@@ -387,6 +393,11 @@ function initStaggeredRail() {
     setProductRailHeldOpen(true);
   };
 
+  const clickAway = (event) => {
+    if (!rail.classList.contains("is-account-menu-open") || rail.contains(event.target)) return;
+    close();
+  };
+
   const focusOut = () => {
     window.clearTimeout(focusOutTimer);
     focusOutTimer = window.setTimeout(() => {
@@ -399,6 +410,7 @@ function initStaggeredRail() {
   rail.addEventListener("focusin", focusIn);
   rail.addEventListener("focusout", focusOut);
   rail.addEventListener("click", holdOpenOnNavigation);
+  document.addEventListener("pointerdown", clickAway);
   if (staggeredRailHoldOpen) restoreOpen();
 
   staggeredRailCleanup = () => {
@@ -409,10 +421,29 @@ function initStaggeredRail() {
     rail.removeEventListener("focusin", focusIn);
     rail.removeEventListener("focusout", focusOut);
     rail.removeEventListener("click", holdOpenOnNavigation);
+    document.removeEventListener("pointerdown", clickAway);
     openTimeline?.kill();
     closeTween?.kill();
     gsap.killTweensOf([...layers, ...labels, ...secondary]);
   };
+}
+
+function toggleProductAccountMenu(trigger) {
+  const rail = document.querySelector("[data-staggered-rail]");
+  const popover = rail?.querySelector("[data-account-popover]");
+  if (!rail || !popover || !trigger) return;
+  const opening = popover.hidden;
+  popover.hidden = !opening;
+  rail.classList.toggle("is-account-menu-open", opening);
+  rail.classList.toggle("is-staggered-open", opening);
+  trigger.setAttribute("aria-expanded", String(opening));
+  if (opening) {
+    // Keep the rail rendered exactly as-is. Opening the account menu must not
+    // rerender the shell or replay the navigation entrance animation.
+    rail.classList.add("is-route-held");
+  } else {
+    rail.classList.remove("is-route-held");
+  }
 }
 
 function persistentProductShell(html) {
@@ -1324,7 +1355,14 @@ function connectEvents() {
 
 function markPresenceOnline() {
   if (!ONLINE || !state.authenticated || !state.onboarded) return;
+  presenceOfflineSent = false;
   api.goOnline().catch(() => {});
+}
+
+function markPresenceOffline() {
+  if (presenceOfflineSent || !ONLINE || !state.authenticated) return;
+  presenceOfflineSent = true;
+  api.goOffline({ unloading: true });
 }
 
 function showAuthError(message, { preservePassword = false } = {}) {
@@ -2538,6 +2576,7 @@ document.addEventListener("click", (event) => {
     "go-home": () => navigate("#/home"),
     "go-me": () => navigate("#/me"),
     "go-friends": () => navigate("#/friends"),
+    "toggle-account-menu": () => toggleProductAccountMenu(actionEl),
     "open-auth-login": () => enterAuth("login"),
     "open-auth-register": () => enterAuth("register"),
     "switch-auth-mode": (value) => {
@@ -2689,13 +2728,13 @@ window.addEventListener("beforeunload", () => {
   destroyField();
   if (chatClose) chatClose();
   if (eventSourceClose) eventSourceClose();
-  if (ONLINE && state.authenticated) api.goOffline();
+  markPresenceOffline();
 });
 window.addEventListener("pageshow", () => {
   markPresenceOnline();
 });
 window.addEventListener("pagehide", () => {
-  if (ONLINE && state.authenticated) api.goOffline();
+  markPresenceOffline();
 });
 
 async function detectOnline() {

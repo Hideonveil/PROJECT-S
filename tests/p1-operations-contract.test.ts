@@ -56,12 +56,25 @@ describe("P1 operations contract", () => {
   it("uses page lifecycle events instead of a timer for player presence", () => {
     const route = read("src/app/api/online/route.ts");
     const app = read("public/js/app.js");
+    const api = read("public/js/api.js");
     expect(route).toContain("requireRequestProfile");
     expect(route).toContain("last_seen");
     expect(app).toContain("markPresenceOnline");
     expect(app).toContain('addEventListener("pageshow"');
     expect(app).toContain('addEventListener("pagehide"');
+    expect(app).toContain("markPresenceOffline");
+    expect(api).toContain("navigator.sendBeacon");
+    expect(app).toContain("{ unloading: true }");
     expect(app).not.toContain("setInterval(beat");
+  });
+
+  it("keeps the account menu inside the persistent navigation shell", () => {
+    const shell = read("public/js/ui.js");
+    const app = read("public/js/app.js");
+    expect(shell).toContain("data-account-popover");
+    expect(shell).toContain("toggle-account-menu");
+    expect(app).toContain("toggleProductAccountMenu");
+    expect(app).toContain("is-account-menu-open");
   });
 
   it("keeps realtime state snapshots read-only to prevent request amplification", () => {

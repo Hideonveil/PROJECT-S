@@ -122,9 +122,20 @@ export const getMatchmakingStatus = async () => request("/api/matchmaking/status
 export const cancelMatchmaking = async (reason = "user_cancelled") => request("/api/matchmaking/cancel", { reason }, await currentToken(), { timeoutMs: 30000 });
 export const confirmMatchmaking = async (pairId, decision) => request("/api/matchmaking/confirm", { pairId, decision }, await currentToken(), { timeoutMs: 30000 });
 export const submitMatchmakingFeedback = (payload) => authedRequest("/api/matchmaking/feedback", payload);
-export const goOffline = async () => {
+export const goOffline = async ({ unloading = false } = {}) => {
   try {
-    const token = cachedAccessToken || await currentToken();
+    // A page being closed cannot reliably wait for an async token lookup. The
+    // cached access token is established as soon as this tab goes online, so a
+    // beacon gives the server the browser's final presence signal.
+    const token = cachedAccessToken || (unloading ? "" : await currentToken());
+    if (unloading && token && navigator.sendBeacon) {
+      const sent = navigator.sendBeacon(
+        "/api/offline",
+        new Blob([JSON.stringify({ token })], { type: "application/json" })
+      );
+      if (sent) return;
+    }
+    if (!token) return;
     await fetch("/api/offline", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
@@ -132,7 +143,7 @@ export const goOffline = async () => {
       keepalive: true,
     });
   } catch {
-    // best-effort offline signal
+    // Presence is deliberately best-effort: closing a tab must never block it.
   }
 };
 export const goOnline = () => authedRequest("/api/online", {});

@@ -122,7 +122,26 @@ export function homeShell(state, content, active = "home") {
   if (state.room) navItems.push({ id: "room", label: "进行中的房间", href: "#/room", icon: "radio" });
   const warningText = "总有人想一起玩　/　NEVER PLAY ALONE　/　".repeat(8);
   const account = state.authenticated
-    ? `<button class="product-account product-account--signed" type="button" data-action="go-me"><span class="product-account-avatar">${avatarWrap(state.user.avatarKey, 34, state.user.online)}</span><span class="product-account-name">${esc(state.user.nickname)}</span></button>`
+    ? `<div class="product-account-menu" data-account-menu>
+        <button class="product-account product-account--signed" type="button" data-action="toggle-account-menu" aria-haspopup="menu" aria-expanded="false" aria-controls="product-account-popover">
+          <span class="product-account-avatar">${avatarWrap(state.user.avatarKey, 34, state.user.online)}</span><span class="product-account-name">${esc(state.user.nickname)}</span>
+        </button>
+        <section class="product-account-popover" id="product-account-popover" data-account-popover role="menu" aria-label="玩家菜单" hidden>
+          <header class="product-account-popover-head">
+            <span class="product-account-popover-avatar">${avatarWrap(state.user.avatarKey, 42, state.user.online)}</span>
+            <span><b>${esc(state.user.nickname)}</b><small>${esc(state.user.handle || state.user.friendCode || "JIYUAN PLAYER")}</small></span>
+            <em><i></i>在线</em>
+          </header>
+          <div class="product-account-popover-group">
+            <button type="button" data-action="go-me" role="menuitem">${icon("user", 17)}<span>我的资料</span></button>
+            <button type="button" data-action="go-friends" role="menuitem">${icon("users", 17)}<span>朋友列表</span></button>
+          </div>
+          <div class="product-account-popover-seal" aria-hidden="true"><span>JIYUAN PLAYER / NEVER PLAY ALONE /</span></div>
+          <div class="product-account-popover-group product-account-popover-group--exit">
+            <button type="button" data-action="logout" role="menuitem">${icon("logOut", 17)}<span>登出账号</span></button>
+          </div>
+        </section>
+      </div>`
     : `<div class="product-account"><span class="product-account-icon">${icon("user", 18)}</span><div><b>未登录</b><span><button type="button" data-action="open-auth-login">登录</button> / <button type="button" data-action="open-auth-register">注册</button></span></div></div>`;
 
   return `<div class="product-shell">
