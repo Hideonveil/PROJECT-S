@@ -53,12 +53,14 @@ describe("P1 operations contract", () => {
     expect(opsPage).toContain("联系我们收件箱");
   });
 
-  it("keeps signed-in players visible with a lightweight presence heartbeat", () => {
-    const route = read("src/app/api/presence/route.ts");
+  it("uses page lifecycle events instead of a timer for player presence", () => {
+    const route = read("src/app/api/online/route.ts");
     const app = read("public/js/app.js");
     expect(route).toContain("requireRequestProfile");
     expect(route).toContain("last_seen");
-    expect(app).toContain("startPresenceHeartbeat");
-    expect(app).toContain("30000");
+    expect(app).toContain("markPresenceOnline");
+    expect(app).toContain('addEventListener("pageshow"');
+    expect(app).toContain('addEventListener("pagehide"');
+    expect(app).not.toContain("setInterval(beat");
   });
 });

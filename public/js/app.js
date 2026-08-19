@@ -82,7 +82,6 @@ let matchRequestPending = false;
 let matchConfirmationPending = false;
 let staggeredRailCleanup = null;
 let staggeredRailHoldOpen = false;
-let presenceTimer = 0;
 let lastTrackedRoute = "";
 const trackedCandidatePairs = new Set();
 
@@ -1294,7 +1293,7 @@ function handleServerGameOver(session) {
 
 function connectEvents() {
   if (!ONLINE || !state.authenticated) return;
-  startPresenceHeartbeat();
+  markPresenceOnline();
   if (eventSourceClose) eventSourceClose();
   eventSourceClose = api.openEvents({
     hello: applyServerSnapshot,
@@ -1323,17 +1322,9 @@ function connectEvents() {
   });
 }
 
-function stopPresenceHeartbeat() {
-  if (presenceTimer) window.clearInterval(presenceTimer);
-  presenceTimer = 0;
-}
-
-function startPresenceHeartbeat() {
+function markPresenceOnline() {
   if (!ONLINE || !state.authenticated || !state.onboarded) return;
-  stopPresenceHeartbeat();
-  const beat = () => api.heartbeatPresence().catch(() => {});
-  beat();
-  presenceTimer = window.setInterval(beat, 30000);
+  api.goOnline().catch(() => {});
 }
 
 function showAuthError(message, { preservePassword = false } = {}) {
@@ -1976,7 +1967,6 @@ async function logout() {
     eventSourceClose();
     eventSourceClose = null;
   }
-  stopPresenceHeartbeat();
   await withProjectTransition(() => api.signOut().catch(() => {}), { label: "正在退出账号" });
   resetState();
   DRAFT.dirty = false;
@@ -2699,7 +2689,12 @@ window.addEventListener("beforeunload", () => {
   destroyField();
   if (chatClose) chatClose();
   if (eventSourceClose) eventSourceClose();
-  stopPresenceHeartbeat();
+  if (ONLINE && state.authenticated) api.goOffline();
+});
+window.addEventListener("pageshow", () => {
+  markPresenceOnline();
+});
+window.addEventListener("pagehide", () => {
   if (ONLINE && state.authenticated) api.goOffline();
 });
 

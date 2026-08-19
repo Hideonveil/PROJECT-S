@@ -1,5 +1,6 @@
 let supabase = null;
 let configCache = null;
+let cachedAccessToken = "";
 
 async function request(path, body, token = null, { timeoutMs = 15000 } = {}) {
   const headers = {};
@@ -78,6 +79,7 @@ export async function getSession() {
 export async function currentToken() {
   const session = await getSession();
   if (!session?.access_token) throw new Error("请先登录");
+  cachedAccessToken = session.access_token;
   return session.access_token;
 }
 
@@ -93,6 +95,7 @@ export async function signIn(email, password) {
   const sb = await getSupabase();
   const { data, error } = await sb.auth.signInWithPassword({ email, password });
   if (error) throw error;
+  cachedAccessToken = data.session?.access_token || "";
   return data;
 }
 
@@ -102,6 +105,8 @@ export async function signOut() {
     await sb.auth.signOut();
   } catch {
     // session may already be gone
+  } finally {
+    cachedAccessToken = "";
   }
 }
 
@@ -119,9 +124,10 @@ export const confirmMatchmaking = async (pairId, decision) => request("/api/matc
 export const submitMatchmakingFeedback = (payload) => authedRequest("/api/matchmaking/feedback", payload);
 export const goOffline = async () => {
   try {
+    const token = cachedAccessToken || await currentToken();
     await fetch("/api/offline", {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${await currentToken()}` },
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
       body: "{}",
       keepalive: true,
     });
@@ -129,7 +135,7 @@ export const goOffline = async () => {
     // best-effort offline signal
   }
 };
-export const heartbeatPresence = () => authedRequest("/api/presence", {});
+export const goOnline = () => authedRequest("/api/online", {});
 export const roomAction = (code, action) => authedRequest(`/api/room/${code}/${action}`, {});
 export const requestRoomGoodbye = (code, requested) => authedRequest(`/api/room/${code}/goodbye`, { requested });
 export const roomFeedback = (code, payload) => authedRequest(`/api/room/${code}/feedback`, payload);
