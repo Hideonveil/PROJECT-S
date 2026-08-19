@@ -1,6 +1,6 @@
 import { requireRequestProfile } from "@/lib/auth";
 import { AppError, errorResponse, jsonOk, requestId } from "@/lib/http";
-import { CLIENT_EVENT_NAMES, trackEvent } from "@/lib/metrics";
+import { CLIENT_EVENT_NAMES, safeEventProperties, trackEvent } from "@/lib/metrics";
 
 export async function POST(request: Request) {
   const traceId = requestId(request);
@@ -11,10 +11,7 @@ export async function POST(request: Request) {
     if (!CLIENT_EVENT_NAMES.has(eventName)) {
       throw new AppError("EVENT_NOT_ALLOWED", "这个埋点事件不允许由客户端提交", 422);
     }
-    const rawProperties = body.properties;
-    const properties = rawProperties && typeof rawProperties === "object" && !Array.isArray(rawProperties)
-      ? Object.fromEntries(Object.entries(rawProperties).slice(0, 20))
-      : {};
+    const properties = safeEventProperties(body.properties);
     await trackEvent({ eventName, userId: me.id, requestId: traceId, properties });
     return jsonOk({ ok: true }, traceId);
   } catch (error) {

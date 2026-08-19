@@ -6,6 +6,8 @@ services:
     restart: unless-stopped
     env_file:
       - .env.production
+    environment:
+      APP_VERSION: ${APP_VERSION:-unknown}
     expose:
       - "3000"
     healthcheck:

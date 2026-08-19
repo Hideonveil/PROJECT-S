@@ -1,8 +1,11 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { usernameToEmail } from "@/lib/username";
+import { errorResponse, jsonOk, requestId } from "@/lib/http";
+import { trackEvent } from "@/lib/metrics";
 
 export async function POST(request: Request) {
+  const rid = requestId(request);
   try {
     const body = await request.json();
     const username = String(body.username || "").trim();
@@ -33,8 +36,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "注册失败，请稍后重试" }, { status: 500 });
     }
 
-    return NextResponse.json({ ok: true, email });
+    await trackEvent({ eventName: "account_registered", requestId: rid });
+    return jsonOk({ ok: true, email }, rid);
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "注册失败" }, { status: 500 });
+    return errorResponse(error, rid, "注册失败，请稍后重试");
   }
 }

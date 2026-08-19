@@ -82,6 +82,26 @@ let matchRequestPending = false;
 let matchConfirmationPending = false;
 let staggeredRailCleanup = null;
 let staggeredRailHoldOpen = false;
+let lastTrackedRoute = "";
+const trackedCandidatePairs = new Set();
+
+function trackCurrentPage() {
+  if (!state.authenticated) return;
+  const route = parseRoute().name;
+  if (!route || route === lastTrackedRoute) return;
+  lastTrackedRoute = route;
+  api.trackEvent("page_view", { route });
+}
+
+function trackCandidate(pair, candidate) {
+  if (!pair?.id || !candidate?.id || trackedCandidatePairs.has(pair.id)) return;
+  trackedCandidatePairs.add(pair.id);
+  api.trackEvent("candidate_viewed", {
+    pairId: pair.id,
+    gameId: state.need?.game || "deadlock",
+    mode: state.need?.goal === "娱乐" ? "casual" : "ranked",
+  });
+}
 
 function clearTimers() {
   timers.forEach((t) => {
@@ -1027,6 +1047,7 @@ function updateMatchingView(previousMatch, nextMatch) {
   const pair = nextMatch?.pair;
   const candidate = nextMatch?.candidate;
   const awaiting = pair?.state === "waiting_confirmation" && candidate;
+  if (awaiting) trackCandidate(pair, candidate);
   const mine = pair?.confirmations?.find((confirmation) => confirmation.user_id === state.user.id)?.decision;
   const theirs = pair?.confirmations?.find((confirmation) => confirmation.user_id !== state.user.id)?.decision;
   const confirmationCopy = mine === "accepted" && theirs === "accepted"
@@ -1077,6 +1098,7 @@ function applyMatchmakingSnapshot(snapshot, options = {}) {
   const candidate = snapshot.candidate || null;
   const active = ticket && ["searching", "candidate_found", "waiting_confirmation", "matched", "playing"].includes(ticket.state);
   const timedOut = state.match?.pair?.state === "waiting_confirmation" && !pair && ticket?.state === "searching";
+  if (pair?.state === "waiting_confirmation" && candidate) trackCandidate(pair, candidate);
   const nextMatch = {
       ...state.match,
       status: active ? "active" : "idle",
@@ -2604,7 +2626,27 @@ document.addEventListener("input", (event) => {
   }
 });
 
-window.addEventListener("hashchange", render);
+window.addEventListener("hashchange", () => {
+  render();
+  trackCurrentPage();
+});
+window.addEventListener("error", (event) => {
+  if (!state.authenticated) return;
+  api.trackEvent("client_error", {
+    kind: "error",
+    route: parseRoute().name,
+    message: String(event.message || "浏览器脚本错误").slice(0, 180),
+  });
+});
+window.addEventListener("unhandledrejection", (event) => {
+  if (!state.authenticated) return;
+  const reason = event.reason instanceof Error ? event.reason.message : String(event.reason || "未处理的异步错误");
+  api.trackEvent("client_error", {
+    kind: "unhandledrejection",
+    route: parseRoute().name,
+    message: reason.slice(0, 180),
+  });
+});
 window.addEventListener("beforeunload", () => {
   clearTimers();
   destroyField();
@@ -2782,3 +2824,4 @@ const [online] = await Promise.all([detectOnline(), restoreSession()]);
 ONLINE = online;
 if (ONLINE && state.authenticated && state.onboarded) connectEvents();
 render();
+trackCurrentPage();

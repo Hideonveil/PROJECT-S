@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { reportServerError } from "./metrics";
 
 export class AppError extends Error {
   constructor(
@@ -35,6 +36,9 @@ export function jsonOk(data: Record<string, unknown>, requestIdValue: string, st
 
 export function errorResponse(error: unknown, requestIdValue: string, fallback = "操作失败") {
   if (error instanceof AppError) {
+    if (error.status >= 500) {
+      reportServerError({ error, requestId: requestIdValue, code: error.code, fallback });
+    }
     return NextResponse.json(
       {
         error: {
@@ -50,7 +54,7 @@ export function errorResponse(error: unknown, requestIdValue: string, fallback =
 
   const raw = error instanceof Error ? error.message : "";
   const mapped = mapDatabaseError(raw, fallback);
-  console.error(JSON.stringify({ level: "error", requestId: requestIdValue, code: mapped.code }));
+  reportServerError({ error, requestId: requestIdValue, code: mapped.code, fallback });
   return NextResponse.json(
     {
       error: {
