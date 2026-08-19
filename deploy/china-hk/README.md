@@ -35,13 +35,25 @@ Storage 和 Realtime 路径时，会通过同一域名转发；服务器端数�
 
 ## 更新
 
+当前服务器上的 `/opt/jiyuan` 是生产副本，不是 Git 仓库。请从已经通过测试的
+本地项目目录同步代码，并明确排除生产密钥和构建产物：
+
 ```sh
-cd /opt/jiyuan
-git pull --ff-only origin main
-./deploy/china-hk/deploy.sh
+rsync -az \
+  --exclude='.git/' \
+  --exclude='node_modules/' \
+  --exclude='.next/' \
+  --exclude='playwright-report/' \
+  --exclude='test-results/' \
+  --exclude='deploy/china-hk/.env.production' \
+  ./ ubuntu@124.156.175.247:/opt/jiyuan/
+
+ssh ubuntu@124.156.175.247 /opt/jiyuan/deploy/china-hk/deploy.sh
 ```
 
-首次上线并验证稳定后，再接入 GitHub Actions 自动执行上述两条命令。
+同步前必须先执行 `pnpm verify` 和 `pnpm exec playwright test`。生产环境变量只
+保存在服务器，不应被 rsync、Git 或日志覆盖。后续如改为 GitHub Actions，应先
+把服务器改成 deploy key 管理的 Git 工作副本，再替换本流程。
 
 ## 验收
 

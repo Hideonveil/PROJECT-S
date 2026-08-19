@@ -1,7 +1,7 @@
 # PROJECT-S · 找到马上能一起玩的真实玩家（公网 Web MVP）
 
-当前版本使用 Supabase 承载账号、匹配、房间、关系与实时数据。Vercel 是当前
-生产入口与备份；中国用户验证环境将使用腾讯云中国香港轻量服务器部署同一份代码。
+当前版本使用 Supabase 承载账号、匹配、房间、关系与实时数据。腾讯云中国香港
+轻量服务器是正式生产入口；Vercel 保留为独立回滚入口。
 
 ## 当前产品流程
 
@@ -24,12 +24,14 @@
 - Next.js + React + TypeScript（App Router：API 与静态托管）
 - Supabase：PostgreSQL、Auth（用户名 + 密码）、Realtime、RLS
 - Resend：反馈邮件
-- Vercel：部署与公网临时域名
+- Vercel：备用部署与回滚入口
 - Docker + Caddy：腾讯云中国香港部署、HTTPS 与 Supabase 同域代理
 
 ## 公网地址
 
-生产环境：https://project-s-iota.vercel.app
+生产环境：https://jiyuan.online
+
+备用环境：https://project-s-iota.vercel.app
 
 ## 项目结构
 
@@ -77,6 +79,8 @@ SUPABASE_SERVICE_ROLE_KEY=
 RESEND_API_KEY=
 FEEDBACK_TO_EMAIL=2716374688@qq.com
 RESEND_FROM_EMAIL=NODE <onboarding@resend.dev>
+OPS_TOKEN=
+ALERT_WEBHOOK_URL=
 ```
 
 `SUPABASE_SERVICE_ROLE_KEY` 和 `RESEND_API_KEY` 只允许出现在服务端环境变量，绝不能放进 `NEXT_PUBLIC_*`。
@@ -91,6 +95,8 @@ RESEND_FROM_EMAIL=NODE <onboarding@resend.dev>
 4. 邮件失败 → `email_status = failed`，反馈数据仍然保留，用户仍看到“反馈已收到”
 
 完整部署与测试步骤见 docs/DEPLOYMENT.md。
+
+P1 运营指标、错误记录、在线监控和公网自检见 `docs/P1-OPERATIONS.md`。
 
 中国香港验证环境的部署文件与操作说明见
 `deploy/china-hk/README.md`。该方案不迁移 Supabase 数据，Vercel 可继续作为回滚入口。
