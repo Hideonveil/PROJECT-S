@@ -42,11 +42,16 @@ function option(value, label, on, action, iconName = "", multiple = false) {
 function gameOptions(selected) {
   const game = GAMES.find((item) => item.id === "deadlock");
   const on = selected === "deadlock";
-  return `<button type="button" class="cursor-target match-option match-game-option match-game-option--deadlock match-game-card home-filter-game-row ${on ? "is-on" : ""}" data-home-game="deadlock" data-action="home-game" data-value="deadlock" aria-pressed="${on}">
-      <span class="match-game-art-slot match-game-card-media" aria-hidden="true"><i>GAME ART / DEADLOCK</i></span>
-      <span class="match-game-option-main match-game-card-info"><small class="match-game-card-kicker">DEADLOCK / ACTIVE</small><span class="match-game-card-title-row"><span class="match-option-icon">${icon(GAME_ICONS.deadlock, 22)}</span><b>${esc(game?.name || "Deadlock")}</b><span class="match-option-check">${icon("arrowRight", 12)}</span></span><small class="match-game-card-caption">进入匹配配置</small></span>
+  return `<div class="match-games-grid">
+    <button type="button" class="cursor-target match-option match-game-option match-game-option--deadlock match-game-card home-filter-game-row ${on ? "is-on" : ""}" data-home-game="deadlock" data-action="home-game" data-value="deadlock" aria-pressed="${on}">
+      <span class="match-game-art-slot match-game-card-media" aria-hidden="true"></span>
+      <span class="match-game-option-main match-game-card-info"><small class="match-game-card-kicker">DEADLOCK / ACTIVE</small><span class="match-game-card-title-row"><span class="match-option-icon">${icon(GAME_ICONS.deadlock, 20)}</span><b>${esc(game?.name || "Deadlock")}</b><span class="match-option-check">${icon("arrowRight", 12)}</span></span><small class="match-game-card-caption">进入匹配配置</small></span>
     </button>
-    <div class="match-games-soon" role="note"><span>OTHER GAMES</span><b>COMING SOON</b></div>`;
+    <article class="match-game-card match-game-card--soon match-games-soon" role="note" aria-label="其他游戏即将开放">
+      <span class="match-game-art-slot match-game-card-media" aria-hidden="true"><i>OTHER GAMES</i></span>
+      <span class="match-game-option-main match-game-card-info"><small class="match-game-card-kicker">OTHER GAMES / 02</small><span class="match-game-card-title-row"><span class="match-option-icon">${icon("sparkles", 20)}</span><b>COMING SOON</b></span><small class="match-game-card-caption">更多游戏正在准备</small></span>
+    </article>
+  </div>`;
 }
 
 function flowStepper(currentStep, steps) {
