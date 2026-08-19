@@ -124,18 +124,18 @@ function wizardContent(filter, stepKey) {
 
 function wizardCopy(stepKey, goal) {
   const copy = {
-    goal: ["先决定这局为了什么。", "选择上分会进入位置配置；选择娱乐则直接寻找轻松开黑的玩家。"],
-    rank: ["你现在是什么段位？", "选择当前段位，后续用于寻找进度更接近的队友。"],
-    roles: ["你们分别玩哪个位置？", "你的位置与希望队友的位置都可以多选；不限与具体号位互斥。"],
-    team: ["这次想找几位队友？", "娱乐模式不限制位置，只按你需要的队友人数寻找。"],
-    voice: ["这局要不要开麦？", goal === "rank" ? "上分默认开麦，你仍然可以改成不开麦。" : "娱乐局默认开麦，不做额外要求。"],
+    goal: ["这一局，想怎么玩？", "上分或娱乐。"],
+    rank: ["你的当前段位？", "用于基础匹配。"],
+    roles: ["你想玩几号位？", "位置可多选。"],
+    team: ["想找几位队友？", "娱乐局不限制位置。"],
+    voice: ["要不要开麦？", goal === "rank" ? "上分建议开麦。" : "按你的习惯来。"],
   };
   return copy[stepKey] || copy.goal;
 }
 
 function gameStage(selectedGame) {
   return `<section class="match-game-stage match-stage-enter" aria-labelledby="match-game-title">
-    <div class="match-stage-copy"><span>GAME SELECT / 00</span><h2 id="match-game-title">选择这次要玩的游戏。</h2><p>目前只开放 Deadlock。其他游戏会逐个进入匹配池。</p></div>
+    <div class="match-stage-copy"><span>GAME SELECT / 00</span><h2 id="match-game-title">选择游戏</h2><p>目前开放 Deadlock。</p></div>
     <div class="match-options match-options--games match-target-zone" data-target-cursor-zone role="group" aria-label="选择游戏">${gameOptions(selectedGame)}</div>
   </section>`;
 }
