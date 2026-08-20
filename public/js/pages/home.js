@@ -4,6 +4,14 @@ import { GAMES } from "../data.js";
 
 const GAME_ICONS = { deadlock: "swords" };
 const DEADLOCK_ROLES = ["1号位", "2号位", "3号位", "4号位", "5号位", "6号位"];
+const DEADLOCK_ROLE_LABELS = {
+  "1号位": "主核",
+  "2号位": "伪核",
+  "3号位": "坦克",
+  "4号位": "游走",
+  "5号位": "辅助",
+  "6号位": "功能",
+};
 const DEADLOCK_RANKS = [
   ["新人", "砖石"],
   ["行者", "岩砾"],
@@ -37,6 +45,19 @@ function option(value, label, on, action, iconName = "", multiple = false) {
   return `<button type="button" class="cursor-target home-filter-tag match-option ${on ? "is-on" : ""}" data-action="${action}" data-value="${esc(value)}" aria-pressed="${on}">
     ${iconName ? `<span class="match-option-icon">${icon(iconName, 20)}</span>` : ""}<span>${esc(label)}</span>${multiple ? `<small>${on ? "已选择" : "可多选"}</small>` : ""}<span class="match-option-check">${icon("check", 12)}</span>
   </button>`;
+}
+
+function goalOptions(filter) {
+  const choices = [
+    ["rank", "冲分", "trophy", "match-choice-art-slot--rank"],
+    ["casual", "休闲", "dices", "match-choice-art-slot--casual"],
+  ];
+  return `<div class="match-choice-cards match-choice-cards--goal" role="group" aria-label="游戏目的">
+    ${choices.map(([value, label, iconName, artClass]) => `<button type="button" class="cursor-target match-option match-choice-card ${filter.goal === value ? "is-on" : ""}" data-action="home-goal" data-value="${value}" aria-pressed="${filter.goal === value}">
+      <span class="match-choice-art-slot ${artClass}" aria-hidden="true"></span>
+      <span class="match-choice-card-body"><span class="match-choice-card-title"><span class="match-option-icon">${icon(iconName, 18)}</span><b>${label}</b><span class="match-option-check">${icon("check", 11)}</span></span></span>
+    </button>`).join("")}
+  </div>`;
 }
 
 function gameOptions(selected) {
@@ -75,8 +96,10 @@ function roleOptions(values, selected, action, label) {
     <div class="match-options match-options--roles" role="group" aria-label="${esc(label)}，可多选">${["不限", ...values].map((value) => {
       const number = value.replace("号位", "");
       const on = selected.includes(value);
-      return `<button type="button" class="cursor-target home-filter-tag match-option match-role-option ${on ? "is-on" : ""}" data-action="${action}" data-value="${esc(value)}" aria-label="${esc(value)}" aria-pressed="${on}">
-        <span class="match-role-number">${esc(number)}${value === "不限" ? "" : "<small>号位</small>"}</span><span class="match-option-check">${icon("check", 12)}</span>
+      const roleLabel = value === "不限" ? "不限" : DEADLOCK_ROLE_LABELS[value];
+      const roleAriaLabel = value === "不限" ? "不限" : `${value}，${roleLabel}`;
+      return `<button type="button" class="cursor-target home-filter-tag match-option match-role-option ${on ? "is-on" : ""}" data-action="${action}" data-value="${esc(value)}" aria-label="${esc(roleAriaLabel)}" aria-pressed="${on}">
+        <span class="match-role-number">${value === "不限" ? "" : esc(number)}</span><span class="match-role-label">${esc(roleLabel)}</span><span class="match-option-check">${icon("check", 12)}</span>
       </button>`;
     }).join("")}</div>
   </div>`;
@@ -87,19 +110,16 @@ function rankOptions(selected) {
     const value = material ? `${name}（${material}）` : name;
     const on = selected === value;
     return `<button type="button" class="cursor-target home-filter-tag match-option match-rank-option ${on ? "is-on" : ""}" data-action="home-rank" data-value="${esc(value)}" aria-pressed="${on}">
-      <span class="match-rank-name">${esc(name)}</span>${material ? `<small>${esc(material)}</small>` : ""}<span class="match-option-check">${icon("check", 12)}</span>
+      <span class="match-rank-art-slot" aria-hidden="true"></span><span class="match-rank-card-body"><span class="match-rank-name">${esc(name)}</span>${material ? `<small>${esc(material)}</small>` : ""}<span class="match-option-check">${icon("check", 11)}</span></span>
     </button>`;
   }).join("")}</div>`;
 }
 
 function wizardContent(filter, stepKey) {
   if (stepKey === "goal") {
-    return `<div class="match-options match-options--goal" role="group" aria-label="游戏目的">
-      ${option("rank", "冲分", filter.goal === "rank", "home-goal", "trophy")}
-      ${option("casual", "休闲", filter.goal === "casual", "home-goal", "dices")}
-    </div>`;
+    return goalOptions(filter);
   }
-  if (stepKey === "rank") return rankOptions(filter.rank);
+  if (stepKey === "rank") return `<div class="match-rank-panel"><p class="match-rank-policy-note" role="note">${icon("shieldCheck", 16)}<span>我们会遵守 Deadlock 官方匹配规则，不会为了缩短等待而突破硬性组队限制。</span></p>${rankOptions(filter.rank)}</div>`;
   if (stepKey === "roles") {
     return `<div class="match-role-groups">
       ${roleOptions(DEADLOCK_ROLES, filter.ownRoles, "home-own-role", "我的位置")}
@@ -179,7 +199,7 @@ function deadlockStage(filter) {
 
 function rolesLabel(roles) {
   const list = Array.isArray(roles) ? roles : [];
-  return list.length ? list.map((role) => `${role}号位`).join(" / ") : "位置不限";
+  return list.length ? list.map((role) => DEADLOCK_ROLE_LABELS[role] || role).join(" / ") : "位置不限";
 }
 
 function matchingDirectory(entries) {
