@@ -1915,6 +1915,12 @@ body.is-project-transitioning { overflow: hidden; }
   .match-directory-list { max-height: 260px; }
   .player-profile-grid { grid-template-columns: 1fr; }
   .player-profile-panel--game, .player-profile-panel--recent { grid-column: auto; grid-row: auto; }
+  .match-game-stage,
+  .match-wizard-stage { grid-template-columns: 1fr; }
+  .match-stage-copy,
+  .match-wizard-copy { padding: 30px 0; border-right: 0; border-bottom: 1px solid var(--product-hairline); }
+  .match-game-stage > .match-options--games,
+  .match-wizard-options { padding: 30px 0; }
 }
 
 @media (max-width: 640px) {
@@ -2021,7 +2027,7 @@ body.is-project-transitioning { overflow: hidden; }
   .match-wizard-marker em { display: none; }
   .match-wizard-actions { grid-column: 1; }
   .match-options--roles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .match-options--ranks { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .match-rank-panel .match-options--ranks { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .match-options--team { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .match-wizard-actions .match-start-dock { width: 58%; }
   .matching-modal-page { bottom: calc(var(--product-ticker) + 70px); padding: 12px; }
@@ -2052,6 +2058,14 @@ body.is-project-transitioning { overflow: hidden; }
   .identity-submit { min-width: 0; }
   .product-me-card--identity { grid-row: auto; }
   .product-me-head { align-items: flex-start; flex-direction: column; }
+}
+
+@media (max-width: 560px) {
+  .match-choice-cards { grid-template-columns: 1fr; }
+  .product-shell .match-option.match-choice-card { height: 146px; }
+  .match-choice-art-slot { height: 82px; }
+  .product-shell .match-option.match-rank-option { height: 86px; }
+  .match-rank-art-slot { height: 28px; }
 }
 
 .hero-boot { position: fixed; inset: 0; z-index: 10020; overflow: hidden; display: grid; grid-template-rows: 38px 1fr 38px; color: #17131f; background: var(--product-violet); }
