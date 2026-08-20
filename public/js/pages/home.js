@@ -45,11 +45,11 @@ function gameOptions(selected) {
   return `<div class="match-games-grid">
     <button type="button" class="cursor-target match-option match-game-option match-game-option--deadlock match-game-card home-filter-game-row ${on ? "is-on" : ""}" data-home-game="deadlock" data-action="home-game" data-value="deadlock" aria-pressed="${on}">
       <span class="match-game-art-slot match-game-card-media" aria-hidden="true"></span>
-      <span class="match-game-option-main match-game-card-info"><small class="match-game-card-kicker">DEADLOCK / ACTIVE</small><span class="match-game-card-title-row"><span class="match-option-icon">${icon(GAME_ICONS.deadlock, 20)}</span><b>${esc(game?.name || "Deadlock")}</b><span class="match-option-check">${icon("arrowRight", 12)}</span></span><small class="match-game-card-caption">进入匹配配置</small></span>
+      <span class="match-game-option-main match-game-card-info"><span class="match-game-card-title-row"><span class="match-option-icon">${icon(GAME_ICONS.deadlock, 20)}</span><b>${esc(game?.name || "Deadlock")}</b><span class="match-option-check">${icon("arrowRight", 12)}</span></span></span>
     </button>
     <article class="match-game-card match-game-card--soon match-games-soon" role="note" aria-label="其他游戏即将开放">
       <span class="match-game-art-slot match-game-card-media" aria-hidden="true"><i>OTHER GAMES</i></span>
-      <span class="match-game-option-main match-game-card-info"><small class="match-game-card-kicker">OTHER GAMES / 02</small><span class="match-game-card-title-row"><span class="match-option-icon">${icon("sparkles", 20)}</span><b>COMING SOON</b></span><small class="match-game-card-caption">更多游戏正在准备</small></span>
+      <span class="match-game-option-main match-game-card-info"><span class="match-game-card-title-row"><span class="match-option-icon">${icon("sparkles", 20)}</span><b>COMING SOON</b></span></span>
     </article>
   </div>`;
 }
@@ -130,17 +130,17 @@ function wizardContent(filter, stepKey) {
 function wizardCopy(stepKey, goal) {
   const copy = {
     goal: ["这一局，想怎么玩？", "上分或娱乐。"],
-    rank: ["你的当前段位？", "用于基础匹配。"],
-    roles: ["你想玩几号位？", "位置可多选。"],
-    team: ["想找几位队友？", "娱乐局不限制位置。"],
-    voice: ["要不要开麦？", goal === "rank" ? "上分建议开麦。" : "按你的习惯来。"],
+    rank: ["你的当前段位？", ""],
+    roles: ["你想玩几号位？", ""],
+    team: ["想找几位队友？", ""],
+    voice: ["要不要开麦？", ""],
   };
   return copy[stepKey] || copy.goal;
 }
 
 function gameStage(selectedGame) {
   return `<section class="match-game-stage match-stage-enter" aria-labelledby="match-game-title">
-    <div class="match-stage-copy"><span>GAME SELECT / 00</span><h2 id="match-game-title">选择游戏</h2><p>目前开放 Deadlock。</p></div>
+    <div class="match-stage-copy"><span>GAME SELECT / 00</span><h2 id="match-game-title">选择游戏</h2></div>
     <div class="match-options match-options--games match-target-zone" data-target-cursor-zone role="group" aria-label="选择游戏">${gameOptions(selectedGame)}</div>
   </section>`;
 }
@@ -162,7 +162,7 @@ function deadlockStage(filter) {
   return `<section class="match-wizard">
     ${flowStepper(step, path)}
     <div class="match-wizard-stage ${filter.direction < 0 ? "is-backward" : "is-forward"}" data-home-wizard-stage data-home-step="${esc(stepKey)}">
-      <div class="match-wizard-copy"><span>DEADLOCK / ${String(step + 1).padStart(2, "0")}</span><h2>${title}</h2><p>${description}</p></div>
+      <div class="match-wizard-copy"><span>DEADLOCK / ${String(step + 1).padStart(2, "0")}</span><h2>${title}</h2>${description ? `<p>${description}</p>` : ""}</div>
       <div class="match-wizard-options match-target-zone" data-target-cursor-zone>${wizardContent(filter, stepKey)}</div>
       <footer class="match-wizard-actions">
         <div class="match-wizard-actions-left">
