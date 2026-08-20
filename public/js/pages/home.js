@@ -95,8 +95,8 @@ function rankOptions(selected) {
 function wizardContent(filter, stepKey) {
   if (stepKey === "goal") {
     return `<div class="match-options match-options--goal" role="group" aria-label="游戏目的">
-      ${option("rank", "上分", filter.goal === "rank", "home-goal", "trophy")}
-      ${option("casual", "娱乐", filter.goal === "casual", "home-goal", "dices")}
+      ${option("rank", "冲分", filter.goal === "rank", "home-goal", "trophy")}
+      ${option("casual", "休闲", filter.goal === "casual", "home-goal", "dices")}
     </div>`;
   }
   if (stepKey === "rank") return rankOptions(filter.rank);
@@ -108,7 +108,7 @@ function wizardContent(filter, stepKey) {
   }
   if (stepKey === "voice") {
     return `<div class="match-choice-stack">
-      ${filter.goal === "rank" ? `<p class="match-rank-note" role="note">${icon("mic", 18)}<span><b>上分最好开麦哦</b><small>及时沟通位置与团战信息，配合会更稳定。</small></span></p>` : ""}
+      ${filter.goal === "rank" ? `<p class="match-rank-note" role="note">${icon("mic", 18)}<span><b>冲分最好开麦哦</b><small>及时沟通位置与团战信息，配合会更稳定。</small></span></p>` : ""}
       <div class="match-options match-options--voice" role="group" aria-label="是否开麦">
         ${option("on", "开麦", filter.voice === "on", "home-voice", "mic")}
         ${option("off", "不开麦", filter.voice === "off", "home-voice", "volumeX")}
@@ -129,7 +129,7 @@ function wizardContent(filter, stepKey) {
 
 function wizardCopy(stepKey, goal) {
   const copy = {
-    goal: ["这一局，想怎么玩？", "上分或娱乐。"],
+    goal: ["这一局，想怎么玩？", "冲分或休闲。"],
     rank: ["你的当前段位？", ""],
     roles: ["你想玩几号位？", ""],
     team: ["想找几位队友？", ""],
@@ -189,7 +189,7 @@ function matchingDirectory(entries) {
     <div class="match-directory-list">
       ${people.length
         ? people.map((person) => `<article class="match-directory-player">
-            <div class="match-directory-player-top"><b>${esc(person.nickname || "玩家")}</b><span>${person.mode === "casual" ? "娱乐" : "上分"}</span></div>
+            <div class="match-directory-player-top"><b>${esc(person.nickname || "玩家")}</b><span>${person.mode === "casual" ? "休闲" : "冲分"}</span></div>
             <p>${person.mode === "casual" ? "轻松开黑" : esc(person.rankCode || "段位待定")}</p>
             <footer><span>${esc(rolesLabel(person.desiredRoles))}</span><i>${person.microphonePreference === "on" ? "开麦" : person.microphonePreference === "off" ? "不开麦" : "都可以"}</i></footer>
           </article>`).join("")
