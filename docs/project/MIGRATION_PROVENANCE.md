@@ -39,6 +39,14 @@
 | `20260822170000_explicit_exit_lifecycle.sql` | `e35f9f1bb7e93c7e20904eeb14ef1c536fdb1410bc1f279cb5b2fe4b72951123` | `SCHEMA_EFFECT_CONFIRMED` | `NOT_RECORDED` | Production 观察到 explicit lifecycle triggers 与相关 no-op/maintenance functions。 | infinity deadline 等顶层 ticket/pair/group update 的数据效果未验证。 | 很高：改变退出与过期语义，且可能影响现有 active matching；禁止直接 replay。 |
 | `20260822183000_casual_group_start_with_two.sql` | `8af0fae39581c0f18d52f1ff26eb5a0f95472e3b69a5aaa183b14dd25d665232` | `SCHEMA_EFFECT_CONFIRMED` | `NOT_RECORDED` | Production `matchmaking_start_group` body 与 two-player-start logic 一致。 | 无显式 data backfill；精确执行事实仍未验证。 | 中高：function replacement 有严格顺序依赖；禁止直接 replay。 |
 
+## Historical migration remediation
+
+- `0009_realtime_matchmaking.sql` 曾在 dirty worktree 中被修改，改动为将 `rankedPartyMax` 从 `6` 改为 `2`，并增加 `rankedTeammateMax = 1`。
+- 这两项修改表达的是当前产品的 Deadlock Ranked Duo 规则：最多两名玩家，即一名 owner 加一名 teammate。
+- 后续 forward-only migration `20260820100000_deadlock_ranked_duo_only.sql` 已明确设置：`rankedPartyMax = 2` 与 `rankedTeammateMax = 1`。
+- 因此 `0009_realtime_matchmaking.sql` 已恢复为 Git 中的原始版本，历史 migration 不再承载新的现行规则。
+- 不得再次修改已提交的历史 migration 来表达产品规则；以后必须使用新的 forward-only migration。
+
 ### Interpretation
 
 - `SCHEMA_EFFECT_CONFIRMED` 不得写成 `CONFIRMED_EXECUTED`。
