@@ -2,6 +2,15 @@
 
 > 只记录已经影响 Production、或已完成 Production 验收的事件。测试中的本地改动、未部署方案和未授权修复不写入本表。
 
+## 2026-08-23 — Active Session 双渲染路径 P0 candidate 发布
+
+- Git baseline：`cd51a831cf4435ceb03c10740cf5c0e2b80aeef0`，`fix: unify active room session renderer`。
+- 已按中国香港 Docker Compose 流程发布；应用镜像 build 成功，`china-hk-app-1` healthy，gateway 保持运行。
+- `/api/health`：`ok=true`、`status=ready`、`version=cd51a83`、`online=2`、`matching=0`、`playing=0`、`users=29`；检查时间 `2026-08-23T14:06:06.683Z`。
+- Production 静态 bundle 已确认导出 canonical `sessionPage`、`#/room` guard 与 `replaceCanonicalRoute`；旧 `public/js/pages/room.js` 已移除并返回 404。
+- 发布后定向浏览器检查：已登录测试账号无 Active Room 时，直接访问 `#/room` 安全归一至 `#/home`；空 `#/matching` 归一至 `#/home`；未创建业务实体，未执行完整三账号闭环。
+- 未执行：数据库写入、migration、migration history repair、历史 ghost 清理；`LEGACY_ROOM_DUAL_RENDER_PATH` 是否关闭由 03 审核本证据后决定。
+
 ## 2026-08-23 — Presence / Online / Offline 发布
 
 - 数据库执行：`20260823100000_presence_reconnect_grace.sql`。

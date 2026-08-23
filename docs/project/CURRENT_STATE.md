@@ -8,14 +8,14 @@
 
 - 当前阶段：Final Private Pilot Gate 准备阶段。
 - 下一阶段目标：5–10 名真实玩家的 Private Pilot。
-- 当前唯一任务：完成已经定义的 Final Private Pilot Gate；完成后停止上线前扩展测试，进入小规模真实玩家验证。
-- 本轮建立事实源后不继续开发、测试、部署或扩大审计范围。
+- 当前唯一任务：由 03 审核 Final Private Pilot Gate evidence，并决定是否关闭 `LEGACY_ROOM_DUAL_RENDER_PATH` P0；不得自动替代 03 给出最终 Gate 结论。
+- 本阶段不扩大产品、测试或审计范围；本次 P0 candidate deployment 已完成，后续仅执行 03 明确要求的证据审核与定向回归。
 
 ## 2. Git 与源码基线
 
 - 仓库：`output/jiyuan-computer-handoff-2026-08-22/project-s-source`
 - Canonical engineering branch：`main`。
-- Branch Consolidation 输入的 Git 当前可信源码基线：`0828aa6ef0b575b1b92bbdc7dbfc415deb7c27ac`（`docs: sync current state with clean git baseline`）。`main` 已将 `agent/ui-shell-production` fast-forward 收敛到该基线；本次后续 docs-only commit 不改变 runtime source baseline。
+- Git 当前可信源码基线：`cd51a831cf4435ceb03c10740cf5c0e2b80aeef0`（`fix: unify active room session renderer`）。`main` 已将 `agent/ui-shell-production` fast-forward 收敛到此前基线；本次前端 P0 修复已在 `main` 提交并部署。
 - Project source working tree：clean。
 - `agent/ui-shell-production` 已完成 fast-forward 收敛并保留，不删除该 branch。
 - Runtime source baseline、tests/tooling、project docs 与 migration provenance 均已进入 Git。
@@ -27,11 +27,11 @@
 
 - 公网入口：`https://www.jiyuan.online`
 - 部署方式：腾讯云中国香港节点上的 Docker Compose，Caddy 对外提供 HTTPS 和代理。
-- 最近已知 Production deployment label：`7bee0a2-dirty-presence-2c0143f4`。
-- Git 当前可信源码基线与最近已知 Production deployment label 分开记录；目前没有证据证明 Production 容器与 `0828aa6ef0b575b1b92bbdc7dbfc415deb7c27ac` 字节级一致，不得将二者混为同一概念。
-- 最近生产 `/api/health` 已确认：`ok=true`、`status=ready`、`online=0`、`matching=0`、`playing=0`、`users=29`。
-- 该次健康检查时间：`2026-08-23T09:49:43.579Z`。
-- 健康接口 `version` 字段返回 `unknown`；因此当前不能把 `version` 字段当作可靠 release identifier。实际部署标签如上，版本元数据缺口列入 backlog，不在当前事实源任务中修复。
+- 最近 Production deployment label：`cd51a83`（本次 Docker Compose 发布的 `APP_VERSION` / `/api/health.version`）；此前 `7bee0a2-dirty-presence-2c0143f4` 作为历史部署标签保留。
+- Git 当前可信源码基线与 Production deployment label 仍是两个不同概念；本次有源码同步、容器 build、health 与静态 bundle 证据，但不把 `/api/health.version` 单独解释为容器字节级证明。
+- 最近生产 `/api/health` 已确认：`ok=true`、`status=ready`、`version=cd51a83`、`online=2`、`matching=0`、`playing=0`、`users=29`。
+- 该次健康检查时间：`2026-08-23T14:06:06.683Z`。
+- 本次发布后的 `version` 已由部署时 `APP_VERSION` 标记为 `cd51a83`；release metadata 的自动化追踪仍保留在 backlog，不扩大为本轮产品改动。
 - 生产前端静态 bundle 已确认包含 Presence heartbeat 客户端标记，说明 Presence 客户端代码已随网站发布。
 - 生产数据库 project ref：`chqxaqibegpdjtedrxwx`。
 - 生产数据库最近已确认：`pg_cron` 可用；Presence migration 所需字段、函数、trigger、cron job 已存在；执行前 active / playing / connecting / ready Session 均为 0。
@@ -42,6 +42,8 @@
 
 - Production backup + staging restore：PASS。逻辑备份、custom-format archive、SHA-256、schema / data / roles / migration history / function-trigger / ghost baseline 恢复核对均已有记录。
 - Room / Session lifecycle P0 修复：已部署。
+- `LEGACY_ROOM_DUAL_RENDER_PATH` 前端 candidate `cd51a831cf4435ceb03c10740cf5c0e2b80aeef0`：已部署；Production canonical bundle 已包含 `sessionPage` / `#/room` guard，旧 `public/js/pages/room.js` URL 已返回 404。该 P0 是否关闭由 03 审核 evidence 后决定。
+- 发布后定向浏览器检查：已登录测试账号无 Active Room 时，直接访问 `#/room` 安全归一至 `#/home`；空 `#/matching` 归一至 `#/home`；未创建业务实体。真实 Active Room 多账号完整回归仍未在本轮重复执行。
 - 新 ghost Room：0；历史 5 个 ghost Room 保持不变、未清理。
 - Casual 多人 `members[]` 模型：已部署。
 - 三账号 Production 匹配进入同一个三人 Session：PASS。
@@ -70,8 +72,9 @@
 
 ### 非阻断但必须保留的事实
 
-- Production health `version=unknown`，无法仅依赖健康接口判断部署版本。
-- Project source working tree 当前 clean；但最近已知 Production deployment label 仍包含 `dirty`，且没有证据证明 Production 容器与当前 Git 基线字节级一致，因此 Production release provenance 仍需与 Git 基线分开理解。
+- Production health 当前返回 `version=cd51a83`，但该值来自部署环境标记；仍不能单独作为容器字节级一致性证明。
+- Project source working tree 当前 clean；Production deployment label 与 Git 基线分开记录，Production release provenance 仍需结合源码同步、容器 build、health 和静态 bundle 证据理解。
+- `LEGACY_ROOM_DUAL_RENDER_PATH` 的 Production Active Room 完整回归和 P0 closure 尚待 03 审核；本次定向回归未重跑完整三账号闭环。
 - 历史 5 个 ghost Room 仍存在，属于已知历史基线，不是本轮新增问题。
 - 旧兼容代码和旧 API 仍可能存在；不能仅因为某个字段或 API 存在，就推断其为当前主产品路径。
 
