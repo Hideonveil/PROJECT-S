@@ -15,15 +15,19 @@
 
 - 仓库：`output/jiyuan-computer-handoff-2026-08-22/project-s-source`
 - 分支：`agent/ui-shell-production`
-- HEAD：`7bee0a2df1a781555b5ef015168dde467fa8ce85`（`7bee0a2 refine medium viewport card layout`）
-- 工作树：dirty，当前 `git status --short` 有 108 个变更路径。该事实意味着当前线上发布标签与一个干净、可复现的 Git release commit 不是同一概念。
+- Git 当前可信源码基线 HEAD：`c96f8ed0d7da28fbed995c779dbddf46bc8e2a95`（`docs: document historical migration remediation`）。
+- Project source working tree：clean。
+- Runtime source baseline、tests/tooling、project docs 与 migration provenance 均已进入 Git。
+- `0009_realtime_matchmaking.sql` 已恢复为历史原始版本；当前 migration provenance 规则保持有效：`NOT_RECORDED` 不得解释为未执行，不得 replay 或 repair production migration history，后续数据库变化必须使用 forward-only migration。
+- `v0.1` / `v1` / `v2` 仅作为 historical archive，不承担当前项目事实源职责。
 - 当前源码 migration 文件数：29。此前审计中使用的“27 个 migration”属于更早时间点，不能继续作为当前仓库总数。
 
 ## 3. Production 当前事实
 
 - 公网入口：`https://www.jiyuan.online`
 - 部署方式：腾讯云中国香港节点上的 Docker Compose，Caddy 对外提供 HTTPS 和代理。
-- 最近生产代码部署标签：`7bee0a2-dirty-presence-2c0143f4`。
+- 最近已知 Production deployment label：`7bee0a2-dirty-presence-2c0143f4`。
+- Git 当前可信源码基线与最近已知 Production deployment label 分开记录；目前没有证据证明 Production 容器与 `c96f8ed0d7da28fbed995c779dbddf46bc8e2a95` 字节级一致，不得将二者混为同一概念。
 - 最近生产 `/api/health` 已确认：`ok=true`、`status=ready`、`online=0`、`matching=0`、`playing=0`、`users=29`。
 - 该次健康检查时间：`2026-08-23T09:49:43.579Z`。
 - 健康接口 `version` 字段返回 `unknown`；因此当前不能把 `version` 字段当作可靠 release identifier。实际部署标签如上，版本元数据缺口列入 backlog，不在当前事实源任务中修复。
@@ -66,7 +70,7 @@
 ### 非阻断但必须保留的事实
 
 - Production health `version=unknown`，无法仅依赖健康接口判断部署版本。
-- Git 工作树 dirty，当前部署标签包含 `dirty`；若后续需要可审计 release，应建立干净 commit / tag。
+- Project source working tree 当前 clean；但最近已知 Production deployment label 仍包含 `dirty`，且没有证据证明 Production 容器与当前 Git 基线字节级一致，因此 Production release provenance 仍需与 Git 基线分开理解。
 - 历史 5 个 ghost Room 仍存在，属于已知历史基线，不是本轮新增问题。
 - 旧兼容代码和旧 API 仍可能存在；不能仅因为某个字段或 API 存在，就推断其为当前主产品路径。
 
