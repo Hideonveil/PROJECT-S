@@ -73,16 +73,20 @@ function fitGridStyle(memberCount) {
   const columns = [];
   for (let index = 0; index < memberCount; index += 1) {
     columns.push("minmax(0, 1fr)");
-    if (index < memberCount - 1) columns.push("42px");
+    if (index < memberCount - 1) columns.push("minmax(28px, .18fr)");
   }
   return `grid-template-columns:${columns.join(" ")};`;
+}
+
+function fitLink(matches, label) {
+  return `<span class="session-fit-link ${matches ? "is-match" : ""}" aria-label="${label}"><i class="session-fit-line" aria-hidden="true"></i>${matches ? icon("check", 13) : ""}</span>`;
 }
 
 function groupFitCells(members, valueFor, matches, tag = "strong") {
   return members.map((member, index) => {
     const value = `<${tag} title="${esc(memberDisplayName(member))}">${esc(valueFor(member))}</${tag}>`;
     if (index >= members.length - 1) return value;
-    return `${value}<span class="session-fit-link ${matches ? "is-match" : ""}" aria-label="${matches ? "匹配" : "未完全匹配"}">${matches ? icon("check", 13) : ""}</span>`;
+    return `${value}${fitLink(matches, matches ? "匹配" : "未完全匹配")}`;
   }).join("");
 }
 
@@ -163,7 +167,7 @@ function fitRows(model) {
       ["位置", roleValue(mine.need), roleValue(partner.need), rolePairMatches(mine.need, partner.need)],
       ["开麦", voiceLabel(mine.need), voiceLabel(partner.need), voiceLabel(mine.need) === voiceLabel(partner.need)],
     ];
-    return pairRows.map(([label, mineValue, partnerValue, matches]) => `<div class="session-fit-row" role="row"><span>${esc(label)}</span><div class="session-fit-conditions"><strong>${esc(mineValue)}</strong><span class="session-fit-link ${matches ? "is-match" : ""}" aria-label="${matches ? "匹配" : "不匹配"}">${matches ? icon("check", 13) : ""}</span><strong>${esc(partnerValue)}</strong></div></div>`).join("");
+    return pairRows.map(([label, mineValue, partnerValue, matches]) => `<div class="session-fit-row" role="row"><span>${esc(label)}</span><div class="session-fit-conditions" style="${fitGridStyle(members.length)}"><strong>${esc(mineValue)}</strong>${fitLink(matches, matches ? "匹配" : "不匹配")}<strong>${esc(partnerValue)}</strong></div></div>`).join("");
   }
   return rows.map(([label, valueFor]) => {
     const values = members.map(valueFor);
