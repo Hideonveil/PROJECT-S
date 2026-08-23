@@ -6,9 +6,11 @@ export function defaultState() {
   return {
     authenticated: false,
     authUsername: "",
+    authEmail: "",
     authMode: "login",
     authError: "",
     authNotice: "",
+    authVerification: null,
     onboarded: false,
     user: {
       id: "",
@@ -17,7 +19,7 @@ export function defaultState() {
       avatarKey: "",
       friendCode: "",
       device: "",
-      gender: "",
+      gender: "男",
       ageRange: "保密",
       games: [],
       genres: [],
@@ -30,9 +32,11 @@ export function defaultState() {
     match: {
       status: "idle",
       pool: 0,
+      online: 0,
       playing: 0,
       lifecycle: null,
       pair: null,
+      group: null,
       candidate: null,
       matchable: 0,
       directory: [],

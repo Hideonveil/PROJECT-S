@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
 import { requireRequestProfile } from "@/lib/auth";
-import { errorResponse, requestId } from "@/lib/http";
+import { errorResponse, jsonBody, requestId } from "@/lib/http";
 import { saveFeedback } from "@/lib/feedback";
 
 export async function POST(request: Request) {
   const rid = requestId(request);
   try {
-    const body = await request.json();
+    const body = await jsonBody(request);
     const profile = await requireRequestProfile(request, body);
 
     const payload = {

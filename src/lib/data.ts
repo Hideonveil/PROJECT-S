@@ -1,4 +1,5 @@
 import { supabaseAdmin } from "./supabase";
+import { isEffectivelyOnline, presenceCutoffIso } from "./presence";
 import type { GameIdentity, Profile, PublicProfile } from "./types";
 
 export function publicProfile(
@@ -8,6 +9,7 @@ export function publicProfile(
 ): PublicProfile {
   return {
     id: profile.id,
+    username: profile.username || "",
     nickname: profile.nickname,
     handle: `${profile.nickname}#${profile.id.slice(-4).toUpperCase()}`,
     avatarKey: profile.avatar_key,
@@ -16,7 +18,7 @@ export function publicProfile(
     ageRange: profile.age_range || "保密",
     playStyle: profile.play_style,
     voice: profile.voice,
-    online: profile.online,
+    online: isEffectivelyOnline(profile),
     friendCode: options.includePrivate ? profile.friend_code : "",
     genres: Array.isArray(profile.genres) ? profile.genres : [],
     games,
@@ -45,14 +47,15 @@ export async function gamesForProfile(profileId: string): Promise<GameIdentity[]
 
 export async function publicProfilesFor(
   ids: string[],
-  options: { includePrivateFor?: string[]; includeGameAccountsFor?: string[] } = {}
+  options: { includePrivateFor?: string[]; includeGameAccountsFor?: string[]; onlineOnly?: boolean } = {}
 ): Promise<PublicProfile[]> {
   const unique = Array.from(new Set(ids));
   if (!unique.length) return [];
-  const { data: profiles } = await supabaseAdmin()
-    .from("profiles")
-    .select("*")
-    .in("id", unique);
+  let profileQuery = supabaseAdmin().from("profiles").select("*").in("id", unique);
+  if (options.onlineOnly) {
+    profileQuery = profileQuery.eq("online", true).gt("last_seen", presenceCutoffIso());
+  }
+  const { data: profiles } = await profileQuery;
   if (!profiles) return [];
   const { data: gameRows } = await supabaseAdmin()
     .from("user_games")

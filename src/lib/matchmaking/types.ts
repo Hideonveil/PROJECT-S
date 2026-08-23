@@ -10,17 +10,37 @@ export const MATCH_STATES = [
   "expired",
 ] as const;
 
+export const GROUP_MATCH_STATES = [
+  "searching",
+  "partial_ready",
+  "waiting_confirmation",
+  "matched",
+  "playing",
+  "completed",
+  "cancelled",
+  "expired",
+] as const;
+
 export type MatchState = (typeof MATCH_STATES)[number];
 export type MatchMode = "ranked" | "casual";
 export type MicrophonePreference = "on" | "off" | "any";
 export type ConfirmationDecision = "pending" | "accepted" | "rejected";
+export type GroupMatchState = (typeof GROUP_MATCH_STATES)[number];
 
 export interface MatchmakingInput {
   gameId: "deadlock";
   mode: MatchMode;
   rankCode: string | null;
   desiredRoles: number[];
+  /** Player's own role selection, retained for the Session fit readout. */
+  ownRoles?: number[];
+  /** Roles this player wants the teammate to fill, retained for the Session fit readout. */
+  teammateRoles?: number[];
   microphonePreference: MicrophonePreference;
+  /** Casual mode only. Upper bound for accepted teammates, excluding the owner. */
+  desiredTeammates?: number;
+  /** Casual mode only. Lower bound for accepted teammates, excluding the owner. */
+  minTeammates?: number;
 }
 
 export interface MatchTicket extends MatchmakingInput {
@@ -30,6 +50,38 @@ export interface MatchTicket extends MatchmakingInput {
   searchStartedAt: string;
   heartbeatAt: string;
   expiresAt: string;
+  desiredTeammates?: number;
+  minTeammates?: number;
+  groupId?: string | null;
+}
+
+export interface MatchGroupMember {
+  userId: string;
+  ticketId: string;
+  isOwner: boolean;
+  decision: ConfirmationDecision;
+  joinedAt: string;
+  respondedAt: string | null;
+  rankCode?: string | null;
+  microphonePreference?: MicrophonePreference;
+  mode?: MatchMode;
+  profile?: any;
+}
+
+export interface MatchGroup {
+  id: string;
+  ownerUserId: string;
+  state: GroupMatchState;
+  gameId: "deadlock";
+  mode: "casual";
+  /** Effective intersection of all current members' teammate ranges. */
+  desiredTeammates: number;
+  minTeammates: number;
+  confirmationDeadline: string | null;
+  roomId: string | null;
+  sessionId: string | null;
+  roomCode?: string | null;
+  members: MatchGroupMember[];
 }
 
 export interface MatchmakingRuleSet {
@@ -39,6 +91,7 @@ export interface MatchmakingRuleSet {
   hardRules: {
     allowedModes: MatchMode[];
     rankedPartyMax: number;
+    rankedTeammateMax?: number;
     highRankThreshold: string | null;
     highRankPartyMax: number | null;
     maxRankDistance: number | null;

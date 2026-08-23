@@ -1,16 +1,23 @@
 import { requireRequestProfile } from "@/lib/auth";
 import { supabaseAdmin } from "@/lib/supabase";
-import { errorResponse, jsonOk, requestId } from "@/lib/http";
+import { errorResponse, jsonBody, jsonOk, requestId } from "@/lib/http";
 import { sessionForRoomCode } from "@/lib/session";
 
 export async function POST(request: Request, { params }: { params: Promise<{ code: string }> }) {
   const rid = requestId(request);
+  let code = "";
+  let userId: string | null = null;
+  let roomId: string | null = null;
+  let sessionId: string | null = null;
   try {
-    const { code } = await params;
-    const body = await request.json();
+    code = (await params).code;
+    const body = await jsonBody(request);
     const me = await requireRequestProfile(request, body);
+    userId = me.id;
     const admin = supabaseAdmin();
     const session = await sessionForRoomCode(code);
+    roomId = session.room_id;
+    sessionId = session.id;
     if (!(session.players || []).includes(me.id)) throw new Error("SESSION_FORBIDDEN");
     if (session.status !== "completed") throw new Error("SESSION_NOT_COMPLETED");
 
@@ -59,6 +66,12 @@ export async function POST(request: Request, { params }: { params: Promise<{ cod
 
     return jsonOk({ ok: true }, rid);
   } catch (error) {
-    return errorResponse(error, rid, "保存失败，请稍后重试");
+    return errorResponse(error, rid, "保存失败，请稍后重试", {
+      userId,
+      roomId,
+      sessionId,
+      action: "feedback",
+      route: `/api/room/${code || ":code"}/feedback`,
+    });
   }
 }

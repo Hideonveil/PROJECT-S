@@ -2349,7 +2349,8 @@
   grid-column: 1 / -1;
   padding: 22px;
   display: grid;
-  grid-template-columns: 1fr minmax(96px, 0.22fr) 1fr;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 10px;
   align-items: stretch;
 }
 
@@ -2378,6 +2379,11 @@
 .connection-section-title h2 { margin: 0 0 5px; font-size: 18px; }
 .connection-section-title p { margin: 0; color: #76717a; font-size: 12px; line-height: 1.5; }
 .connection-exchange-column form, .connection-partner-accounts { display: flex; flex-direction: column; gap: 12px; }
+.connection-member-account { padding: 12px; border: 1px solid rgba(17,17,24,.12); background: rgba(255,255,255,.72); }
+.connection-member-account + .connection-member-account { margin-top: 10px; }
+.connection-member-account header { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+.connection-member-account header strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.connection-member-account header small { color: #77717d; font: 700 10px/1 var(--font-mono); }
 .connection-account-field { display: flex; flex-direction: column; gap: 7px; font-size: 12px; font-weight: 700; }
 .connection-account-row { min-height: 70px; padding: 12px 14px; border: 1px solid rgba(17,17,24,.13); background: #fff; display: flex; flex-direction: column; gap: 8px; }
 .connection-account-row > span { color: #77717d; font-size: 11px; }
@@ -2396,12 +2402,11 @@
 .connection-farewell-actions { position: relative; z-index: 1; display: flex; gap: 10px; }
 .connection-goodbye-button { min-width: 174px; min-height: 58px; font-size: 18px; background: var(--room-violet); color: #fff; border-color: var(--room-violet); }
 .connection-goodbye-button:hover { transform: translateY(-2px); background: #9c83ff; }
-.connection-goodbye-confirm .profile-identity { padding: 16px; background: rgba(139,108,255,.09); border: 1px solid rgba(139,108,255,.22); }
 
 @media (max-width: 980px) {
   .connection-room { width: calc(100vw - 82px); grid-template-columns: 1fr; }
   .connection-room__chat { grid-column: 1 / -1; min-height: 350px; }
-  .connection-room__players { grid-template-columns: 1fr; gap: 10px; }
+  .connection-room__players { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; }
   .connection-axis { min-height: 42px; transform: rotate(90deg); }
 }
 
@@ -2570,6 +2575,13 @@
   margin-top: 38px;
   padding: 38px;
 }
+
+.connection-gameover__members { grid-template-columns: minmax(0, 1fr) auto; }
+.connection-gameover-member-list { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; padding-top: 15px; }
+.connection-gameover-member { position: relative; min-width: 0; padding: 30px 18px 16px; border: 1px solid rgba(17,17,25,.12); background: rgba(255,255,255,.58); }
+.connection-gameover-member .connection-player__index { left: 14px; top: 11px; }
+.connection-gameover-member .connection-gameover__identity { gap: 14px; }
+.connection-gameover-member .connection-gameover__identity h2 { font-size: 20px; }
 
 .connection-gameover__partner::before {
   content: "";

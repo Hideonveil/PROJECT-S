@@ -10,8 +10,26 @@ export async function GET(request: Request) {
     }
     const rawDays = Number(new URL(request.url).searchParams.get("days") || 14);
     const days = Math.min(90, Math.max(1, Number.isFinite(rawDays) ? Math.floor(rawDays) : 14));
-    const since = new Date(Date.now() - days * 86_400_000).toISOString();
+    const rangeSince = new Date(Date.now() - days * 86_400_000).toISOString();
     const admin = supabaseAdmin();
+    const resetResult = await admin
+      .from("product_events")
+      .select("occurred_at,properties")
+      .eq("event_name", "ops_metrics_reset")
+      .order("occurred_at", { ascending: false })
+      .limit(100);
+    if (resetResult.error) throw resetResult.error;
+    const latestReset = (resetResult.data || []).reduce((latest, item) => {
+      const itemSetAt = String((item.properties as Record<string, unknown> | null)?.setAt || item.occurred_at || "");
+      const latestSetAt = String((latest?.properties as Record<string, unknown> | null)?.setAt || latest?.occurred_at || "");
+      return !latest || itemSetAt > latestSetAt ? item : latest;
+    }, null as { occurred_at?: string; properties?: Record<string, unknown> | null } | null);
+    const baselineResetAt = String(
+      latestReset?.properties?.metricsSince || latestReset?.occurred_at || "",
+    ) || null;
+    const since = baselineResetAt && new Date(baselineResetAt) > new Date(rangeSince)
+      ? baselineResetAt
+      : rangeSince;
     const [snapshotResult, seriesResult, errorsResult, feedbackResult] = await Promise.all([
       admin.rpc("ops_mvp_snapshot", { p_since: since }),
       admin.rpc("ops_mvp_daily_series", { p_since: since }),
@@ -35,6 +53,8 @@ export async function GET(request: Request) {
     if (feedbackResult.error) throw feedbackResult.error;
     return jsonOk({
       days,
+      metricsSince: since,
+      baselineResetAt,
       metrics: snapshotResult.data || {},
       series: seriesResult.data || [],
       recentErrors: errorsResult.data || [],

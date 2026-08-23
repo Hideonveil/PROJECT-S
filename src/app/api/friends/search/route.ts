@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server";
 import { authUserFromToken } from "@/lib/auth";
-import { bearerToken } from "@/lib/http";
+import { bearerToken, errorResponse, jsonBody, requestId } from "@/lib/http";
 import { publicProfilesFor } from "@/lib/data";
 import { supabaseAdmin } from "@/lib/supabase";
 
 export async function POST(request: Request) {
+  const rid = requestId(request);
   try {
-    const body = await request.json();
+    const body = await jsonBody(request);
     const token = bearerToken(request, body);
     const authUser = await authUserFromToken(token);
     if (!authUser) return NextResponse.json({ error: "未登录" }, { status: 401 });
@@ -21,6 +22,6 @@ export async function POST(request: Request) {
     const [safeTarget] = await publicProfilesFor([target.id]);
     return NextResponse.json({ user: { ...safeTarget, friendCode: target.friend_code } });
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "搜索失败" }, { status: 500 });
+    return errorResponse(error, rid, "搜索失败，请稍后重试");
   }
 }

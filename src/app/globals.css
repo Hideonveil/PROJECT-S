@@ -4,3 +4,22 @@ html, body {
   color: #f2f0ea;
   font-family: Inter, "SF Pro Display", "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
 }
+
+.jiyuan-locale-switch {
+  position: fixed;
+  z-index: 10020;
+  right: 18px;
+  bottom: 18px;
+  min-width: 44px;
+  height: 34px;
+  padding: 0 12px;
+  border: 1px solid #17151d;
+  border-radius: 999px;
+  color: #17151d;
+  background: rgba(247, 244, 238, 0.94);
+  box-shadow: 0 7px 22px rgba(16, 13, 24, 0.16);
+  font: 800 12px/1 Inter, sans-serif;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  backdrop-filter: blur(12px);
+}

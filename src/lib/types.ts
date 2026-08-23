@@ -10,6 +10,7 @@ export interface GameIdentity {
 export interface Profile {
   id: string;
   auth_user_id: string | null;
+  username?: string | null;
   nickname: string;
   avatar_key: string;
   device: string;
@@ -27,6 +28,7 @@ export interface Profile {
 
 export interface PublicProfile {
   id: string;
+  username?: string | null;
   nickname: string;
   handle: string;
   avatarKey: string;
@@ -59,6 +61,9 @@ export interface Room {
   sessionId?: string | null;
   sessionStatus?: string | null;
   goodbyeRequests: Array<{ userId: string; requestedAt: string }>;
+  currentMemberCount?: number;
+  activeMemberCount?: number;
+  targetTotalPlayers?: number;
 }
 
 export interface RecentConnection {

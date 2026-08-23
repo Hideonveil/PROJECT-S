@@ -12,6 +12,17 @@ export const CLIENT_EVENT_NAMES = new Set([
 const MAX_PROPERTY_COUNT = 20;
 const MAX_STRING_LENGTH = 240;
 
+export type ServerErrorContext = {
+  userId?: string | null;
+  roomId?: string | null;
+  sessionId?: string | null;
+  ticketId?: string | null;
+  requestId?: string | null;
+  action?: string | null;
+  route?: string | null;
+  timestamp?: string | null;
+};
+
 export function safeEventProperties(input: unknown): Record<string, unknown> {
   if (!input || typeof input !== "object" || Array.isArray(input)) return {};
   return Object.fromEntries(
@@ -48,27 +59,53 @@ export async function trackEvent(input: {
   if (error && !String(error.message).toLowerCase().includes("duplicate")) throw error;
 }
 
+export function buildServerErrorRecord(input: {
+  error: unknown;
+  requestId: string;
+  code: string;
+  context?: ServerErrorContext;
+}) {
+  const errorName = input.error instanceof Error ? input.error.name : "UnknownError";
+  const context = input.context || {};
+  return {
+    level: "error",
+    event: "server_error",
+    user_id: context.userId || null,
+    room_id: context.roomId || null,
+    session_id: context.sessionId || null,
+    ticket_id: context.ticketId || null,
+    request_id: context.requestId || input.requestId,
+    action: context.action || null,
+    route: context.route || null,
+    timestamp: context.timestamp || new Date().toISOString(),
+    code: input.code,
+    error_name: errorName,
+  };
+}
+
 export function reportServerError(input: {
   error: unknown;
   requestId: string;
   code: string;
   fallback: string;
+  context?: ServerErrorContext;
 }) {
-  const errorName = input.error instanceof Error ? input.error.name : "UnknownError";
-  console.error(JSON.stringify({
-    level: "error",
-    event: "server_error",
-    requestId: input.requestId,
-    code: input.code,
-    errorName,
-  }));
+  const record = buildServerErrorRecord(input);
+  console.error(JSON.stringify(record));
   void trackEvent({
     eventName: "server_error",
+    userId: input.context?.userId,
+    sessionId: input.context?.sessionId,
+    roomId: input.context?.roomId,
     requestId: input.requestId,
     properties: {
       code: input.code,
-      errorName,
+      errorName: record.error_name,
       fallback: input.fallback,
+      ticket_id: record.ticket_id,
+      action: record.action,
+      route: record.route,
+      timestamp: record.timestamp,
     },
   }).catch((loggingError) => {
     console.warn(JSON.stringify({

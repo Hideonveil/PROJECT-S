@@ -1,11 +1,11 @@
 import { requireRequestProfile } from "@/lib/auth";
-import { errorResponse, idempotencyKey, jsonOk, requestId } from "@/lib/http";
+import { errorResponse, idempotencyKey, jsonBody, jsonOk, requestId } from "@/lib/http";
 import { cancelTicket } from "@/lib/matchmaking/service";
 
 export async function POST(request: Request) {
   const rid = requestId(request);
   try {
-    const body = await request.json();
+    const body = await jsonBody(request);
     const profile = await requireRequestProfile(request, body);
     const ticket = await cancelTicket(profile.id, String(body.reason || "user_cancelled"), idempotencyKey(request));
     return jsonOk({ ticket }, rid);

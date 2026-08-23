@@ -73,9 +73,8 @@ async function getSupabase() {
 export async function getSession() {
   const sb = await getSupabase();
   const { data } = await sb.auth.getSession();
-  // Cache as soon as a persisted login is restored. This lets pagehide send
-  // the final offline beacon even if the first regular API call is still in
-  // flight when someone immediately closes the browser.
+  // Cache as soon as a persisted login is restored so the next authenticated
+  // state request can reuse the session without another auth round trip.
   cachedAccessToken = data.session?.access_token || "";
   return data.session;
 }
@@ -87,12 +86,37 @@ export async function currentToken() {
   return session.access_token;
 }
 
-export async function registerAccount(username, password) {
-  return request("/api/auth/register", { username, password });
+export async function registerAccount(username, email, password) {
+  return request("/api/auth/register", { username, email, password });
 }
 
-export async function loginByUsername(username, password) {
-  return request("/api/auth/login", { username, password });
+export async function loginByIdentifier(identifier, password) {
+  return request("/api/auth/login", { identifier, password });
+}
+
+export const loginByUsername = loginByIdentifier;
+
+export async function resendVerification(email) {
+  return request("/api/auth/resend", { email });
+}
+
+export async function requestPasswordReset(email) {
+  return request("/api/auth/forgot", { email });
+}
+
+export async function updatePassword(password) {
+  const sb = await getSupabase();
+  const { data, error } = await sb.auth.updateUser({ password });
+  if (error) throw error;
+  return data;
+}
+
+export async function verifySignupOtp(email, token) {
+  const sb = await getSupabase();
+  const { data, error } = await sb.auth.verifyOtp({ email, token, type: "email" });
+  if (error) throw error;
+  cachedAccessToken = data.session?.access_token || "";
+  return data;
 }
 
 export async function signIn(email, password) {
@@ -122,28 +146,28 @@ export const register = async (profile) => {
 
 export const updateProfile = (profile) => authedRequest("/api/profile", profile);
 export const startMatchmaking = async (match) => request("/api/matchmaking/start", { match }, await currentToken(), { timeoutMs: 30000 });
-export const getMatchmakingStatus = async () => request("/api/matchmaking/status", undefined, await currentToken(), { timeoutMs: 30000 });
+export const joinMatchmaking = async (ticketId) => request("/api/matchmaking/join", { ticketId }, await currentToken(), { timeoutMs: 30000 });
+export const getMatchmakingStatus = async () => request(
+  "/api/matchmaking/status",
+  undefined,
+  cachedAccessToken || await currentToken(),
+  { timeoutMs: 30000 }
+);
 export const cancelMatchmaking = async (reason = "user_cancelled") => request("/api/matchmaking/cancel", { reason }, await currentToken(), { timeoutMs: 30000 });
 export const confirmMatchmaking = async (pairId, decision) => request("/api/matchmaking/confirm", { pairId, decision }, await currentToken(), { timeoutMs: 30000 });
+export const startMatchGroup = async (groupId) => request("/api/matchmaking/group/start", { groupId }, await currentToken(), { timeoutMs: 30000 });
+export const confirmMatchGroup = async (groupId, decision) => request("/api/matchmaking/confirm", { groupId, decision }, await currentToken(), { timeoutMs: 30000 });
 export const submitMatchmakingFeedback = (payload) => authedRequest("/api/matchmaking/feedback", payload);
-export const goOffline = async ({ unloading = false } = {}) => {
+export const goOffline = async ({ reason = "explicit_logout" } = {}) => {
   try {
-    // A page being closed cannot reliably wait for an async token lookup. The
-    // cached access token is established as soon as this tab goes online, so a
-    // beacon gives the server the browser's final presence signal.
-    const token = cachedAccessToken || (unloading ? "" : await currentToken());
-    if (unloading && token && navigator.sendBeacon) {
-      const sent = navigator.sendBeacon(
-        "/api/offline",
-        new Blob([JSON.stringify({ token })], { type: "application/json" })
-      );
-      if (sent) return;
-    }
+    // This is deliberately an ordinary authenticated request. Browser
+    // lifecycle events never call it; only explicit logout does.
+    const token = cachedAccessToken || await currentToken();
     if (!token) return;
     await fetch("/api/offline", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: "{}",
+      body: JSON.stringify({ reason }),
       keepalive: true,
     });
   } catch {
@@ -185,13 +209,24 @@ export async function sendRoomMessage(roomId, content, senderId) {
 
 export function openEvents(handlers) {
   let closeFn = null;
+  let closed = false;
   import("./realtime.js")
-    .then(({ openRealtime }) => openRealtime(handlers))
+    .then(({ openRealtime }) => {
+      if (closed) return null;
+      return openRealtime(handlers);
+    })
     .then((fn) => {
+      if (!fn) return;
+      if (closed) {
+        fn();
+        return;
+      }
       closeFn = fn;
     })
     .catch(() => {});
   return () => {
+    closed = true;
     if (closeFn) closeFn();
+    closeFn = null;
   };
 }

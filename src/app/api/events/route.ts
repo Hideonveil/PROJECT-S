@@ -1,11 +1,11 @@
 import { requireRequestProfile } from "@/lib/auth";
-import { AppError, errorResponse, jsonOk, requestId } from "@/lib/http";
+import { AppError, errorResponse, jsonBody, jsonOk, requestId } from "@/lib/http";
 import { CLIENT_EVENT_NAMES, safeEventProperties, trackEvent } from "@/lib/metrics";
 
 export async function POST(request: Request) {
   const traceId = requestId(request);
   try {
-    const body = await request.json();
+    const body = await jsonBody(request);
     const me = await requireRequestProfile(request, body);
     const eventName = String(body.eventName || "");
     if (!CLIENT_EVENT_NAMES.has(eventName)) {

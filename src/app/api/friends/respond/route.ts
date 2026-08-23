@@ -1,13 +1,13 @@
 import { friendsFor } from "@/lib/api";
 import { requireRequestProfile } from "@/lib/auth";
 import { friendRequestsFor } from "@/lib/friendships";
-import { AppError, errorResponse, jsonOk, requestId } from "@/lib/http";
+import { AppError, errorResponse, jsonBody, jsonOk, requestId } from "@/lib/http";
 import { supabaseAdmin } from "@/lib/supabase";
 
 export async function POST(request: Request) {
   const rid = requestId(request);
   try {
-    const body = await request.json();
+    const body = await jsonBody(request);
     const me = await requireRequestProfile(request, body);
     const requesterId = String(body.requesterId || "").trim();
     const decision = String(body.decision || "").trim();

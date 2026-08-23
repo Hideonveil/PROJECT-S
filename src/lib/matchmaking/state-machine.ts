@@ -1,10 +1,21 @@
-import type { MatchState } from "./types";
+import type { GroupMatchState, MatchState } from "./types";
 
 const transitions: Record<MatchState, readonly MatchState[]> = {
   idle: ["searching"],
   searching: ["candidate_found", "cancelled", "expired"],
   candidate_found: ["waiting_confirmation", "searching", "cancelled", "expired"],
   waiting_confirmation: ["matched", "searching", "cancelled", "expired"],
+  matched: ["playing", "cancelled"],
+  playing: ["completed", "cancelled"],
+  completed: [],
+  cancelled: [],
+  expired: [],
+};
+
+const groupTransitions: Record<GroupMatchState, readonly GroupMatchState[]> = {
+  searching: ["partial_ready", "waiting_confirmation", "cancelled", "expired"],
+  partial_ready: ["searching", "waiting_confirmation", "cancelled", "expired"],
+  waiting_confirmation: ["matched", "partial_ready", "cancelled", "expired"],
   matched: ["playing", "cancelled"],
   playing: ["completed", "cancelled"],
   completed: [],
@@ -32,4 +43,18 @@ export function assertTransition(from: MatchState, to: MatchState): void {
 
 export function isTerminalState(state: MatchState): boolean {
   return transitions[state].length === 0;
+}
+
+export function canGroupTransition(from: GroupMatchState, to: GroupMatchState): boolean {
+  return groupTransitions[from].includes(to);
+}
+
+export function assertGroupTransition(from: GroupMatchState, to: GroupMatchState): void {
+  if (!canGroupTransition(from, to)) {
+    throw new Error(`INVALID_GROUP_MATCH_TRANSITION:${from}->${to}`);
+  }
+}
+
+export function isTerminalGroupState(state: GroupMatchState): boolean {
+  return groupTransitions[state].length === 0;
 }

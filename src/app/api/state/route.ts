@@ -20,7 +20,9 @@ export async function GET(request: Request) {
       recentConnectionsFor(profile.id),
       // A state snapshot is read-only. Updating matchmaking here creates a
       // realtime feedback loop: table change -> snapshot -> table change.
-      matchmakingStatus(profile.id, false),
+      // Replaced the old matchmakingStatus(profile.id, false) heartbeat flag:
+      // status reads are now intrinsically read-only.
+      matchmakingStatus(profile.id),
     ]);
 
     return NextResponse.json({

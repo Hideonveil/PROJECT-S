@@ -1,23 +1,25 @@
 import { icon } from "./icons.js";
 import { avatar, avatarWrap, paintAvatars } from "./avatar.js";
 import { initNodeField } from "./field.js";
+import { initHeroWaves } from "./hero-waves.js?v=20260820-hero-02";
 import { button, esc, needSummary, setProductRailHeldOpen, toast } from "./ui.js";
 import { state, update, resetState } from "./store.js";
 import { DEVICES, GAME_BY_ID, GAMES, GENRES } from "./data.js";
 import { FLOW } from "./flow.js";
 import * as api from "./api.js";
 import { authPage } from "./pages/auth.js";
-import { landingPage } from "./pages/landing.js";
+import { HERO_PREVIEW_DIRECTORY, heroDirectoryMarkup, heroDirectoryPersonMarkup, heroPreviewPage, landingPage } from "./pages/landing.js?v=20260822-directory-readonly-01";
 import { welcomePage } from "./pages/welcome.js";
-import { homeFlowStepper, homePage } from "./pages/home.js";
+import { homeFlowStepper, homePage, matchingDirectoryMarkup, matchingDirectoryPersonMarkup } from "./pages/home.js?v=20260822-directory-readonly-01";
 import { communityPage } from "./pages/community.js";
-import { matchingPage } from "./pages/matching.js";
+import { matchingPage, matchingPreviewPage } from "./pages/matching.js";
 import { roomPage } from "./pages/room.js";
+import { sessionHandoffPage, sessionPreviewPage } from "./pages/session-preview.js?v=20260822-role-fit-01";
 import { gameoverPage } from "./pages/gameover.js";
 import { connectionsPage } from "./pages/connections.js";
-import { friendsPage } from "./pages/friends.js";
 import { mePage } from "./pages/me.js";
 import { dismissHeroBoot, withProjectTransition } from "./transition.js";
+import { memberDisplayName, sessionMembers } from "./session-members.js";
 
 const app = document.getElementById("app");
 
@@ -25,7 +27,7 @@ const DRAFT = {
   nickname: state.user.nickname,
   avatarKey: state.user.avatarKey,
   device: state.user.device,
-  gender: state.user.gender || "保密",
+  gender: state.user.gender || "男",
   genres: state.user.genres || [],
   playStyle: state.user.playStyle,
   game: state.need.game,
@@ -50,6 +52,8 @@ const DRAFT = {
   voicePref: "都可以",
   style: "",
   needed: 1,
+  teamMin: 1,
+  teamMax: 1,
   onboardStep: 0,
   onboardDirection: 1,
   dirty: false,
@@ -65,6 +69,8 @@ const HOME_FILTER = {
   teammateRoles: [],
   time: "现在",
   team: "1",
+  teamMin: "1",
+  teamMax: "1",
   voice: "on",
 };
 let homeStepperRevision = 0;
@@ -73,18 +79,36 @@ let timers = [];
 let ONLINE = false;
 let eventSourceClose = null;
 let chatClose = null;
+let chatGeneration = 0;
+let presenceHeartbeatHandle = 0;
+let chatSendPending = false;
+let goodbyeRequestPending = false;
+let exitRequestPending = false;
 let wizardAdvanceTimer = null;
 let roomExitReadyAt = 0;
 let matchStartObserver = null;
 let productTickerCleanup = null;
+let heroWavesCleanup = null;
 let targetCursorCleanup = null;
 let matchRequestPending = false;
 let matchConfirmationPending = false;
 let staggeredRailCleanup = null;
 let staggeredRailHoldOpen = false;
-let presenceOfflineSent = false;
 let lastTrackedRoute = "";
+let heroDirectoryOffset = 0;
+let heroDirectorySignature = "";
+let homeDirectoryOffset = 0;
+let homeDirectorySignature = "";
+let heroActivityRequestPending = false;
+let homeActivityRequestPending = false;
+let homeRangePointer = null;
 const trackedCandidatePairs = new Set();
+let authSubmitPending = false;
+let verificationPending = false;
+let verificationResendPending = false;
+let forgotPasswordPending = false;
+let passwordResetPending = false;
+let sessionHandoff = null;
 
 function trackCurrentPage() {
   if (!state.authenticated) return;
@@ -116,10 +140,44 @@ function clearTimers() {
   }
   productTickerCleanup?.();
   productTickerCleanup = null;
+  heroWavesCleanup?.();
+  heroWavesCleanup = null;
   targetCursorCleanup?.();
   targetCursorCleanup = null;
   staggeredRailCleanup?.();
   staggeredRailCleanup = null;
+}
+
+function isSessionHandoffActive() {
+  return Boolean(
+    sessionHandoff?.roomCode
+      && state.room?.code === sessionHandoff.roomCode
+      && sessionHandoff.until > Date.now()
+  );
+}
+
+function beginSessionHandoff(room) {
+  if (!room?.code) return;
+  sessionHandoff = { roomCode: room.code, until: Date.now() + 3000 };
+}
+
+function startSessionHandoff() {
+  if (!isSessionHandoffActive()) return;
+  const tick = () => {
+    if (!sessionHandoff?.roomCode || state.room?.code !== sessionHandoff.roomCode || parseRoute().name !== "matching") return;
+    const remain = Math.max(0, Math.ceil((sessionHandoff.until - Date.now()) / 1000));
+    const countdown = document.getElementById("session-handoff-countdown");
+    if (countdown) countdown.textContent = String(remain);
+    const handoffTitle = document.getElementById("session-handoff-title");
+    if (handoffTitle && remain > 0) handoffTitle.textContent = `${remain} 秒后进入 Session`;
+    const progress = document.querySelector(".matching-session-handoff-track span");
+    if (progress) progress.style.setProperty("--handoff-progress", `${Math.min(100, ((3000 - Math.max(0, sessionHandoff.until - Date.now())) / 3000) * 100)}%`);
+    if (remain > 0) return;
+    sessionHandoff = null;
+    render();
+  };
+  tick();
+  timers.push(window.setInterval(tick, 100));
 }
 
 function initProductTicker() {
@@ -474,7 +532,15 @@ function persistentProductShell(html) {
     if (currentFooter && nextFooter && currentFooter.innerHTML !== nextFooter.innerHTML) currentFooter.innerHTML = nextFooter.innerHTML;
     nextRail.replaceWith(currentRail);
   }
-  if (currentTicker && nextTicker) nextTicker.replaceWith(currentTicker);
+  if (currentTicker && nextTicker) {
+    // Keep the ticker's running animation across route changes, but always
+    // adopt the destination shell's class contract. The hero ticker carries
+    // `landing-ticker`, whose relative positioning is only valid inside the
+    // landing layout; leaking that class into the product shell places the
+    // warning strip under the narrow navigation column until a refresh.
+    currentTicker.className = nextTicker.className;
+    nextTicker.replaceWith(currentTicker);
+  }
   const preserveStepper = (selector, markerSelector, lineSelector) => {
     const currentStepper = app.querySelector(selector);
     const nextStepper = template.content.querySelector(selector);
@@ -524,6 +590,14 @@ function switchAuthMode(mode) {
   confirmSlot.setAttribute("aria-hidden", String(!isRegister));
   confirmInput.disabled = !isRegister;
   if (!isRegister) confirmInput.value = "";
+  const emailSlot = workspace.querySelector(".auth-email-slot");
+  const emailInput = workspace.querySelector("#auth-email");
+  if (emailSlot) emailSlot.setAttribute("aria-hidden", String(!isRegister));
+  if (emailInput) emailInput.disabled = !isRegister;
+  const identifierLabel = workspace.querySelector("[data-auth-identifier-label]");
+  const identifierInput = workspace.querySelector("#auth-identifier");
+  if (identifierLabel) identifierLabel.textContent = isRegister ? "用户名" : "用户名或邮箱";
+  if (identifierInput) identifierInput.placeholder = isRegister ? "2-24 位字母、数字或中文" : "输入用户名或邮箱";
   const copy = workspace.querySelector("[data-auth-switch-copy]");
   copy.querySelector("span").textContent = isRegister ? "已经有账号？" : "还没有账号？";
   const copyButton = copy.querySelector("button");
@@ -600,6 +674,8 @@ function resetHomeFilter() {
   HOME_FILTER.teammateRoles = [];
   HOME_FILTER.time = "现在";
   HOME_FILTER.team = "1";
+  HOME_FILTER.teamMin = "1";
+  HOME_FILTER.teamMax = "1";
   HOME_FILTER.voice = "on";
 }
 
@@ -617,7 +693,7 @@ async function enterMatchFromHero() {
 
 async function enterAuth(mode) {
   const nextMode = mode === "register" ? "register" : "login";
-  update({ authMode: nextMode, authError: "", authNotice: "" });
+  update({ authMode: nextMode, authError: "", authNotice: "", authVerification: null });
   if (parseRoute().name !== "hero") {
     navigate("#/auth");
     return;
@@ -632,34 +708,267 @@ async function enterAuth(mode) {
   });
 }
 
+function enterForgotPassword() {
+  const email = document.querySelector("#auth-identifier")?.value?.trim() || state.authEmail || "";
+  update({ authMode: "forgot", authEmail: email, authError: "", authNotice: "", authVerification: null });
+  navigate("#/auth");
+}
+
 function parseRoute() {
-  const path = (location.hash || "#/hero").replace(/^#/, "") || "/hero";
+  const raw = (location.hash || "#/hero").replace(/^#/, "") || "/hero";
+  // Supabase confirmation may append access tokens to the redirect hash. Keep
+  // the SPA route stable instead of treating the token as a new page name.
+  const clean = raw.split(/[?#]/, 1)[0];
+  const path = clean.startsWith("/") ? clean : "/auth";
   const parts = path.split("/").filter(Boolean);
   return { name: parts[0] || "home", id: parts[1] || "" };
+}
+
+function isLocalOnboardingPreview(route = parseRoute()) {
+  return route.name === "welcome-preview" && (
+    location.protocol === "file:" ||
+    location.hostname === "localhost" ||
+    location.hostname === "127.0.0.1"
+  );
+}
+
+function isLocalMatchingPreview(route = parseRoute()) {
+  return route.name === "matching-preview" && (
+    location.protocol === "file:" ||
+    location.hostname === "localhost" ||
+    location.hostname === "127.0.0.1"
+  );
+}
+
+function isLocalSessionPreview(route = parseRoute()) {
+  return route.name === "session-preview" && (
+    location.protocol === "file:" ||
+    location.hostname === "localhost" ||
+    location.hostname === "127.0.0.1"
+  );
+}
+
+function isLocalHeroPreview(route = parseRoute()) {
+  return route.name === "hero-preview" && (
+    location.protocol === "file:" ||
+    location.hostname === "localhost" ||
+    location.hostname === "127.0.0.1"
+  );
+}
+
+function updateHeroActivityView(match = state.match) {
+  const directoryEl = document.getElementById("hero-directory");
+  if (!directoryEl) return;
+  const directory = Array.isArray(match?.directory) ? match.directory : [];
+  const signature = directorySignature(directory);
+  // Health polling runs independently from the visual carousel. Do not
+  // rebuild the DOM when the data is unchanged, otherwise every poll cancels
+  // the current enter/exit animation and makes 1–3 player loops look broken.
+  if (signature === heroDirectorySignature && directoryEl.childElementCount) return;
+  heroDirectorySignature = signature;
+  heroDirectoryOffset = 0;
+  const pageSize = Math.min(3, directory.length);
+  if (!pageSize) {
+    directoryEl.innerHTML = heroDirectoryMarkup(directory);
+    return;
+  }
+  heroDirectoryOffset %= directory.length;
+  const visible = Array.from({ length: pageSize }, (_, index) => directory[(heroDirectoryOffset + index) % directory.length]);
+  directoryEl.innerHTML = heroDirectoryMarkup(visible);
+}
+
+function rotateHeroDirectory() {
+  if (!["hero", "hero-preview"].includes(parseRoute().name)) return;
+  const directory = parseRoute().name === "hero-preview" ? HERO_PREVIEW_DIRECTORY : (Array.isArray(state.match?.directory) ? state.match.directory : []);
+  if (!directory.length) return;
+  const directoryEl = document.getElementById("hero-directory");
+  const first = directoryEl?.querySelector("[data-hero-directory-person]");
+  if (!first) {
+    updateHeroActivityView(state.match);
+    return;
+  }
+  if (directory.length === 1) {
+    first.classList.remove("is-solo-refresh");
+    void first.offsetWidth;
+    first.classList.add("is-solo-refresh");
+    const timer = window.setTimeout(() => {
+      if (!["hero", "hero-preview"].includes(parseRoute().name) || !first.isConnected) return;
+      first.classList.remove("is-solo-refresh");
+      heroDirectoryOffset = 0;
+    }, 760);
+    timers.push(timer);
+    return;
+  }
+  const pageSize = Math.min(3, directory.length);
+  const nextOffset = (heroDirectoryOffset + 1) % directory.length;
+  const nextIndex = (heroDirectoryOffset + pageSize) % directory.length;
+  first.classList.add("is-exiting");
+  const following = [...directoryEl.querySelectorAll("[data-hero-directory-person]")].slice(1);
+  following.forEach((row) => row.classList.add("is-shifting"));
+  const replacement = document.createRange().createContextualFragment(heroDirectoryPersonMarkup(directory[nextIndex], "is-entering")).firstElementChild;
+  if (!replacement) return;
+  replacement.style.position = "absolute";
+  replacement.style.left = "0";
+  replacement.style.right = "3px";
+  replacement.style.bottom = "4px";
+  replacement.style.zIndex = "1";
+  directoryEl.append(replacement);
+  const timer = window.setTimeout(() => {
+    if (!["hero", "hero-preview"].includes(parseRoute().name) || !directoryEl.isConnected) return;
+    first.remove();
+    following.forEach((row) => row.classList.remove("is-shifting"));
+    replacement.removeAttribute("style");
+    replacement.classList.remove("is-entering");
+    heroDirectoryOffset = nextOffset;
+  }, 520);
+  timers.push(timer);
+}
+
+function directorySignature(directory) {
+  return JSON.stringify((Array.isArray(directory) ? directory : []).map((person) => ({
+    ticketId: person?.ticketId || "",
+    nickname: person?.nickname || "",
+    gameId: person?.gameId || "",
+    mode: person?.mode || "",
+    rankCode: person?.rankCode || "",
+    desiredRoles: Array.isArray(person?.desiredRoles) ? person.desiredRoles : [],
+    microphonePreference: person?.microphonePreference || "",
+  })));
+}
+
+function updateHomeDirectoryView(match = state.match, { force = false } = {}) {
+  const listEl = document.getElementById("home-directory-list");
+  if (!listEl) return;
+  const directory = Array.isArray(match?.directory) ? match.directory : [];
+  const signature = directorySignature(directory);
+  if (!force && signature === homeDirectorySignature) return;
+  homeDirectorySignature = signature;
+  homeDirectoryOffset = 0;
+  listEl.innerHTML = directory.length
+    ? matchingDirectoryMarkup(directory)
+    : `<div class="match-directory-empty"><b>还没有公开的匹配请求</b><span>第一个开始摇人的人，会出现在这里。</span></div>`;
+}
+
+function rotateHomeDirectory() {
+  if (parseRoute().name !== "home") return;
+  const directory = Array.isArray(state.match?.directory) ? state.match.directory : [];
+  if (!directory.length) return;
+  const listEl = document.getElementById("home-directory-list");
+  const first = listEl?.querySelector("[data-home-directory-person]");
+  if (!first) {
+    updateHomeDirectoryView(state.match, { force: true });
+    return;
+  }
+  if (directory.length === 1) {
+    first.classList.remove("is-solo-refresh");
+    void first.offsetWidth;
+    first.classList.add("is-solo-refresh");
+    const timer = window.setTimeout(() => {
+      if (parseRoute().name !== "home" || !first.isConnected) return;
+      first.classList.remove("is-solo-refresh");
+      homeDirectoryOffset = 0;
+    }, 760);
+    timers.push(timer);
+    return;
+  }
+  const pageSize = Math.min(6, directory.length);
+  const nextOffset = (homeDirectoryOffset + 1) % directory.length;
+  const nextIndex = (homeDirectoryOffset + pageSize) % directory.length;
+  first.classList.add("is-exiting");
+  const following = [...listEl.querySelectorAll("[data-home-directory-person]")].slice(1);
+  following.forEach((row) => row.classList.add("is-shifting"));
+  const replacement = document.createRange().createContextualFragment(matchingDirectoryPersonMarkup(directory[nextIndex], "is-entering")).firstElementChild;
+  if (!replacement) return;
+  replacement.style.position = "absolute";
+  replacement.style.left = "0";
+  replacement.style.right = "0";
+  replacement.style.bottom = "4px";
+  replacement.style.zIndex = "1";
+  listEl.append(replacement);
+  const timer = window.setTimeout(() => {
+    if (parseRoute().name !== "home" || !listEl.isConnected) return;
+    first.remove();
+    following.forEach((row) => row.classList.remove("is-shifting"));
+    replacement.removeAttribute("style");
+    replacement.classList.remove("is-entering");
+    homeDirectoryOffset = nextOffset;
+  }, 520);
+  timers.push(timer);
+}
+
+async function refreshHomeActivity() {
+  if (parseRoute().name !== "home") return;
+  if (homeActivityRequestPending) return;
+  homeActivityRequestPending = true;
+  try {
+    const snapshot = await api.health();
+    if (parseRoute().name !== "home") return;
+    const nextMatch = {
+      ...state.match,
+      online: Number(snapshot.online ?? state.match.online ?? 0),
+      pool: Number(snapshot.matching ?? snapshot.online ?? state.match.pool ?? 0),
+      playing: Number(snapshot.playing ?? state.match.playing ?? 0),
+      directory: Array.isArray(snapshot.directory) ? snapshot.directory : state.match.directory || [],
+    };
+    update({ match: nextMatch });
+    updateHomeDirectoryView(nextMatch);
+  } catch {
+    // The matching form remains usable when the public activity snapshot is unavailable.
+  } finally {
+    homeActivityRequestPending = false;
+  }
+}
+
+async function refreshHeroActivity() {
+  if (parseRoute().name !== "hero") return;
+  if (heroActivityRequestPending) return;
+  heroActivityRequestPending = true;
+  try {
+    const snapshot = await api.health();
+    if (parseRoute().name !== "hero") return;
+    const nextMatch = {
+      ...state.match,
+      online: Number(snapshot.online ?? state.match.online ?? 0),
+      pool: Number(snapshot.matching ?? snapshot.online ?? state.match.pool ?? 0),
+      playing: Number(snapshot.playing ?? state.match.playing ?? 0),
+      directory: Array.isArray(snapshot.directory) ? snapshot.directory : state.match.directory || [],
+    };
+    update({ match: nextMatch });
+    updateHeroActivityView(nextMatch);
+  } catch {
+    // Hero remains usable when the public activity snapshot is temporarily unavailable.
+  } finally {
+    heroActivityRequestPending = false;
+  }
 }
 
 function render() {
   clearTimers();
   clearWizardAdvance();
   destroyField();
+  chatGeneration += 1;
   if (chatClose) {
     chatClose();
     chatClose = null;
   }
   const route = parseRoute();
-  if (route.name !== "welcome") DRAFT.dirty = false;
+  const localOnboardingPreview = isLocalOnboardingPreview(route);
+  const localMatchingPreview = isLocalMatchingPreview(route);
+  const localHeroPreview = isLocalHeroPreview(route);
+  const localSessionPreview = isLocalSessionPreview(route);
+  if (route.name !== "welcome" && !localOnboardingPreview) DRAFT.dirty = false;
   delete document.body.dataset.gameTheme;
 
   const publicRoutes = new Set(["hero", "home", "community", "auth"]);
-  if (!state.authenticated && !publicRoutes.has(route.name)) {
+  if (!localOnboardingPreview && !localMatchingPreview && !localHeroPreview && !localSessionPreview && !state.authenticated && !publicRoutes.has(route.name)) {
     location.hash = "#/auth";
     return;
   }
-  if (state.authenticated && !state.onboarded && route.name !== "welcome") {
+  if (!localOnboardingPreview && !localMatchingPreview && !localHeroPreview && !localSessionPreview && state.authenticated && !state.onboarded && route.name !== "welcome") {
     location.hash = "#/welcome";
     return;
   }
-  if (state.authenticated && state.onboarded && (route.name === "auth" || route.name === "welcome")) {
+  if (!localOnboardingPreview && !localMatchingPreview && !localHeroPreview && !localSessionPreview && state.authenticated && state.onboarded && (route.name === "auth" || route.name === "welcome")) {
     location.hash = "#/home";
     return;
   }
@@ -671,12 +980,23 @@ function render() {
     case "hero":
       html = landingPage(state);
       break;
+    case "hero-preview":
+      if (!localHeroPreview) {
+        navigate("#/hero");
+        return;
+      }
+      html = heroPreviewPage();
+      break;
     case "auth":
       html = authPage(state);
       break;
     case "welcome":
       if (!DRAFT.dirty) prepareOnboardDraft();
       html = welcomePage(state, DRAFT);
+      break;
+    case "welcome-preview":
+      if (!DRAFT.dirty) prepareOnboardDraft();
+      html = welcomePage({ ...state, authenticated: false, onboarded: false }, DRAFT);
       break;
     case "home":
       html = homePage(state, HOME_FILTER);
@@ -688,14 +1008,34 @@ function render() {
       html = connectionsPage(state);
       break;
     case "matching": {
-      if (state.match.status !== "active") {
+      if (state.match.status !== "active" && !state.room) {
         navigate("#/home");
         return;
       }
-      html = matchingPage(state);
+      html = matchingPage(state, {
+        handoffSeconds: isSessionHandoffActive()
+          ? Math.max(1, Math.ceil((sessionHandoff.until - Date.now()) / 1000))
+          : 0,
+      });
       immersive = true;
       break;
     }
+    case "matching-preview":
+      if (!localMatchingPreview) {
+        navigate("#/hero");
+        return;
+      }
+      html = matchingPreviewPage();
+      immersive = true;
+      break;
+    case "session-preview":
+      if (!localSessionPreview) {
+        navigate("#/hero");
+        return;
+      }
+      html = sessionPreviewPage(state);
+      immersive = true;
+      break;
     case "room": {
       if (!state.room) {
         navigate("#/home");
@@ -715,8 +1055,11 @@ function render() {
       break;
     }
     case "friends":
-      html = mePage(state);
-      break;
+      // The old standalone friends screen is retired. Keep the legacy hash
+      // link safe by taking players to the current profile surface instead of
+      // rendering a second, stale friends implementation.
+      navigate("#/me");
+      return;
     case "me":
       html = mePage(state);
       break;
@@ -732,15 +1075,39 @@ function render() {
   initProductTicker();
   initStaggeredRail();
 
+  if (route.name === "hero" || route.name === "hero-preview") {
+    heroWavesCleanup = initHeroWaves(document.querySelector("[data-hero-waves]"));
+    heroDirectoryOffset = 0;
+    heroDirectorySignature = "";
+    updateHeroActivityView(route.name === "hero-preview" ? { directory: HERO_PREVIEW_DIRECTORY } : state.match);
+    if (route.name === "hero") {
+      void refreshHeroActivity();
+      // Public Hero pages are not authenticated, so they cannot rely on the
+      // private Realtime channel. Poll frequently enough that entering or
+      // leaving the pool is visible within a few seconds, with request
+      // de-duplication preventing slow responses from piling up.
+      timers.push(window.setInterval(refreshHeroActivity, 3000));
+    }
+    timers.push(window.setInterval(rotateHeroDirectory, 2000));
+  }
+
   if (route.name === "home") {
     initMatchStartDock();
     initTargetCursor();
+    homeDirectoryOffset = 0;
+    homeDirectorySignature = "";
+    updateHomeDirectoryView(state.match, { force: true });
+    void refreshHomeActivity();
+    timers.push(window.setInterval(refreshHomeActivity, 3000));
+    timers.push(window.setInterval(rotateHomeDirectory, 8000));
   }
-  if (route.name === "matching") startMatchingFlow();
+  if (route.name === "matching") {
+    if (state.room && isSessionHandoffActive()) startSessionHandoff();
+    else if (!state.room) startMatchingFlow();
+  }
   if (route.name === "room" && state.room?.status === "playing") startRoomTimer();
-  if (route.name === "room" && state.room?.id) {
+  if (["room", "matching"].includes(route.name) && state.room?.id && !isSessionHandoffActive()) {
     initRoomChat();
-    initRoomExitCountdown();
   }
 }
 
@@ -748,7 +1115,7 @@ function prepareOnboardDraft() {
   DRAFT.nickname = state.user.nickname || state.authUsername || "";
   DRAFT.avatarKey = String(state.user.avatarKey || "").startsWith("data:") ? state.user.avatarKey : "";
   DRAFT.device = "";
-  DRAFT.gender = "";
+  DRAFT.gender = "男";
   DRAFT.genres = state.user.genres || [];
   DRAFT.playStyle = state.user.playStyle || "";
   DRAFT.onboardStep = 0;
@@ -762,7 +1129,11 @@ function prepareNeedDraft() {
   DRAFT.mode = state.need.mode || "";
   DRAFT.goal = state.need.goal || "";
   DRAFT.current = Math.min(4, Math.max(1, Number(state.need.current) || 1));
-  DRAFT.needed = Math.min(4, Math.max(1, Number(state.need.target || 2) - Number(state.need.current || 1)));
+  const stateDesiredTeammates = Math.min(5, Math.max(1, Number(state.need.desiredTeammates || Number(state.need.target || 2) - Number(state.need.current || 1)) || 1));
+  const stateMinTeammates = Math.min(stateDesiredTeammates, Math.max(1, Number(state.need.minTeammates || stateDesiredTeammates) || stateDesiredTeammates));
+  DRAFT.teamMin = stateMinTeammates;
+  DRAFT.teamMax = stateDesiredTeammates;
+  DRAFT.needed = stateDesiredTeammates;
   DRAFT.time = times.includes(state.need.time) ? state.need.time : "现在就玩";
   DRAFT.duration = durations.includes(state.need.duration) ? state.need.duration : "60";
   DRAFT.voice = state.need.voice !== false;
@@ -843,6 +1214,112 @@ function selectHomeChoice(actionEl) {
   });
 }
 
+function homeTeamRange() {
+  const min = Math.min(5, Math.max(1, Number(HOME_FILTER.teamMin ?? HOME_FILTER.team ?? 1) || 1));
+  const max = Math.max(min, Math.min(5, Number(HOME_FILTER.teamMax ?? HOME_FILTER.team ?? min) || min));
+  return { min, max };
+}
+
+function updateHomeTeamRangeView() {
+  const root = document.querySelector("[data-home-team-range]");
+  if (!root) return;
+  const { min, max } = homeTeamRange();
+  const minPercent = ((min - 1) / 4) * 100;
+  const maxPercent = ((max - 1) / 4) * 100;
+  const summary = root.querySelector("[data-team-range-summary]");
+  const note = root.querySelector("[data-team-range-note]");
+  const fill = root.querySelector("[data-team-range-fill]");
+  const minInput = root.querySelector('[data-home-team-range-input="min"]');
+  const maxInput = root.querySelector('[data-home-team-range-input="max"]');
+  root.style.setProperty("--team-range-min", `${minPercent}%`);
+  root.style.setProperty("--team-range-max", `${maxPercent}%`);
+  root.style.setProperty("--team-range-fill-left", `${minPercent}%`);
+  root.style.setProperty("--team-range-fill-right", `${100 - maxPercent}%`);
+  root.classList.toggle("is-locked", min === max);
+  if (summary) summary.textContent = min === max ? `严格匹配 ${min} 位队友` : `接受 ${min}–${max} 位队友`;
+  if (note) note.textContent = min === max ? "只进入同样想找该人数的队伍。" : "只加入人数范围与你有交集的队伍。";
+  if (fill) {
+    fill.style.left = `${minPercent}%`;
+    fill.style.right = `${100 - maxPercent}%`;
+  }
+  root.querySelectorAll("[data-team-range-detent]").forEach((detent) => {
+    const value = Number(detent.dataset.teamRangeDetent);
+    detent.classList.toggle("is-active", value >= min && value <= max);
+    detent.classList.toggle("is-edge", value === min || value === max);
+  });
+  if (minInput) {
+    minInput.value = String(min);
+    minInput.max = String(max);
+    minInput.setAttribute("aria-label", `最少接受 ${min} 位队友`);
+  }
+  if (maxInput) {
+    maxInput.value = String(max);
+    maxInput.min = String(min);
+    maxInput.setAttribute("aria-label", `最多接受 ${max} 位队友`);
+  }
+}
+
+function setHomeTeamRange(handle, rawValue) {
+  const value = Math.min(5, Math.max(1, Number(rawValue) || 1));
+  let { min, max } = homeTeamRange();
+  if (handle === "min") min = Math.min(value, max);
+  else max = Math.max(value, min);
+  HOME_FILTER.teamMin = String(min);
+  HOME_FILTER.teamMax = String(max);
+  // Keep the legacy single-value field as the effective upper bound for old
+  // summaries and any stale local drafts.
+  HOME_FILTER.team = String(max);
+  updateHomeTeamRangeView();
+}
+
+function stepHomeTeamDetent(handle, direction) {
+  const { min, max } = homeTeamRange();
+  const current = handle === "min" ? min : max;
+  const next = Math.min(5, Math.max(1, current + (direction > 0 ? 1 : -1)));
+  setHomeTeamRange(handle, next);
+}
+
+function homeTeamRangeValueFromPointer(track, clientX) {
+  const rect = track.getBoundingClientRect();
+  if (!rect.width) return 1;
+  const ratio = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
+  return Math.min(5, Math.max(1, Math.round(1 + ratio * 4)));
+}
+
+function beginHomeTeamRangePointer(event) {
+  if (event.button !== 0) return;
+  const track = event.target.closest?.("[data-home-team-range-track]");
+  if (!track) return;
+  const root = track.closest("[data-home-team-range]");
+  if (!root) return;
+  const { min, max } = homeTeamRange();
+  const value = homeTeamRangeValueFromPointer(track, event.clientX);
+  const handle = min === max
+    ? (value < min ? "min" : "max")
+    : (Math.abs(value - min) <= Math.abs(value - max) ? "min" : "max");
+  homeRangePointer = { pointerId: event.pointerId, track, handle };
+  track.classList.add("is-dragging");
+  track.setPointerCapture?.(event.pointerId);
+  root.querySelector(`[data-home-team-range-input="${handle}"]`)?.focus({ preventScroll: true });
+  setHomeTeamRange(handle, value);
+  event.preventDefault();
+}
+
+function moveHomeTeamRangePointer(event) {
+  if (!homeRangePointer || event.pointerId !== homeRangePointer.pointerId) return;
+  const { track, handle } = homeRangePointer;
+  if (!track.isConnected) return;
+  setHomeTeamRange(handle, homeTeamRangeValueFromPointer(track, event.clientX));
+  event.preventDefault();
+}
+
+function endHomeTeamRangePointer(event) {
+  if (!homeRangePointer || (event.pointerId != null && event.pointerId !== homeRangePointer.pointerId)) return;
+  homeRangePointer.track.classList.remove("is-dragging");
+  homeRangePointer.track.releasePointerCapture?.(homeRangePointer.pointerId);
+  homeRangePointer = null;
+}
+
 function syncHomeFilterToDraft() {
   prepareNeedDraft();
   DRAFT.game = "deadlock";
@@ -851,12 +1328,15 @@ function syncHomeFilterToDraft() {
   DRAFT.rank = HOME_FILTER.rank;
   DRAFT.time = HOME_FILTER.time || "现在";
   DRAFT.current = 1;
-  DRAFT.needed = HOME_FILTER.goal === "casual" ? Math.min(5, Math.max(1, Number(HOME_FILTER.team) || 1)) : 1;
+  const teamRange = homeTeamRange();
+  DRAFT.teamMin = HOME_FILTER.goal === "casual" ? teamRange.min : 1;
+  DRAFT.teamMax = HOME_FILTER.goal === "casual" ? teamRange.max : 1;
+  DRAFT.needed = DRAFT.teamMax;
   DRAFT.voice = HOME_FILTER.voice !== "off";
   DRAFT.voicePref = HOME_FILTER.voice;
   DRAFT.role = "";
   DRAFT.selectedTags = HOME_FILTER.goal === "casual"
-    ? [`队友人数：${DRAFT.needed}`]
+    ? [`队友人数：${DRAFT.teamMin === DRAFT.teamMax ? DRAFT.teamMax : `${DRAFT.teamMin}–${DRAFT.teamMax}`}`]
     : [
         ...HOME_FILTER.ownRoles.map((role) => `我的位置：${role}`),
         ...HOME_FILTER.teammateRoles.map((role) => `希望队友：${role}`),
@@ -923,11 +1403,12 @@ function normalizeServerRoom(room) {
     exitedAt: m.exitedAt || null,
     gameAccounts: m.gameAccounts || {},
   }));
-  const other =
-    members.find((p) => p.id !== state.user.id && p.memberStatus === "active") ||
-    members.find((p) => p.id !== state.user.id) ||
-    members[0] ||
-    {};
+  const memberModel = sessionMembers({
+    members,
+    target: room.target ?? room.targetTotalPlayers ?? room.need?.target,
+    goodbyeRequests: room.goodbyeRequests,
+  }, state.user.id);
+  const other = memberModel.otherMembers[0] || members.find((p) => p.id !== state.user.id) || members[0] || {};
   const partner = {
     ...other,
     name: other.name || other.nickname || "玩家",
@@ -943,33 +1424,49 @@ function normalizeServerRoom(room) {
     id: room.id,
     code: room.code,
     partner,
-    members,
+    members: memberModel.members,
+    activeMembers: memberModel.activeMembers,
+    otherMembers: memberModel.otherMembers,
+    currentMemberCount: memberModel.currentMemberCount,
+    activeMemberCount: memberModel.activeMemberCount,
+    targetTotalPlayers: memberModel.targetTotalPlayers,
     status: room.status || "playing",
     startedAt: room.startedAt ? new Date(room.startedAt).getTime() : Date.now(),
     need: room.need || state.need,
     sessionId: room.sessionId || null,
     sessionStatus: room.sessionStatus || null,
     goodbyeRequests: room.goodbyeRequests || [],
-    target: room.need?.target || state.need.target || 5,
+    target: memberModel.targetTotalPlayers,
   };
 }
 
+function sessionMemberSnapshot(session) {
+  const ids = Array.isArray(session?.players) ? session.players.filter(Boolean) : [];
+  const sourceMembers = (state.room?.members || []).filter((member) => ids.includes(member.id));
+  const members = sourceMembers.length
+    ? sourceMembers
+    : ids.map((id) => ({ id, name: id === state.user.id ? state.user.nickname || "我" : "玩家", memberStatus: "active" }));
+  return sessionMembers({
+    members,
+    target: state.room?.targetTotalPlayers || state.room?.target || ids.length,
+    goodbyeRequests: state.room?.goodbyeRequests,
+  }, state.user.id);
+}
+
 function sessionPartnerFor(session) {
-  const partnerId = (session?.players || []).find((id) => id && id !== state.user.id) || "";
-  const roomPartner = state.room?.members?.find((member) => member.id === partnerId) || state.room?.partner;
-  const savedPartner = state.session?.partner;
-  const recentPartner = (state.recentConnections || []).find((connection) => connection.id === partnerId);
-  const source = roomPartner?.id ? roomPartner : savedPartner?.id ? savedPartner : recentPartner || roomPartner || savedPartner || {};
+  const model = sessionMemberSnapshot(session);
+  const source = model.otherMembers[0] || state.room?.partner || {};
   return {
     ...source,
-    id: source.id || partnerId,
-    name: source.name || source.nickname || "对方玩家",
+    id: source.id || "",
+    name: memberDisplayName(source, "对方玩家"),
   };
 }
 
 function roomShapeChanged(next, prev) {
   if (!next || !prev) return true;
   if (next.code !== prev.code || next.status !== prev.status) return true;
+  if (next.targetTotalPlayers !== prev.targetTotalPlayers || next.activeMemberCount !== prev.activeMemberCount) return true;
   if (JSON.stringify(next.need || {}) !== JSON.stringify(prev.need || {})) return true;
   if (JSON.stringify(next.goodbyeRequests || []) !== JSON.stringify(prev.goodbyeRequests || [])) return true;
   const memberShape = (member) => JSON.stringify([
@@ -977,8 +1474,10 @@ function roomShapeChanged(next, prev) {
     member.memberStatus || "active",
     member.exitedAt || "",
     member.nickname || member.name || "",
+    member.username || "",
     member.avatarKey || "",
     member.gameAccounts || {},
+    member.need || {},
   ]);
   const members = (next.members || []).map(memberShape).join("|");
   const oldMembers = (prev.members || []).map(memberShape).join("|");
@@ -988,11 +1487,12 @@ function roomShapeChanged(next, prev) {
 function updateRoomView(nextRoom) {
   const root = document.querySelector(".room-page");
   if (!root || !nextRoom) return false;
-  const partner = nextRoom.partner || {};
+  const memberModel = sessionMembers(nextRoom, state.user.id);
   const gameId = nextRoom.need?.game || state.need?.game;
-  const accounts = partner.gameAccounts?.[gameId] || {};
-  root.querySelectorAll("[data-partner-account-key]").forEach((row) => {
-    const key = row.dataset.partnerAccountKey;
+  root.querySelectorAll("[data-member-account-key]").forEach((row) => {
+    const member = memberModel.members.find((candidate) => candidate.id === row.dataset.memberId);
+    const accounts = member?.gameAccounts?.[gameId] || {};
+    const key = row.dataset.memberAccountKey;
     const target = row.querySelector("[data-partner-account-value]");
     if (!target) return;
     const value = String(accounts[key] || "").trim();
@@ -1000,16 +1500,57 @@ function updateRoomView(nextRoom) {
     target.classList.toggle("room-account-value", Boolean(value));
     target.innerHTML = value
       ? `${esc(value)}${button({ label: "复制", action: "copy-room-account", value, kind: "ghost", size: "sm", iconName: "copy" })}`
-      : "对方还没填写";
+      : "这位成员还没填写";
   });
 
   const goodbye = root.querySelector("[data-room-goodbye-status]");
   if (goodbye) {
-    const mine = (nextRoom.goodbyeRequests || []).some((request) => request.userId === state.user.id);
-    const theirs = (nextRoom.goodbyeRequests || []).some((request) => request.userId !== state.user.id);
-    goodbye.textContent = mine && theirs ? "双方都已拜拜" : mine ? "已提出拜拜，等待对方" : theirs ? "对方想结束这次匹配" : "";
+    const mine = memberModel.requestIds.has(state.user.id);
+    const count = memberModel.goodbyeCount;
+    const denominator = memberModel.goodbyeDenominator;
+    const remaining = Math.max(0, denominator - count);
+    const label = count > 0 ? `拜拜（${count}/${denominator}）` : "拜拜";
+    goodbye.textContent = count >= denominator
+      ? `${count}/${denominator} 位成员都已拜拜`
+      : mine
+        ? `已拜拜，等待其余 ${remaining} 位成员`
+        : count > 0
+          ? `${count}/${denominator} 位成员已拜拜，你可以回应。`
+          : `当前 ${denominator} 位成员分别确认拜拜`;
     const actions = root.querySelector("[data-room-farewell-actions]");
-    if (actions) actions.innerHTML = `${mine ? button({ label: "撤回", action: "withdraw-goodbye", kind: "ghost", iconName: "refreshCw" }) : ""}${button({ label: theirs && !mine ? "回应拜拜" : "拜拜", action: "say-goodbye", kind: "primary", extra: "connection-goodbye-button", iconName: "handshake", disabled: mine })}`;
+    if (actions) actions.innerHTML = button({ label, action: mine ? "withdraw-goodbye" : "say-goodbye", kind: "primary", extra: "connection-goodbye-button", iconName: "handshake", disabled: goodbyeRequestPending });
+  }
+  return true;
+}
+
+function updateSessionView(nextRoom) {
+  const root = document.querySelector("[data-session-preview]");
+  if (!root || !nextRoom) return false;
+  const memberModel = sessionMembers(nextRoom, state.user.id);
+  const count = memberModel.goodbyeCount;
+  const denominator = memberModel.goodbyeDenominator;
+  const mine = memberModel.requestIds.has(state.user.id);
+  const countEl = root.querySelector("[data-session-goodbye-count]");
+  const buttonEl = root.querySelector("[data-session-goodbye-button]");
+  const statusEl = root.querySelector("[data-session-goodbye-status]");
+  if (countEl) countEl.textContent = `${count}/${denominator}`;
+  if (buttonEl) {
+    const label = count > 0 ? `拜拜（${count}/${denominator}）` : "拜拜";
+    buttonEl.disabled = goodbyeRequestPending;
+    buttonEl.dataset.action = mine ? "withdraw-goodbye" : "say-goodbye";
+    buttonEl.setAttribute("aria-label", `${label}${mine ? "，再次点击撤回" : ""}`);
+    buttonEl.innerHTML = `${icon(goodbyeRequestPending ? "refreshCw" : "handshake", 17, goodbyeRequestPending ? "is-spinning" : "")}<span data-session-goodbye-count>${label}</span>`;
+    buttonEl.setAttribute("aria-busy", String(goodbyeRequestPending));
+  }
+  if (statusEl) {
+    const copy = count >= denominator
+      ? `${count}/${denominator} 位成员已确认，正在进入赛后反馈。`
+      : mine
+        ? `${count}/${denominator} 已确认，等待其余 ${Math.max(0, denominator - count)} 位成员。`
+        : count > 0
+          ? `${count}/${denominator}，已有成员拜拜，点击后回应。`
+          : `0/${denominator} 已确认，所有成员都确认后进入赛后反馈。`;
+    statusEl.innerHTML = `<i></i>${copy}`;
   }
   return true;
 }
@@ -1023,7 +1564,8 @@ function updateGameoverView() {
     like.classList.toggle("is-liked", liked);
     like.dataset.value = liked ? "no" : "yes";
     like.setAttribute("aria-pressed", String(liked));
-    like.innerHTML = `${icon("heart", 22)}<span>${liked ? "已点赞" : "为 TA 点赞"}</span>`;
+    const teammateCount = state.session?.otherMembers?.length || 1;
+    like.innerHTML = `${icon("heart", 22)}<span>${liked ? "已点赞" : teammateCount > 1 ? `为 ${teammateCount} 位队友点赞` : "为 TA 点赞"}</span>`;
   }
   root.querySelectorAll('[data-action="set-room-rating"]').forEach((choice) => {
     const selected = choice.dataset.value === state.session?.rating;
@@ -1042,25 +1584,40 @@ function matchmakingShape(match) {
     match?.pair?.id || null,
     match?.pair?.state || null,
     match?.candidate?.id || null,
+    match?.candidate?.rankCode || match?.candidate?.rank_code || null,
+    match?.candidate?.microphonePreference || match?.candidate?.microphone_preference || null,
     confirmations,
+    match?.group?.id || null,
+    match?.group?.state || null,
+    (match?.group?.members || []).map((member) => `${member.userId}:${member.decision}:${member.rankCode || member.rank_code || ""}:${member.microphonePreference || member.microphone_preference || ""}`).sort(),
   ]);
 }
 
 function updateMatchingView(previousMatch, nextMatch) {
   if (parseRoute().name !== "matching") return;
+  if (nextMatch?.group || previousMatch?.group) {
+    // Rebuild the SPA view only; the browser, auth session, and ticket remain
+    // untouched while the group member list/action set changes.
+    render();
+    return;
+  }
+  const previousAwaiting = ["waiting_confirmation", "matched", "playing"].includes(previousMatch?.pair?.state) && previousMatch?.candidate;
+  const nextAwaiting = ["waiting_confirmation", "matched", "playing"].includes(nextMatch?.pair?.state) && nextMatch?.candidate;
+  const previousCandidateMeta = `${previousMatch?.candidate?.rankCode || previousMatch?.candidate?.rank_code || ""}:${previousMatch?.candidate?.microphonePreference || previousMatch?.candidate?.microphone_preference || ""}`;
+  const nextCandidateMeta = `${nextMatch?.candidate?.rankCode || nextMatch?.candidate?.rank_code || ""}:${nextMatch?.candidate?.microphonePreference || nextMatch?.candidate?.microphone_preference || ""}`;
+  if (Boolean(previousAwaiting) !== Boolean(nextAwaiting) || previousMatch?.candidate?.id !== nextMatch?.candidate?.id || previousCandidateMeta !== nextCandidateMeta) {
+    // The roster is part of the layout, so a candidate entering or leaving
+    // the pair should rebuild the two-column workbench instead of leaving a
+    // stale placeholder in the left column.
+    render();
+    return;
+  }
   const pair = nextMatch?.pair;
   const candidate = nextMatch?.candidate;
-  const awaiting = pair?.state === "waiting_confirmation" && candidate;
+  const awaiting = ["waiting_confirmation", "matched", "playing"].includes(pair?.state) && candidate;
   if (awaiting) trackCandidate(pair, candidate);
   const mine = pair?.confirmations?.find((confirmation) => confirmation.user_id === state.user.id)?.decision;
   const theirs = pair?.confirmations?.find((confirmation) => confirmation.user_id !== state.user.id)?.decision;
-  const confirmationCopy = mine === "accepted" && theirs === "accepted"
-    ? "双方都已确定，正在建立房间。"
-    : mine === "accepted"
-      ? "你已准备，正在等对方确定。"
-      : theirs === "accepted"
-        ? "对方已确定，正在等你。"
-        : "你们可以分别确定，不需要同时点击。";
   const title = document.getElementById("matching-modal-title");
   const desc = document.getElementById("match-desc");
   const mark = document.getElementById("matching-candidate-mark");
@@ -1069,10 +1626,10 @@ function updateMatchingView(previousMatch, nextMatch) {
   const them = document.getElementById("matching-ready-them");
   const actions = document.getElementById("matching-confirm-actions");
   const footer = document.getElementById("matching-footer-status");
-  if (title) title.textContent = awaiting ? `找到 ${candidate.nickname || "一位玩家"}。` : "正在找同一局的人。";
-  if (desc) desc.textContent = nextMatch.notice || (awaiting ? confirmationCopy : "先检查官方硬规则，再比较位置与麦克风偏好。");
+  if (title) title.textContent = awaiting ? "对方已进入，正在连接" : "寻找与您游戏目标一致的玩家中";
+  if (desc) desc.textContent = nextMatch.notice || (awaiting ? "无需双方再次确认，连接完成后 3 秒进入 Session。" : "我们会按游戏、目的、位置与麦克风偏好持续寻找。");
   if (mark) mark.textContent = awaiting ? (candidate.nickname || "玩家").slice(0, 1) : "?";
-  if (ready) ready.hidden = !awaiting;
+  if (ready) ready.hidden = true;
   if (me) {
     me.classList.toggle("is-ready", mine === "accepted");
     me.innerHTML = `${icon(mine === "accepted" ? "check" : "clock", 15)}你：${mine === "accepted" ? "已确定" : "待确定"}`;
@@ -1081,9 +1638,9 @@ function updateMatchingView(previousMatch, nextMatch) {
     them.classList.toggle("is-ready", theirs === "accepted");
     them.innerHTML = `${icon(theirs === "accepted" ? "check" : "clock", 15)}对方：${theirs === "accepted" ? "已确定" : "待确定"}`;
   }
-  if (footer) footer.innerHTML = `<i></i>${awaiting ? "候选已暂时锁定，确认超时会自动回到匹配池。" : (nextMatch.notice || "匹配期间保持在线，我们会持续更新状态。")}`;
+  if (footer) footer.innerHTML = `<i></i>${awaiting ? "对方已加入，正在建立 Session 连接。" : (nextMatch.notice || "匹配期间保持在线，我们会持续更新状态。")}`;
   if (actions) {
-    actions.innerHTML = `${awaiting && mine !== "accepted" ? `<button type="button" data-action="reject-match"><span>不是这位</span>${icon("x", 16)}</button><button type="button" data-action="confirm-match"><span>确定是 TA</span>${icon("check", 16)}</button>` : ""}<button type="button" data-action="cancel-match"><span>退出匹配</span>${icon("x", 16)}</button>`;
+    actions.innerHTML = `<button type="button" data-action="cancel-match"><span>退出匹配</span>${icon("x", 16)}</button>`;
   }
   const found = document.getElementById("match-found");
   if (found) found.textContent = awaiting ? "1" : "0";
@@ -1093,33 +1650,64 @@ function updateMatchingView(previousMatch, nextMatch) {
   }
 }
 
+function isLiveMatchmakingSnapshot(ticket, pair = null, group = null) {
+  if (!ticket) return false;
+  const stateName = ticket.state;
+  const expiresAt = ticket.expires_at || ticket.expiresAt;
+  if (["searching", "candidate_found", "waiting_confirmation"].includes(stateName)
+      && expiresAt
+      && new Date(expiresAt).getTime() <= Date.now()) {
+    return false;
+  }
+  if (pair && ["cancelled", "expired", "completed"].includes(pair.state)) return false;
+  if (group && ["cancelled", "expired", "completed"].includes(group.state)) return false;
+  return ["searching", "candidate_found", "waiting_confirmation", "matched", "playing"].includes(stateName);
+}
+
 function applyMatchmakingSnapshot(snapshot, options = {}) {
   if (!snapshot) return;
   const previousMatch = state.match;
   const previousShape = matchmakingShape(state.match);
   const ticket = snapshot.ticket || null;
   const pair = snapshot.pair || null;
+  const group = snapshot.group || null;
   const candidate = snapshot.candidate || null;
-  const active = ticket && ["searching", "candidate_found", "waiting_confirmation", "matched", "playing"].includes(ticket.state);
-  const timedOut = state.match?.pair?.state === "waiting_confirmation" && !pair && ticket?.state === "searching";
-  if (pair?.state === "waiting_confirmation" && candidate) trackCandidate(pair, candidate);
+  const active = isLiveMatchmakingSnapshot(ticket, pair, group);
+  const livePair = active && pair && !["cancelled", "expired", "completed"].includes(pair.state) ? pair : null;
+  const liveGroup = active && group && !["cancelled", "expired", "completed"].includes(group.state) ? group : null;
+  const liveCandidate = livePair ? candidate : null;
+  const timedOut = state.match?.pair?.state === "waiting_confirmation" && !livePair && ticket?.state === "searching";
+  if (livePair?.state === "waiting_confirmation" && liveCandidate) trackCandidate(livePair, liveCandidate);
   const nextMatch = {
       ...state.match,
       status: active ? "active" : "idle",
+      online: snapshot.online ?? state.match.online ?? 0,
       pool: snapshot.matching ?? state.match.pool,
       matchable: snapshot.matchable ?? state.match.matchable ?? 0,
       directory: Array.isArray(snapshot.directory) ? snapshot.directory : state.match.directory || [],
-      lifecycle: ticket,
-      pair,
-      candidate,
-      notice: options.notice || (timedOut ? "对方已离开匹配，正在继续寻找其他玩家。" : (pair ? "" : state.match.notice || "")),
+      lifecycle: active ? ticket : null,
+      pair: livePair,
+      group: liveGroup,
+      candidate: liveCandidate,
+      notice: options.notice || (timedOut
+        ? "对方已离开匹配，正在继续寻找其他玩家。"
+        : (!active && ticket ? "匹配状态已结束，请重新开始。" : (livePair ? "" : state.match.notice || ""))),
   };
   update({ match: nextMatch });
   const routeName = parseRoute().name;
-  if (["matched", "playing"].includes(pair?.state) && pair.roomCode) {
+  if (routeName === "matching" && previousMatch.status === "active" && !active && !state.room) {
+    navigate("#/home");
+    return;
+  }
+  if (["matched", "playing"].includes(livePair?.state) && livePair.roomCode) {
     api.getState().then((snapshot) => {
       applyServerSnapshot(snapshot);
-      if (snapshot.room && parseRoute().name === "matching") navigate("#/room");
+    }).catch(() => {});
+    return;
+  }
+  if (["matched", "playing"].includes(liveGroup?.state) && liveGroup.roomCode) {
+    api.getState().then((snapshot) => {
+      applyServerSnapshot(snapshot);
     }).catch(() => {});
     return;
   }
@@ -1131,23 +1719,44 @@ function applyServerSnapshot(data) {
   const previousMatchShape = matchmakingShape(state.match);
   const previousMatch = state.match;
   const previousFriendRequestShape = JSON.stringify(state.friendRequests || {});
+  let matchmakingHasTicketField = false;
+  let matchmakingLiveTicket = false;
+  let matchmakingPartial = false;
   const patch = {
-    match: { ...state.match, pool: data.matching ?? data.online ?? state.match.pool, playing: data.playing ?? state.match.playing },
+    match: { ...state.match, online: data.online ?? state.match.online ?? 0, pool: data.matching ?? data.online ?? state.match.pool, playing: data.playing ?? state.match.playing },
   };
   if (data.matchmaking) {
     const mm = data.matchmaking;
+    const liveTicket = isLiveMatchmakingSnapshot(mm.ticket || null, mm.pair || null, mm.group || null);
+    const livePair = liveTicket && mm.pair && !["cancelled", "expired", "completed"].includes(mm.pair.state) ? mm.pair : null;
+    const liveGroup = liveTicket && mm.group && !["cancelled", "expired", "completed"].includes(mm.group.state) ? mm.group : null;
+    const hasGroupField = Object.prototype.hasOwnProperty.call(mm, "group");
+    const hasTicketField = Object.prototype.hasOwnProperty.call(mm, "ticket");
+    // A legacy state endpoint may explicitly return ticket:null while omitting
+    // all group fields. Treat that response as partial during a live group
+    // flow instead of navigating the player out of the matching modal.
+    const partialMatchmaking = !hasGroupField && mm.ticket === null;
     const timedOut = previousMatch?.pair?.state === "waiting_confirmation" && !mm.pair && mm.ticket?.state === "searching";
     patch.match = {
       ...patch.match,
-      status: mm.ticket ? "active" : "idle",
+      status: (partialMatchmaking || (!hasTicketField && previousMatch.status === "active")) ? "active" : (liveTicket ? "active" : "idle"),
       pool: mm.matching ?? patch.match.pool,
       matchable: mm.matchable ?? 0,
       directory: Array.isArray(mm.directory) ? mm.directory : state.match.directory || [],
-      lifecycle: mm.ticket || null,
-      pair: mm.pair || null,
-      candidate: mm.candidate || null,
-      notice: mm.pair ? "" : (timedOut ? "对方已离开匹配，正在继续寻找其他玩家。" : previousMatch.notice || ""),
+      lifecycle: partialMatchmaking || !hasTicketField ? previousMatch.lifecycle : (liveTicket ? mm.ticket : null),
+      pair: partialMatchmaking || !hasTicketField ? previousMatch.pair : livePair,
+    // Older/partial state payloads do not carry group details. Do not erase
+      // a live local group snapshot merely because another reconciliation
+      // endpoint has not learned that field yet.
+      group: hasGroupField ? liveGroup : previousMatch.group,
+      candidate: livePair ? (mm.candidate || null) : (partialMatchmaking || !hasTicketField ? previousMatch.candidate : null),
+      notice: livePair ? "" : (timedOut
+        ? "对方已离开匹配，正在继续寻找其他玩家。"
+        : (!liveTicket && hasTicketField && mm.ticket ? "匹配状态已结束，请重新开始。" : previousMatch.notice || "")),
     };
+    matchmakingHasTicketField = hasTicketField;
+    matchmakingLiveTicket = liveTicket;
+    matchmakingPartial = partialMatchmaking;
   }
   if (data.user) patch.user = data.user;
   if (Array.isArray(data.friends)) {
@@ -1163,7 +1772,15 @@ function applyServerSnapshot(data) {
   if (data.friendRequests) patch.friendRequests = mapServerFriendRequests(data.friendRequests);
   if (data.room) {
     patch.room = normalizeServerRoom(data.room);
-  } else if (data.room === null && state.room) {
+  } else if (data.room === null && state.room && !(
+    routeName === "matching"
+      && (isSessionHandoffActive() || document.querySelector("[data-session-preview]"))
+  )) {
+    // A state poll can briefly lag the room-created event while the pair is
+    // being promoted into Session. Do not tear down the already-visible room
+    // inside the matching window; doing so remounts the modal and makes the
+    // three-second handoff flash or restart. The explicit room/game-over
+    // handlers still clear it when the Session really ends.
     patch.room = null;
   }
   if (Array.isArray(data.recentConnections)) {
@@ -1188,31 +1805,58 @@ function applyServerSnapshot(data) {
       handleServerGameOver(session);
       return;
     }
-    if (!state.session.partner?.id) {
-      patch.session = { ...state.session, partner: sessionPartnerFor(session) };
-    }
+    const memberModel = sessionMemberSnapshot(session);
+    patch.session = {
+      ...state.session,
+      members: memberModel.members,
+      activeMembers: memberModel.activeMembers,
+      otherMembers: memberModel.otherMembers,
+      currentMemberCount: memberModel.currentMemberCount,
+      activeMemberCount: memberModel.activeMemberCount,
+      targetTotalPlayers: memberModel.targetTotalPlayers,
+      partner: sessionPartnerFor(session),
+    };
   }
   const roomChanged = patch.room ? roomShapeChanged(patch.room, state.room) : false;
+  const newMatchingRoom = Boolean(
+    patch.room
+      && routeName === "matching"
+      && (!state.room || state.room.code !== patch.room.code)
+  );
   update(patch);
+  if (routeName === "matching" && matchmakingHasTicketField && !matchmakingLiveTicket && !matchmakingPartial && !patch.room && !state.room) {
+    navigate("#/home");
+    return;
+  }
   const friendRequestsChanged = previousFriendRequestShape !== JSON.stringify(state.friendRequests || {});
   const matchmakingChanged = previousMatchShape !== matchmakingShape(state.match);
   if (["home", "hero"].includes(routeName)) {
     const onlineEl = document.getElementById("home-online-count");
-    const heroOnlineEl = document.getElementById("hero-online-count");
     const playingEl = document.getElementById("home-playing-count");
     if (onlineEl) onlineEl.textContent = String(Math.max(0, state.match.pool ?? 0));
-    if (heroOnlineEl) heroOnlineEl.textContent = state.match.pool ? `${Math.max(0, state.match.pool)} 人正在摇人` : "正在等待下一位玩家";
     if (playingEl) playingEl.textContent = String(Math.max(0, state.match.playing ?? 0));
+    if (routeName === "hero") updateHeroActivityView(state.match);
     if (routeName === "home" && Array.isArray(data.matchmaking?.directory)) render();
   }
+  const sessionViewVisible = routeName === "matching" && Boolean(document.querySelector("[data-session-preview]"));
   if (patch.room && routeName === "matching") {
-    navigate("#/room");
+    if (newMatchingRoom) {
+      beginSessionHandoff(state.room);
+      render();
+    } else if (sessionViewVisible) {
+      updateSessionView(state.room);
+    } else if (!isSessionHandoffActive() && roomChanged) {
+      // Once the handoff is finished, only meaningful room changes should
+      // repaint the Session. Repeated status polls must not restart the
+      // countdown or flash the entire matching modal.
+      render();
+    }
   } else if (patch.room === null && routeName === "room") {
     render();
   } else if (patch.room && routeName === "room" && (roomChanged || friendRequestsChanged)) {
     updateRoomView(state.room);
   }
-  if (routeName === "matching" && matchmakingChanged && !patch.room) updateMatchingView(previousMatch, state.match);
+  if (routeName === "matching" && matchmakingChanged && !patch.room && !state.room) updateMatchingView(previousMatch, state.match);
   if (patch.session) render();
 }
 
@@ -1227,7 +1871,6 @@ async function confirmMatch(decision) {
     if (["matched", "playing"].includes(snapshot.pair?.state) || snapshot.room) {
       const fullState = await api.getState();
       applyServerSnapshot(fullState);
-      if (fullState.room) navigate("#/room");
     }
   } catch (error) {
     if (error?.code === "CONNECTION_TIMEOUT") {
@@ -1249,6 +1892,37 @@ async function confirmMatch(decision) {
   }
 }
 
+async function startGroupMatch(groupId) {
+  if (!groupId || matchConfirmationPending) return;
+  matchConfirmationPending = true;
+  try {
+    const snapshot = await api.startMatchGroup(groupId);
+    applyMatchmakingSnapshot(snapshot);
+    toast("队伍已锁定，正在等待成员确认");
+  } catch (error) {
+    toast(error.message);
+  } finally {
+    matchConfirmationPending = false;
+  }
+}
+
+async function confirmGroupMatch(groupId, decision) {
+  if (!groupId || matchConfirmationPending) return;
+  matchConfirmationPending = true;
+  try {
+    const snapshot = await api.confirmMatchGroup(groupId, decision);
+    applyMatchmakingSnapshot(snapshot, { notice: decision === "rejected" ? "你已退出这支队伍，正在继续寻找。" : "你已确认加入，正在等其他成员。" });
+    if (["matched", "playing"].includes(snapshot.group?.state) || snapshot.group?.roomCode) {
+      const fullState = await api.getState();
+      applyServerSnapshot(fullState);
+    }
+  } catch (error) {
+    toast(error.message);
+  } finally {
+    matchConfirmationPending = false;
+  }
+}
+
 function handleServerRoom(room) {
   const normalized = normalizeServerRoom(room);
   const isNewRoom = !state.room || state.room.code !== normalized.code;
@@ -1258,31 +1932,44 @@ function handleServerRoom(room) {
     need: room.need || state.need,
     session: null,
   });
-  if (isNewRoom && parseRoute().name === "matching") navigate("#/room");
-  else if (parseRoute().name === "room") updateRoomView(normalized);
+  if (isNewRoom && parseRoute().name === "matching") {
+    beginSessionHandoff(normalized);
+    render();
+  } else if (parseRoute().name === "matching" && document.querySelector("[data-session-preview]")) {
+    updateSessionView(normalized);
+  } else if (parseRoute().name === "room") updateRoomView(normalized);
 }
 
 function handleServerGameOver(session) {
   if (!["completed", "cancelled"].includes(session?.status)) return;
-  if (state.session && state.session.roomCode === session.roomCode) return;
+  if (state.session && state.session.roomCode === session.roomCode && parseRoute().name === "gameover") return;
   if (session.status === "cancelled") {
     update({
       room: null,
       session: null,
-      match: { ...state.match, status: "idle", lifecycle: null, pair: null, candidate: null },
+      match: { ...state.match, status: "idle", lifecycle: null, pair: null, group: null, candidate: null },
     });
     navigate("#/home");
     return;
   }
-  const partner = sessionPartnerFor(session);
+  const memberModel = sessionMemberSnapshot(session);
+  const partner = memberModel.otherMembers[0] || sessionPartnerFor(session);
   const now = new Date();
   const time = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
   const gameName = GAME_BY_ID[session.need?.game]?.name || session.need?.game || state.need.game || "游戏";
   const mode = session.need?.mode || state.need.mode || "";
   update({
     room: null,
+    match: { ...state.match, status: "idle", lifecycle: null, pair: null, group: null, candidate: null },
     lastRoomCode: session.roomCode,
     session: {
+      players: session.players || memberModel.members.map((member) => member.id),
+      members: memberModel.members,
+      activeMembers: memberModel.activeMembers,
+      otherMembers: memberModel.otherMembers,
+      currentMemberCount: memberModel.currentMemberCount,
+      activeMemberCount: memberModel.activeMemberCount,
+      targetTotalPlayers: memberModel.targetTotalPlayers,
       partner: { ...partner },
       roomCode: session.roomCode,
       title: `${gameName}${mode ? ` · ${mode}` : ""}`,
@@ -1300,20 +1987,20 @@ function handleServerGameOver(session) {
 
 function connectEvents() {
   if (!ONLINE || !state.authenticated) return;
-  markPresenceOnline();
+  startPresenceHeartbeat();
   if (eventSourceClose) eventSourceClose();
   eventSourceClose = api.openEvents({
     hello: applyServerSnapshot,
     online: (data) => {
       const pool = data.matching ?? data.online ?? state.match.pool;
+      const online = data.online ?? state.match.online ?? 0;
       const playing = data.playing ?? state.match.playing;
-      update({ match: { ...state.match, pool, playing } });
+      update({ match: { ...state.match, online, pool, playing } });
       const routeName = parseRoute().name;
       if (routeName === "home") {
         render();
       } else if (routeName === "hero") {
-        const heroOnlineEl = document.getElementById("hero-online-count");
-        if (heroOnlineEl) heroOnlineEl.textContent = pool ? `${Math.max(0, pool)} 人正在摇人` : "正在等待下一位玩家";
+        updateHeroActivityView(state.match);
       }
       if (routeName === "matching") {
         const poolEl = document.getElementById("pool-count");
@@ -1331,19 +2018,43 @@ function connectEvents() {
 
 function markPresenceOnline() {
   if (!ONLINE || !state.authenticated || !state.onboarded) return;
-  presenceOfflineSent = false;
   api.goOnline().catch(() => {});
 }
 
-function markPresenceOffline() {
-  if (presenceOfflineSent || !ONLINE || !state.authenticated) return;
-  presenceOfflineSent = true;
-  api.goOffline({ unloading: true });
+function stopPresenceHeartbeat() {
+  if (!presenceHeartbeatHandle) return;
+  window.clearInterval(presenceHeartbeatHandle);
+  presenceHeartbeatHandle = 0;
+}
+
+function startPresenceHeartbeat() {
+  if (!ONLINE || !state.authenticated || !state.onboarded || presenceHeartbeatHandle) return;
+  const beat = () => {
+    if (!ONLINE || !state.authenticated || !state.onboarded) return;
+    markPresenceOnline();
+  };
+  beat();
+  presenceHeartbeatHandle = window.setInterval(beat, 10_000);
+}
+
+async function refreshAuthenticatedState({ restoreRoute = false } = {}) {
+  if (!ONLINE || !state.authenticated) return;
+  try {
+    const snapshot = await api.getState();
+    if (snapshot.user) update({ user: snapshot.user });
+    applyServerSnapshot(snapshot);
+    if (restoreRoute && snapshot.room && ["home", "auth", "welcome", "matching"].includes(parseRoute().name)) {
+      navigate("#/room");
+    }
+  } catch {
+    // Realtime will retry; a transient resume failure must not turn a live
+    // Session into a local logout or a new match.
+  }
 }
 
 function showAuthError(message, { preservePassword = false } = {}) {
   update({ authError: message });
-  const form = document.querySelector('[data-form="auth"]');
+  const form = document.querySelector('[data-form="auth"], [data-form="auth-verify"], [data-form="auth-forgot"], [data-form="auth-reset"]');
   const card = form?.closest(".product-auth-panel") || form?.closest(".auth-card") || document.querySelector(".product-auth-panel, .auth-card");
   let errorEl = card?.querySelector("[data-auth-error]");
   if (!errorEl && card) {
@@ -1357,8 +2068,12 @@ function showAuthError(message, { preservePassword = false } = {}) {
   if (errorEl) errorEl.textContent = message;
   const pw = form?.querySelector('[name="password"]');
   if (pw && !preservePassword) pw.value = "";
-  const userInput = form?.querySelector('[name="username"]');
-  if (userInput) update({ authUsername: userInput.value.trim() });
+  const identifierInput = form?.querySelector('[name="identifier"]');
+  const emailInput = form?.querySelector('[name="email"]');
+  update({
+    authUsername: identifierInput?.value?.trim() || state.authUsername,
+    authEmail: emailInput?.value?.trim() || state.authEmail,
+  });
 }
 
 function initRoomExitCountdown() {
@@ -1384,27 +2099,62 @@ function initRoomExitCountdown() {
 async function initRoomChat() {
   const room = state.room;
   if (!room?.id || !state.authenticated) return;
+  const generation = chatGeneration;
+  const isCurrent = () => generation === chatGeneration && ["room", "matching"].includes(parseRoute().name) && state.room?.id === room.id;
   try {
     const messages = await api.fetchRoomMessages(room.id);
+    if (!isCurrent()) return;
     renderChatMessages(messages);
   } catch {
     // history load is best-effort
   }
   try {
     const sb = await api.getSupabaseClient();
+    if (!isCurrent()) return;
     const channel = sb.channel(`room-chat-${room.id}`);
     channel.on("postgres_changes", { event: "INSERT", schema: "public", table: "messages", filter: `room_id=eq.${room.id}` }, (payload) => {
+      if (!isCurrent()) return;
       appendChatMessage(payload.new);
     });
     await channel.subscribe();
-    chatClose = () => sb.removeChannel(channel);
+    if (!isCurrent()) {
+      sb.removeChannel(channel);
+      return;
+    }
+    const close = () => {
+      sb.removeChannel(channel);
+      if (chatClose === close) chatClose = null;
+    };
+    chatClose = close;
   } catch {
     // realtime chat is best-effort
   }
+  if (!isCurrent()) return;
   const form = document.querySelector('[data-form="room-chat"]');
   form?.addEventListener("submit", (event) => {
     event.preventDefault();
     sendRoomChat();
+  });
+  document.querySelectorAll("[data-chat-quick-reply]").forEach((quickReply) => {
+    quickReply.addEventListener("click", () => {
+      sendRoomChat(quickReply.dataset.chatQuickReply || "");
+    });
+  });
+}
+
+function setChatLoading(loading) {
+  const form = document.querySelector('[data-form="room-chat"]');
+  const input = document.getElementById("chat-input");
+  const submit = form?.querySelector("button[type='submit']");
+  if (!form || !submit) return;
+  form.classList.toggle("is-loading", loading);
+  form.setAttribute("aria-busy", String(loading));
+  submit.disabled = loading;
+  submit.setAttribute("aria-busy", String(loading));
+  submit.innerHTML = loading ? icon("refreshCw", 17, "is-spinning") : icon("send", 17);
+  if (input) input.disabled = loading;
+  document.querySelectorAll("[data-chat-quick-reply]").forEach((quickReply) => {
+    quickReply.disabled = loading;
   });
 }
 
@@ -1436,23 +2186,32 @@ function appendChatMessage(m) {
   el.scrollTop = el.scrollHeight;
 }
 
-async function sendRoomChat() {
+async function sendRoomChat(message = null) {
   const room = state.room;
   const input = document.getElementById("chat-input");
-  const text = input?.value.trim();
-  if (!room?.id || !text) return;
+  const text = String(message ?? input?.value ?? "").trim();
+  if (!room?.id || !text || chatSendPending) return;
+  chatSendPending = true;
+  setChatLoading(true);
   try {
     await api.sendRoomMessage(room.id, text, state.user.id);
-    input.value = "";
+    if (input) input.value = "";
   } catch (err) {
     toast(err.message || "消息发送失败");
+  } finally {
+    chatSendPending = false;
+    setChatLoading(false);
   }
 }
 
 async function completeOnboard() {
   syncDraftFromDom("onboard");
-  if (!DRAFT.nickname.trim() || !DRAFT.device || !DRAFT.genres.length || !DRAFT.gender) {
-    toast("请完成昵称、设备、游戏类型和性别");
+  if (isLocalOnboardingPreview()) {
+    toast("这是本地预览，不会保存账号信息");
+    return;
+  }
+  if (!DRAFT.nickname.trim() || !DRAFT.device || !DRAFT.genres.length) {
+    toast("请完成昵称、设备和游戏类型");
     return;
   }
   const user = {
@@ -1460,7 +2219,7 @@ async function completeOnboard() {
     nickname: DRAFT.nickname,
     avatarKey: DRAFT.avatarKey,
     device: DRAFT.device,
-    gender: DRAFT.gender || "保密",
+    gender: "男",
     playStyle: DRAFT.playStyle,
     genres: DRAFT.genres,
   };
@@ -1499,19 +2258,18 @@ async function completeOnboard() {
 
 function moveOnboardStep(direction) {
   syncDraftFromDom("onboard");
-  const step = Math.max(0, Math.min(4, Number(DRAFT.onboardStep) || 0));
+  const step = Math.max(0, Math.min(3, Number(DRAFT.onboardStep) || 0));
   if (direction > 0) {
     const error =
       step === 0 && !DRAFT.nickname.trim() ? "请先输入玩家昵称" :
       step === 2 && !DRAFT.device ? "请选择常用设备" :
-      step === 3 && !DRAFT.genres.length ? "请至少选择一个游戏类型" :
-      step === 4 && !DRAFT.gender ? "请选择性别" : "";
+      step === 3 && !DRAFT.genres.length ? "请至少选择一个游戏类型" : "";
     if (error) {
       toast(error);
       return;
     }
   }
-  DRAFT.onboardStep = Math.max(0, Math.min(4, step + direction));
+  DRAFT.onboardStep = Math.max(0, Math.min(3, step + direction));
   DRAFT.onboardDirection = direction < 0 ? -1 : 1;
   DRAFT.dirty = true;
   render();
@@ -1520,6 +2278,17 @@ function moveOnboardStep(direction) {
 async function startMatch() {
   if (matchRequestPending) return;
   DRAFT.dirty = false;
+  const roleNumber = (tag) => Number(String(tag).match(/[1-6]/)?.[0]);
+  const ownRoles = (DRAFT.selectedTags || [])
+    .filter((tag) => String(tag).startsWith("我的位置："))
+    .map(roleNumber)
+    .filter((role) => role >= 1 && role <= 6);
+  const teammateRoles = (DRAFT.selectedTags || [])
+    .filter((tag) => String(tag).startsWith("希望队友："))
+    .map(roleNumber)
+    .filter((role) => role >= 1 && role <= 6);
+  // Keep the existing compatibility signal stable while retaining the two
+  // role selections separately for the Session readout.
   const desiredRoles = (DRAFT.selectedTags || [])
     .map((tag) => Number(String(tag).match(/[1-6]/)?.[0]))
     .filter((role) => role >= 1 && role <= 6);
@@ -1528,10 +2297,19 @@ async function startMatch() {
     mode: DRAFT.goal === "娱乐" ? "casual" : "ranked",
     rankCode: DRAFT.goal === "娱乐" ? null : DRAFT.rank || null,
     desiredRoles,
+    ownRoles,
+    teammateRoles,
     microphonePreference: ["on", "off", "any"].includes(DRAFT.voicePref) ? DRAFT.voicePref : (DRAFT.voice === false ? "off" : "on"),
+    desiredTeammates: DRAFT.goal === "娱乐" ? Math.min(5, Math.max(1, Number(DRAFT.teamMax || DRAFT.needed) || 1)) : undefined,
+    minTeammates: DRAFT.goal === "娱乐" ? Math.min(
+      Math.min(5, Math.max(1, Number(DRAFT.teamMax || DRAFT.needed) || 1)),
+      Math.max(1, Number(DRAFT.teamMin || DRAFT.teamMax || DRAFT.needed) || 1),
+    ) : undefined,
   };
   const need = {
-    game: "deadlock", mode: DRAFT.mode, goal: DRAFT.goal, current: 1, target: 2,
+    game: "deadlock", mode: DRAFT.mode, goal: DRAFT.goal, current: 1, target: DRAFT.goal === "娱乐" ? 1 + Number(matchInput.desiredTeammates || 1) : 2,
+    desiredTeammates: matchInput.desiredTeammates,
+    minTeammates: matchInput.minTeammates,
     time: "现在", duration: "", voice: matchInput.microphonePreference !== "off",
     playerType: desiredRoles.length ? desiredRoles.map((role) => `${role}号位`).join(" / ") : "不限",
     details: { rank: DRAFT.rank || "", tags: DRAFT.selectedTags || [], voicePreference: matchInput.microphonePreference },
@@ -1546,6 +2324,7 @@ async function startMatch() {
     need,
     match: {
       status: "active",
+      online: state.match.online ?? 0,
       pool: state.match.pool ?? 0,
       playing: state.match.playing ?? 0,
     },
@@ -1556,12 +2335,14 @@ async function startMatch() {
       update({
         match: {
           ...state.match,
+          online: data.online ?? state.match.online ?? 0,
           status: "active",
           pool: data.matching ?? state.match.pool,
           playing: data.playing ?? state.match.playing,
           matchable: data.matchable ?? 0,
           lifecycle: data.ticket || null,
           pair: data.pair || null,
+          group: data.group || null,
           candidate: data.candidate || null,
         },
       });
@@ -1607,30 +2388,41 @@ function startMatchingFlow() {
     const foundEl = document.getElementById("match-found");
     const titleEl = document.getElementById("match-title");
     if (poolEl) poolEl.textContent = String(Math.max(0, state.match.pool ?? 0));
-    if (timeEl) timeEl.textContent = `${Math.floor(elapsed)}s`;
-    if (foundEl) foundEl.textContent = state.match.pair ? "1" : "0";
-    if (titleEl) titleEl.textContent = elapsed > 3 ? "正在锁定合适玩家" : "正在扫描匹配池";
+    if (timeEl) {
+      const totalSeconds = Math.max(0, Math.floor(elapsed));
+      if (totalSeconds < 60) {
+        timeEl.textContent = `${totalSeconds}秒`;
+      } else {
+        const minutes = Math.floor(totalSeconds / 60);
+        const seconds = String(totalSeconds % 60).padStart(2, "0");
+        timeEl.textContent = `${minutes}分${seconds}秒`;
+      }
+    }
+    if (foundEl) {
+      if (state.match.group) {
+        const teammates = (state.match.group.members || []).filter((member) => !member.isOwner && member.decision !== "rejected").length;
+        foundEl.textContent = `${teammates}/${state.match.group.desiredTeammates || 1}`;
+      } else {
+        foundEl.textContent = state.match.pair ? "1" : "0";
+      }
+    }
+    if (titleEl) {
+      titleEl.textContent = ["waiting_confirmation", "matched", "playing"].includes(state.match.pair?.state)
+        ? "对方已进入，正在连接"
+        : elapsed > 3 ? "正在锁定合适玩家" : "正在扫描匹配池";
+    }
     const steps = document.querySelectorAll(".matching-modal-step");
     if (steps.length === 3) {
-      steps[1].classList.toggle("is-active", elapsed < 3);
-      steps[1].classList.toggle("is-done", elapsed >= 3);
-      steps[2].classList.toggle("is-active", elapsed >= 3);
+      const connecting = ["waiting_confirmation", "matched", "playing"].includes(state.match.pair?.state);
+      steps[1].classList.toggle("is-active", connecting || elapsed < 3);
+      steps[1].classList.toggle("is-done", !connecting && elapsed >= 3);
+      steps[2].classList.toggle("is-active", connecting || elapsed >= 3);
     }
   }, 350);
   timers.push(interval);
-  let syncPending = false;
-  const sync = window.setInterval(async () => {
-    if (syncPending) return;
-    syncPending = true;
-    try {
-      applyMatchmakingSnapshot(await api.getMatchmakingStatus());
-    } catch {
-      // Realtime remains primary; heartbeat polling is a resilience path.
-    } finally {
-      syncPending = false;
-    }
-  }, 10000);
-  timers.push(sync);
+  // Matchmaking state is delivered by Realtime. If that channel is down, the
+  // shared reconnect path in realtime.js performs bounded read-only polling;
+  // this page never uses a heartbeat or a per-second request loop.
 }
 
 function startRoomTimer() {
@@ -1647,40 +2439,37 @@ function startRoomTimer() {
   );
 }
 
-function finishGame() {
-  const partner = state.room?.partner;
-  if (!partner) return;
-  if (!state.room?.code || !ONLINE) {
-    toast("服务暂不可用，请稍后重试");
-    return;
-  }
-  const partnerRequested = (state.room.goodbyeRequests || []).some((request) => request.userId !== state.user.id);
-  closeSheet();
-  showSheet(`<div class="sheet connection-goodbye-confirm" role="dialog" aria-modal="true" aria-label="确定要拜拜吗">
-    <div class="sheet-head"><h2 class="sheet-title">确定要拜拜吗？</h2><button class="sheet-close" data-action="close-sheet" aria-label="关闭">${icon("x", 18)}</button></div>
-    <div class="profile-identity">${avatarWrap(partner.avatarKey, 58, partner.online)}<div><div class="profile-name"><strong>${esc(partner.name || "对方玩家")}</strong></div><div class="profile-handle">${partnerRequested ? "对方已经提出拜拜，确认后本次连接会结束。" : "你的选择会先告诉对方，双方确认后才结束。"}</div></div></div>
-    <div class="form-actions">${button({ label: "再玩一会", action: "close-sheet", kind: "ghost" })}${button({ label: "确认拜拜", action: "confirm-goodbye", kind: "primary", iconName: "handshake" })}</div>
-  </div>`);
-}
-
 async function setGoodbyeRequest(requested) {
   const room = state.room;
   if (!room?.code || !ONLINE) return toast("服务暂不可用，请稍后重试");
+  if (goodbyeRequestPending) return;
+  goodbyeRequestPending = true;
+  updateSessionView(room);
+  updateRoomView(room);
   try {
     const result = await api.requestRoomGoodbye(room.code, requested);
-    closeSheet();
     if (result.room) {
       const normalized = normalizeServerRoom(result.room);
       update({ room: normalized });
+      updateSessionView(normalized);
       updateRoomView(normalized);
     }
     if (result.session && ["completed", "cancelled"].includes(result.session.status)) {
       handleServerGameOver(result.session);
       return;
     }
-    toast(requested ? "已提出拜拜，正在等对方回应" : "已撤回拜拜");
+    const latestRoom = result.room ? normalizeServerRoom(result.room) : room;
+    const latestMembers = sessionMembers(latestRoom, state.user.id);
+    const waitingFor = Math.max(0, latestMembers.goodbyeDenominator - latestMembers.goodbyeCount);
+    toast(requested
+      ? `已提出拜拜，正在等其余 ${waitingFor} 位成员回应`
+      : "已撤回拜拜");
   } catch (err) {
     toast(err.message);
+  } finally {
+    goodbyeRequestPending = false;
+    updateSessionView(state.room);
+    updateRoomView(state.room);
   }
 }
 
@@ -1692,7 +2481,7 @@ async function setRoomLiked(liked) {
   updateGameoverView();
   try {
     await api.roomFeedback(code, { liked });
-    if (liked) toast("已给对方点赞");
+    if (liked) toast(state.session?.otherMembers?.length > 1 ? "已给本局队友点赞" : "已给对方点赞");
   } catch (err) {
     if (state.session?.liked === liked) {
       update({ session: { ...state.session, liked: previousLiked } });
@@ -1703,8 +2492,9 @@ async function setRoomLiked(liked) {
 }
 
 function exitRoomPrompt() {
-  const partner = state.room?.partner;
-  if (!partner) return;
+  const memberModel = sessionMembers(state.room || {}, state.user.id);
+  if (!memberModel.otherMembers.length) return;
+  const otherNames = memberModel.otherMembers.map((member) => memberDisplayName(member)).join("、");
   closeSheet();
   showSheet(`
     <div class="sheet" role="dialog" aria-modal="true" aria-label="主动离开游戏">
@@ -1713,10 +2503,10 @@ function exitRoomPrompt() {
         <button class="sheet-close" data-action="close-sheet" aria-label="关闭">${icon("x", 18)}</button>
       </div>
       <div class="profile-identity" style="margin-bottom:14px">
-        ${avatarWrap(partner.avatarKey, 56, partner.online)}
+        ${avatarWrap(memberModel.otherMembers[0]?.avatarKey, 56, memberModel.otherMembers[0]?.online)}
         <div>
-          <div class="profile-name"><strong>${esc(partner.name || "玩家")}</strong></div>
-          <div class="profile-handle">${esc(partner.device || "PC")} · 这属于异常退出，不计入正常对局</div>
+          <div class="profile-name"><strong>${esc(otherNames || "其他成员")}</strong></div>
+          <div class="profile-handle">共 ${memberModel.otherMembers.length} 位其他成员 · 这属于异常退出，不计入正常对局</div>
         </div>
       </div>
       <div class="form-actions">
@@ -1733,7 +2523,15 @@ async function confirmExitRoom() {
     toast("服务暂不可用，请稍后重试");
     return;
   }
-  const partner = room.partner || {};
+  if (exitRequestPending) return;
+  exitRequestPending = true;
+  const exitButton = document.querySelector('[data-action="confirm-exit-room"]');
+  if (exitButton) {
+    exitButton.disabled = true;
+    exitButton.setAttribute("aria-busy", "true");
+    exitButton.innerHTML = `${icon("refreshCw", 16, "is-spinning")}<span>正在离开…</span>`;
+  }
+  const memberModel = sessionMembers(room, state.user.id);
   try {
     const result = await withProjectTransition(
       () => api.roomAction(room.code, "exit"),
@@ -1741,7 +2539,8 @@ async function confirmExitRoom() {
     );
     if (result.session && ["completed", "cancelled"].includes(result.session.status)) {
       closeSheet();
-      update({ room: null, session: null, match: { ...state.match, status: "idle", lifecycle: null, pair: null, candidate: null } });
+      sessionHandoff = null;
+      update({ room: null, session: null, match: { ...state.match, status: "idle", lifecycle: null, pair: null, group: null, candidate: null } });
       closeSheet();
       navigate("#/home");
       toast("已主动离开，本次不计入正常对局");
@@ -1754,9 +2553,15 @@ async function confirmExitRoom() {
     closeSheet();
     update({
       room: null,
-      lastRoomCode: room.code,
       session: {
-        partner: { ...partner },
+        players: memberModel.members.map((member) => member.id),
+        members: memberModel.members,
+        activeMembers: memberModel.activeMembers,
+        otherMembers: memberModel.otherMembers,
+        currentMemberCount: memberModel.currentMemberCount,
+        activeMemberCount: memberModel.activeMemberCount,
+        targetTotalPlayers: memberModel.targetTotalPlayers,
+        partner: { ...(memberModel.otherMembers[0] || {}) },
         roomCode: room.code,
         title,
         time,
@@ -1764,10 +2569,14 @@ async function confirmExitRoom() {
         wantAgain: null,
       },
     });
+    sessionHandoff = null;
+    update({ lastRoomCode: room.code });
     navigate("#/home");
     toast("已主动离开，本次不计入正常对局");
   } catch (err) {
     toast(err.message);
+  } finally {
+    exitRequestPending = false;
   }
 }
 
@@ -1787,7 +2596,7 @@ async function saveRoomGameAccount() {
   try {
     const data = await api.updateProfile({ gameAccounts: next });
     update({ user: { ...state.user, ...data.user } });
-    toast("游戏账号已保存，对方会自动看到");
+    toast("游戏账号已保存，所有成员会自动看到");
   } catch (err) {
     toast(err.message);
   }
@@ -1822,10 +2631,11 @@ function prepareMatchingSetup(gameId = "deadlock") {
   HOME_FILTER.rank = "";
   HOME_FILTER.step = 0;
   HOME_FILTER.direction = -1;
+  sessionHandoff = null;
   update({
     room: null,
     session: null,
-    match: { ...state.match, status: "idle", lifecycle: null, pair: null, candidate: null },
+    match: { ...state.match, status: "idle", lifecycle: null, pair: null, group: null, candidate: null },
   });
   navigate("#/home");
 }
@@ -1845,8 +2655,22 @@ async function returnToMatchingSetup() {
 
 async function cancelMatch() {
   clearTimers();
-  if (ONLINE) await api.cancelMatchmaking().catch(() => {});
-  update({ match: { ...state.match, status: "idle", lifecycle: null, pair: null, candidate: null } });
+  sessionHandoff = null;
+  if (ONLINE) {
+    try {
+      await api.cancelMatchmaking();
+    } catch (error) {
+      try {
+        applyMatchmakingSnapshot(await api.getMatchmakingStatus());
+      } catch {
+        // Keep the current state when the cancellation response and
+        // reconciliation are both unavailable.
+      }
+      toast(error?.message || "退出匹配失败，请稍后重试");
+      return;
+    }
+  }
+  update({ match: { ...state.match, status: "idle", lifecycle: null, pair: null, group: null, candidate: null } });
   navigate("#/home");
 }
 
@@ -1973,9 +2797,9 @@ function mapServerFriendRequests(requests = {}) {
 }
 
 async function logout() {
-  if (ONLINE && state.authenticated) {
-    api.cancelMatchmaking("logout").catch(() => {});
-    api.goOffline();
+  stopPresenceHeartbeat();
+  if (state.authenticated) {
+    await api.goOffline({ reason: "explicit_logout" });
   }
   if (eventSourceClose) {
     eventSourceClose();
@@ -2072,7 +2896,7 @@ async function respondProjectFriend(requesterId, decision) {
 
 function openFeedback() {
   if (!state.authenticated || !state.onboarded) {
-    toast("注册或登录后才能联系我们");
+    // 未登录时直接进入账号页，不再弹出“注册或登录后才能联系我们”提示。
     enterAuth("login");
     return;
   }
@@ -2178,6 +3002,19 @@ document.addEventListener("click", (event) => {
     const scope = actionEl.closest("[data-avatar-pick]");
     const input = scope?.querySelector("input[data-avatar-file]");
     input?.click();
+    return;
+  }
+
+  if (action === "choose-avatar-none") {
+    DRAFT.avatarKey = "";
+    DRAFT.dirty = true;
+    const scope = actionEl.closest("[data-avatar-pick]");
+    scope?.querySelectorAll("button").forEach((button) => {
+      const selected = button === actionEl;
+      button.classList.toggle("is-on", selected);
+      button.classList.toggle("button--on", selected);
+      button.setAttribute("aria-pressed", String(selected));
+    });
     return;
   }
 
@@ -2455,6 +3292,8 @@ document.addEventListener("click", (event) => {
     HOME_FILTER.teammateRoles = [];
     HOME_FILTER.voice = "on";
     HOME_FILTER.team = "1";
+    HOME_FILTER.teamMin = "1";
+    HOME_FILTER.teamMax = "1";
     HOME_FILTER.time = "现在";
     render();
     window.requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "smooth" }));
@@ -2505,9 +3344,14 @@ document.addEventListener("click", (event) => {
   if (action === "home-rank" || action === "home-voice" || action === "home-team" || action === "home-time") {
     if (action === "home-rank") HOME_FILTER.rank = value;
     if (action === "home-voice") HOME_FILTER.voice = ["on", "off", "any"].includes(value) ? value : "any";
-    if (action === "home-team") HOME_FILTER.team = value;
+    if (action === "home-team") {
+      HOME_FILTER.team = value;
+      HOME_FILTER.teamMin = value;
+      HOME_FILTER.teamMax = value;
+    }
     if (action === "home-time") HOME_FILTER.time = value;
-    selectHomeChoice(actionEl);
+    if (action === "home-team") updateHomeTeamRangeView();
+    else selectHomeChoice(actionEl);
     return;
   }
 
@@ -2518,7 +3362,7 @@ document.addEventListener("click", (event) => {
       stepKey === "rank" && !HOME_FILTER.rank ? "请选择当前段位" :
       stepKey === "roles" && !HOME_FILTER.ownRoles.length ? "请选择自己的位置，或选择不限" :
       stepKey === "roles" && !HOME_FILTER.teammateRoles.length ? "请选择希望队友的位置，或选择不限" :
-      stepKey === "team" && !Number(HOME_FILTER.team) ? "请选择希望寻找的队友人数" : "";
+      stepKey === "team" && (!Number(HOME_FILTER.teamMin) || !Number(HOME_FILTER.teamMax) || Number(HOME_FILTER.teamMin) > Number(HOME_FILTER.teamMax)) ? "请设置有效的队友人数范围" : "";
     if (error) {
       toast(error);
       return;
@@ -2555,10 +3399,15 @@ document.addEventListener("click", (event) => {
     "toggle-account-menu": () => toggleProductAccountMenu(actionEl),
     "open-auth-login": () => enterAuth("login"),
     "open-auth-register": () => enterAuth("register"),
+    "forgot-password": () => enterForgotPassword(),
+    "submit-forgot-password": () => submitForgotPassword(),
+    "submit-password-reset": () => submitPasswordReset(),
+    "back-to-login": () => enterAuth("login"),
     "switch-auth-mode": (value) => {
-      const username = document.querySelector("#auth-username")?.value?.trim() || state.authUsername;
+      const identifier = document.querySelector("#auth-identifier")?.value?.trim() || state.authUsername;
+      const email = document.querySelector("#auth-email")?.value?.trim() || state.authEmail;
       const mode = value === "register" ? "register" : "login";
-      update({ authMode: mode, authUsername: username, authError: "", authNotice: "" });
+      update({ authMode: mode, authUsername: identifier, authEmail: email, authError: "", authNotice: "" });
       switchAuthMode(mode);
     },
     "toggle-password": () => {
@@ -2572,6 +3421,9 @@ document.addEventListener("click", (event) => {
       toggle.setAttribute("aria-pressed", String(show));
     },
     "auth-submit": () => submitAuth(),
+    "verify-email": () => submitEmailVerification(),
+    "resend-verification": () => resendEmailVerification(),
+    "cancel-email-verification": () => cancelEmailVerification(),
     "onboard-next": () => moveOnboardStep(1),
     "onboard-back": () => moveOnboardStep(-1),
     "complete-onboard": completeOnboard,
@@ -2579,6 +3431,9 @@ document.addEventListener("click", (event) => {
     "cancel-match": cancelMatch,
     "confirm-match": () => confirmMatch("accepted"),
     "reject-match": () => confirmMatch("rejected"),
+    "start-group-match": (id) => startGroupMatch(id),
+    "confirm-group-match": (id) => confirmGroupMatch(id, "accepted"),
+    "reject-group-match": (id) => confirmGroupMatch(id, "rejected"),
     "open-room": () => navigate("#/room"),
     "leave-room": exitRoomPrompt,
     "exit-room": exitRoomPrompt,
@@ -2593,8 +3448,7 @@ document.addEventListener("click", (event) => {
     "rematch-recent": (id) => rematchRecent(id),
     "back-to-match": returnToMatchingSetup,
     "go-recent": () => navigate("#/connections"),
-    "say-goodbye": finishGame,
-    "confirm-goodbye": () => setGoodbyeRequest(true),
+    "say-goodbye": () => setGoodbyeRequest(true),
     "withdraw-goodbye": () => setGoodbyeRequest(false),
     "set-room-like": (value) => setRoomLiked(value === "yes"),
     "open-profile-edit": openProfileEdit,
@@ -2616,6 +3470,40 @@ document.addEventListener("click", (event) => {
   const fn = actions[action];
   if (fn) fn(value);
 });
+
+document.addEventListener("keydown", (event) => {
+  const rangeInput = event.target instanceof HTMLInputElement
+    ? event.target.closest("[data-home-team-range-input]")
+    : null;
+  if (rangeInput) {
+    const handle = rangeInput.dataset.homeTeamRangeInput || "max";
+    const forward = event.key === "ArrowRight" || event.key === "ArrowUp";
+    const backward = event.key === "ArrowLeft" || event.key === "ArrowDown";
+    if ((forward || backward) && event.shiftKey) {
+      event.preventDefault();
+      stepHomeTeamDetent(handle, forward ? 1 : -1);
+      return;
+    }
+    if (event.key === "PageUp" || event.key === "PageDown") {
+      event.preventDefault();
+      stepHomeTeamDetent(handle, event.key === "PageUp" ? 1 : -1);
+      return;
+    }
+    if (event.key === "Home" || event.key === "End") {
+      event.preventDefault();
+      const { min, max } = homeTeamRange();
+      setHomeTeamRange(handle, event.key === "Home" ? (handle === "min" ? 1 : min) : (handle === "min" ? max : 5));
+      return;
+    }
+  }
+  if (event.key !== "Enter" && event.key !== " ") return;
+});
+
+document.addEventListener("pointerdown", beginHomeTeamRangePointer);
+document.addEventListener("pointermove", moveHomeTeamRangePointer);
+document.addEventListener("pointerup", endHomeTeamRangePointer);
+document.addEventListener("pointercancel", endHomeTeamRangePointer);
+window.addEventListener("blur", () => endHomeTeamRangePointer({}));
 
 document.addEventListener("input", (event) => {
   const target = event.target;
@@ -2658,11 +3546,19 @@ document.addEventListener("change", (event) => {
 
 document.addEventListener("submit", (event) => {
   event.preventDefault();
+  if (event.target.matches('[data-form="auth"]')) submitAuth();
+  if (event.target.matches('[data-form="auth-verify"]')) submitEmailVerification();
+  if (event.target.matches('[data-form="auth-forgot"]')) submitForgotPassword();
+  if (event.target.matches('[data-form="auth-reset"]')) submitPasswordReset();
 });
 
 document.addEventListener("input", (event) => {
   const target = event.target;
   if (!(target instanceof HTMLInputElement)) return;
+  if (target.matches("[data-home-team-range-input]")) {
+    setHomeTeamRange(target.dataset.homeTeamRangeInput || "max", target.value);
+    return;
+  }
   if (target.matches("[data-flow-search]")) {
     DRAFT.wizardSearch = target.value;
     const q = target.value.trim().toLowerCase();
@@ -2682,6 +3578,15 @@ window.addEventListener("hashchange", () => {
   render();
   trackCurrentPage();
 });
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState !== "visible") return;
+  const routeName = parseRoute().name;
+  if (routeName === "hero") void refreshHeroActivity();
+  if (routeName === "home") void refreshHomeActivity();
+  if (["matching", "room", "gameover"].includes(routeName)) {
+    void refreshAuthenticatedState({ restoreRoute: true });
+  }
+});
 window.addEventListener("error", (event) => {
   if (!state.authenticated) return;
   api.trackEvent("client_error", {
@@ -2700,17 +3605,22 @@ window.addEventListener("unhandledrejection", (event) => {
   });
 });
 window.addEventListener("beforeunload", () => {
+  stopPresenceHeartbeat();
   clearTimers();
   destroyField();
+  chatGeneration += 1;
   if (chatClose) chatClose();
   if (eventSourceClose) eventSourceClose();
-  markPresenceOffline();
 });
 window.addEventListener("pageshow", () => {
   markPresenceOnline();
+  startPresenceHeartbeat();
+  void refreshAuthenticatedState({ restoreRoute: true });
 });
 window.addEventListener("pagehide", () => {
-  markPresenceOffline();
+  // Do not call /api/offline here. pagehide fires for ordinary refresh,
+  // in-app navigation, BFCache transitions and transient browser teardown.
+  // Only an explicit Leave or Logout may terminate a user's Session.
 });
 
 async function detectOnline() {
@@ -2721,6 +3631,7 @@ async function detectOnline() {
       update({
         match: {
           ...state.match,
+          online: data.online ?? state.match.online ?? 0,
           pool: data.matching ?? state.match.pool,
           playing: data.playing ?? state.match.playing,
         },
@@ -2735,36 +3646,50 @@ async function detectOnline() {
 function mapAuthError(err) {
   const message = String(err?.message || err?.error_description || err || "");
   if (message.includes("Invalid login credentials")) return "用户名或密码错误";
-  if (message.includes("User already registered") || message.includes("email_exists")) return "用户名已存在，请直接登录";
+  if (/auth session missing|session.*missing|invalid.*token|expired/i.test(message)) return "重置链接已失效，请重新发送密码重置邮件";
+  if (/token.*(expired|invalid)|otp/i.test(message)) return "验证码错误或已过期，请重新获取";
+  if (message.includes("EMAIL_NOT_VERIFIED") || message.includes("请先验证邮箱")) return "请先验证邮箱后再登录";
+  if (message.includes("User already registered") || message.includes("email_exists") || message.includes("邮箱或用户名已存在")) return "邮箱或用户名已存在，请直接登录";
   if (message.includes("Password should be at least")) return "密码至少 6 位";
   if (message.includes("Failed to fetch") || message.includes("NetworkError") || message.includes("fetch")) return "网络连接失败，请检查网络后重试";
   if (message.includes("Missing password")) return "请输入密码";
   return message || "操作失败，请稍后重试";
 }
 
+function isPasswordRecoveryCallback() {
+  const query = new URLSearchParams(window.location.search || "");
+  return query.get("type") === "recovery" || /(?:^|[&#?])type=recovery(?:&|$)/.test(window.location.hash || "");
+}
+
 async function handleAuthSuccess() {
   const session = await api.getSession();
   if (!session?.access_token) throw new Error("登录状态失效，请重试");
   const status = await api.sessionStatus();
+  const profileReady = !!status.profile && Array.isArray(status.profile.genres) && status.profile.genres.length > 0;
   update({
     authenticated: true,
     authUsername: String(session.user?.user_metadata?.username || ""),
-    onboarded: !!status.profile,
+    authEmail: String(session.user?.email || ""),
+    onboarded: profileReady,
     authError: "",
     authNotice: "",
   });
-  if (status.profile) {
+  if (profileReady) {
     let destination = "#/home";
     update({ user: status.profile });
     try {
       const snapshot = await api.getState();
       update({ user: snapshot.user });
       applyServerSnapshot(snapshot);
+      // A server-backed active Room is already a live Session. Restoring it
+      // to the matching modal re-enters the obsolete handoff path and can
+      // lose members on refresh. Only newly-created rooms use #/matching for
+      // the short handoff; login/refresh resumes the canonical Room view.
       destination = snapshot.room
         ? "#/room"
         : snapshot.session?.status === "completed"
           ? "#/gameover"
-          : snapshot.matchmaking?.ticket
+          : state.match.status === "active"
             ? "#/matching"
             : "#/home";
     } catch {
@@ -2774,14 +3699,19 @@ async function handleAuthSuccess() {
     navigate(destination);
     toast(`欢迎回来，${state.user.nickname}`);
   } else {
-    update({ user: { ...state.user, nickname: "", avatarKey: "", device: "", gender: "", games: [], genres: [], playStyle: "" } });
+    update({ user: { ...state.user, nickname: "", avatarKey: "", device: "", gender: "男", games: [], genres: [], playStyle: "" } });
     navigate("#/welcome");
   }
 }
 
 async function restoreSession() {
+  const recoveryCallback = isPasswordRecoveryCallback();
   try {
     const session = await api.getSession();
+    if (recoveryCallback) {
+      update({ authenticated: false, onboarded: false, authMode: "reset", authError: "", authNotice: "" });
+      return;
+    }
     if (!session?.access_token) {
       resetState();
       return;
@@ -2792,61 +3722,76 @@ async function restoreSession() {
       resetState();
       return;
     }
+    const profileReady = !!status.profile && Array.isArray(status.profile.genres) && status.profile.genres.length > 0;
     update({
       authenticated: true,
       authUsername: String(session.user?.user_metadata?.username || ""),
-      onboarded: !!status.profile,
+      authEmail: String(session.user?.email || ""),
+      onboarded: profileReady,
       authError: "",
       authNotice: "",
     });
-    if (status.profile) {
+    if (profileReady) {
       update({ user: status.profile });
       try {
         const snapshot = await api.getState();
         update({ user: snapshot.user });
         applyServerSnapshot(snapshot);
+        if (snapshot.room && ["home", "auth", "welcome", "matching"].includes(parseRoute().name)) {
+          navigate("#/room");
+        }
       } catch {
         // keep profile-only state
       }
     } else {
-      update({ user: { ...state.user, nickname: "", avatarKey: "", device: "", gender: "", games: [], genres: [], playStyle: "" } });
+      update({ user: { ...state.user, nickname: "", avatarKey: "", device: "", gender: "男", games: [], genres: [], playStyle: "" } });
     }
   } catch {
     resetState();
+    if (recoveryCallback) update({ authMode: "reset", authError: "重置链接无效或已过期，请重新发送。", authNotice: "" });
   }
 }
 
 async function submitAuth() {
   const form = document.querySelector('[data-form="auth"]');
   if (!form) return;
+  if (authSubmitPending) return;
   const submitBtn = form.querySelector('[data-action="auth-submit"]');
   if (submitBtn?.disabled) return;
   const fd = new FormData(form);
-  const username = String(fd.get("username") || "").trim();
+  const identifier = String(fd.get("identifier") || "").trim();
+  const email = String(fd.get("email") || "").trim().toLowerCase();
   const password = String(fd.get("password") || "");
   const passwordConfirm = String(fd.get("passwordConfirm") || "");
-  update({ authUsername: username });
-  if (!username || !password) {
+  const isRegister = state.authMode === "register";
+  update({ authUsername: identifier, authEmail: email });
+  if (!identifier || !password) {
     showAuthError("请输入用户名和密码");
     return;
   }
-  if (/\s/.test(username)) {
-    showAuthError("用户名不能包含空格");
-    return;
-  }
-  if (username.length < 2 || username.length > 24) {
-    showAuthError("用户名需为 2-24 个字符");
-    return;
+  if (isRegister) {
+    if (/\s/.test(identifier) || !/^[\p{L}\p{N}_-]+$/u.test(identifier)) {
+      showAuthError("用户名只能包含中文、字母、数字、下划线或短横线");
+      return;
+    }
+    if (identifier.length < 2 || identifier.length > 24) {
+      showAuthError("用户名需为 2-24 个字符");
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 320) {
+      showAuthError("请输入有效的邮箱地址");
+      return;
+    }
   }
   if (password.length < 6) {
     showAuthError("密码至少 6 位");
     return;
   }
-  if (state.authMode === "register" && !passwordConfirm) {
+  if (isRegister && !passwordConfirm) {
     showAuthError("请再次输入密码", { preservePassword: true });
     return;
   }
-  if (state.authMode === "register" && password !== passwordConfirm) {
+  if (isRegister && password !== passwordConfirm) {
     showAuthError("两次输入的密码不一致", { preservePassword: true });
     return;
   }
@@ -2855,27 +3800,151 @@ async function submitAuth() {
     const label = submitBtn.querySelector("span");
     if (label) label.textContent = "提交中…";
   }
+  authSubmitPending = true;
   update({ authError: "", authNotice: "" });
   document.querySelector("[data-auth-error]")?.remove();
   try {
     await withProjectTransition(async () => {
-      const data = state.authMode === "register"
-        ? await api.registerAccount(username, password)
-        : await api.loginByUsername(username, password);
+      if (isRegister) {
+        await api.registerAccount(identifier, email, password);
+        update({
+          authMode: "login",
+          authUsername: identifier,
+          authEmail: email,
+          authError: "",
+          authNotice: "验证码已发送，请先完成邮箱验证。",
+          authVerification: { email, username: identifier },
+        });
+        render();
+        return;
+      }
+      const data = await api.loginByIdentifier(identifier, password);
       await api.signIn(data.email, password);
       await handleAuthSuccess();
     }, {
-      label: state.authMode === "register" ? "正在建立账号" : "正在验证玩家身份",
+      label: isRegister ? "正在建立账号" : "正在验证玩家身份",
     });
   } catch (err) {
     showAuthError(mapAuthError(err));
   } finally {
+    authSubmitPending = false;
     if (submitBtn) {
       submitBtn.disabled = false;
       const label = submitBtn.querySelector("span");
-      if (label) label.textContent = state.authMode === "register" ? "注册" : "登录";
+      if (label) label.textContent = isRegister ? "注册" : "登录";
     }
   }
+}
+
+async function submitForgotPassword() {
+  const form = document.querySelector('[data-form="auth-forgot"]');
+  if (!form || forgotPasswordPending) return;
+  const email = String(new FormData(form).get("email") || "").trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 320) {
+    showAuthError("请输入有效的邮箱地址");
+    return;
+  }
+  forgotPasswordPending = true;
+  const submitBtn = form.querySelector('[data-action="submit-forgot-password"]');
+  if (submitBtn) submitBtn.disabled = true;
+  update({ authEmail: email, authError: "", authNotice: "" });
+  try {
+    await api.requestPasswordReset(email);
+    update({ authMode: "forgot", authEmail: email, authError: "", authNotice: "如果该邮箱已注册，重置邮件已经发送，请检查收件箱和垃圾邮件。" });
+    render();
+  } catch (err) {
+    showAuthError(mapAuthError(err));
+  } finally {
+    forgotPasswordPending = false;
+  }
+}
+
+async function submitPasswordReset() {
+  const form = document.querySelector('[data-form="auth-reset"]');
+  if (!form || passwordResetPending) return;
+  const fd = new FormData(form);
+  const password = String(fd.get("password") || "");
+  const passwordConfirm = String(fd.get("passwordConfirm") || "");
+  if (password.length < 6) {
+    showAuthError("密码至少 6 位", { preservePassword: true });
+    return;
+  }
+  if (password !== passwordConfirm) {
+    showAuthError("两次输入的密码不一致", { preservePassword: true });
+    return;
+  }
+  passwordResetPending = true;
+  const submitBtn = form.querySelector('[data-action="submit-password-reset"]');
+  if (submitBtn) submitBtn.disabled = true;
+  update({ authError: "", authNotice: "" });
+  try {
+    await api.updatePassword(password);
+    await api.signOut();
+    resetState();
+    update({ authMode: "login", authNotice: "密码已更新，请使用新密码登录。" });
+    navigate("#/auth");
+  } catch (err) {
+    showAuthError(mapAuthError(err), { preservePassword: true });
+  } finally {
+    passwordResetPending = false;
+    if (submitBtn) submitBtn.disabled = false;
+  }
+}
+
+async function submitEmailVerification() {
+  const form = document.querySelector('[data-form="auth-verify"]');
+  const verification = state.authVerification;
+  if (!form || !verification?.email || verificationPending) return;
+  const token = String(new FormData(form).get("token") || "").trim();
+  if (!/^\d{6}$/.test(token)) {
+    update({ authError: "请输入 6 位数字验证码", authNotice: "" });
+    render();
+    return;
+  }
+  verificationPending = true;
+  const submitBtn = form.querySelector('[data-action="verify-email"]');
+  if (submitBtn) submitBtn.disabled = true;
+  update({ authError: "", authNotice: "" });
+  try {
+    const data = await api.verifySignupOtp(verification.email, token);
+    if (data?.session?.access_token) {
+      await handleAuthSuccess();
+      return;
+    }
+    update({
+      authVerification: null,
+      authMode: "login",
+      authError: "",
+      authNotice: "邮箱已验证，请使用用户名或邮箱登录。",
+    });
+    render();
+  } catch (err) {
+    update({ authError: mapAuthError(err), authNotice: "" });
+    render();
+  } finally {
+    verificationPending = false;
+  }
+}
+
+async function resendEmailVerification() {
+  const verification = state.authVerification;
+  if (!verification?.email || verificationResendPending) return;
+  verificationResendPending = true;
+  try {
+    await api.resendVerification(verification.email);
+    update({ authError: "", authNotice: "验证码已重新发送。" });
+    render();
+  } catch (err) {
+    update({ authError: mapAuthError(err), authNotice: "" });
+    render();
+  } finally {
+    verificationResendPending = false;
+  }
+}
+
+function cancelEmailVerification() {
+  update({ authVerification: null, authMode: "login", authError: "", authNotice: "" });
+  render();
 }
 
 const [online] = await Promise.all([detectOnline(), restoreSession()]);

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { reportServerError } from "./metrics";
+import { reportServerError, type ServerErrorContext } from "./metrics";
 
 export class AppError extends Error {
   constructor(
@@ -14,6 +14,19 @@ export class AppError extends Error {
 
 export function requestId(request: Request): string {
   return request.headers.get("x-request-id") || crypto.randomUUID();
+}
+
+export async function jsonBody(request: Request): Promise<Record<string, unknown>> {
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    throw new AppError("INVALID_JSON", "请求体不是有效的 JSON", 400);
+  }
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    throw new AppError("INVALID_JSON", "请求体必须是 JSON 对象", 400);
+  }
+  return body as Record<string, unknown>;
 }
 
 export function idempotencyKey(request: Request): string | null {
@@ -34,10 +47,16 @@ export function jsonOk(data: Record<string, unknown>, requestIdValue: string, st
   return NextResponse.json({ ...data, meta: { requestId: requestIdValue } }, { status });
 }
 
-export function errorResponse(error: unknown, requestIdValue: string, fallback = "操作失败") {
+export function errorResponse(
+  error: unknown,
+  requestIdValue: string,
+  fallback = "操作失败",
+  context: ServerErrorContext = {}
+) {
+  const resolvedContext = { ...context, requestId: context.requestId || requestIdValue };
   if (error instanceof AppError) {
     if (error.status >= 500) {
-      reportServerError({ error, requestId: requestIdValue, code: error.code, fallback });
+      reportServerError({ error, requestId: requestIdValue, code: error.code, fallback, context: resolvedContext });
     }
     return NextResponse.json(
       {
@@ -52,9 +71,14 @@ export function errorResponse(error: unknown, requestIdValue: string, fallback =
     );
   }
 
-  const raw = error instanceof Error ? error.message : "";
+  const raw =
+    error instanceof Error
+      ? error.message
+      : error && typeof error === "object" && "message" in error
+        ? String((error as { message?: unknown }).message || "")
+        : "";
   const mapped = mapDatabaseError(raw, fallback);
-  reportServerError({ error, requestId: requestIdValue, code: mapped.code, fallback });
+  reportServerError({ error, requestId: requestIdValue, code: mapped.code, fallback, context: resolvedContext });
   return NextResponse.json(
     {
       error: {
@@ -77,8 +101,20 @@ function mapDatabaseError(raw: string, fallback: string) {
     SESSION_NOT_COMPLETED: { code: "SESSION_NOT_COMPLETED", message: "Session 结束后才能选择再玩一次", status: 409, retryable: false },
     REMATCH_CHOICE_INVALID: { code: "REMATCH_CHOICE_INVALID", message: "再玩选择无效", status: 422, retryable: false },
     RANK_REQUIRED: { code: "RANK_REQUIRED", message: "天梯匹配必须选择当前段位", status: 422, retryable: false },
+    RANK_INVALID: { code: "RANK_INVALID", message: "当前段位无效，请重新选择", status: 422, retryable: false },
     MATCH_RULE_SET_MISSING: { code: "MATCH_RULE_SET_MISSING", message: "匹配规则暂不可用", status: 503, retryable: true },
+    MATCH_ALREADY_ACTIVE: { code: "MATCH_ALREADY_ACTIVE", message: "你已经在匹配中，请先退出当前匹配", status: 409, retryable: false },
+    DIRECT_JOIN_INVALID: { code: "DIRECT_JOIN_INVALID", message: "请选择有效的匹配对象", status: 422, retryable: false },
+    DIRECT_JOIN_UNAVAILABLE: { code: "DIRECT_JOIN_UNAVAILABLE", message: "这位玩家刚刚离开匹配，请重新选择", status: 409, retryable: true },
+    DIRECT_JOIN_INCOMPATIBLE: { code: "DIRECT_JOIN_INCOMPATIBLE", message: "这位玩家的匹配条件刚刚发生变化，请重新选择", status: 409, retryable: true },
+    DIRECT_JOIN_FAILED: { code: "DIRECT_JOIN_FAILED", message: "加入匹配失败，请重试", status: 500, retryable: true },
     MATCH_RESERVATION_CONFLICT: { code: "MATCH_RESERVATION_CONFLICT", message: "候选刚刚被其他匹配占用，正在继续寻找", status: 409, retryable: true },
+    GROUP_RESERVATION_CONFLICT: { code: "GROUP_RESERVATION_CONFLICT", message: "这位玩家刚刚被其他队伍占用，正在继续寻找", status: 409, retryable: true },
+    GROUP_MINIMUM_NOT_REACHED: { code: "GROUP_MINIMUM_NOT_REACHED", message: "人数还不够，至少再等一位队友", status: 409, retryable: false },
+    GROUP_FORBIDDEN: { code: "GROUP_FORBIDDEN", message: "你不能操作这支队伍", status: 403, retryable: false },
+    GROUP_STATE_CONFLICT: { code: "GROUP_STATE_CONFLICT", message: "这支队伍状态已经变化，请重新查看", status: 409, retryable: true },
+    GROUP_CONFIRMATION_EXPIRED: { code: "GROUP_CONFIRMATION_EXPIRED", message: "队伍确认已超时，正在重新寻找队友", status: 409, retryable: true },
+    GROUP_MODE_REQUIRED: { code: "GROUP_MODE_REQUIRED", message: "只有休闲模式支持多人组队", status: 422, retryable: false },
     PAIR_STATE_CONFLICT: { code: "PAIR_STATE_CONFLICT", message: "这次候选状态已经变化", status: 409, retryable: true },
     PAIR_CONFIRMATION_EXPIRED: { code: "PAIR_CONFIRMATION_EXPIRED", message: "确认已超时，已经重新进入匹配池", status: 409, retryable: true },
     PAIR_FORBIDDEN: { code: "PAIR_FORBIDDEN", message: "你不能操作这次匹配", status: 403, retryable: false },

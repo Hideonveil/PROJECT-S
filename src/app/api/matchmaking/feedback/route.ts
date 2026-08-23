@@ -1,11 +1,11 @@
 import { requireRequestProfile } from "@/lib/auth";
-import { errorResponse, jsonOk, requestId } from "@/lib/http";
+import { errorResponse, jsonBody, jsonOk, requestId } from "@/lib/http";
 import { submitMatchFeedback } from "@/lib/matchmaking/service";
 
 export async function POST(request: Request) {
   const rid = requestId(request);
   try {
-    const body = await request.json();
+    const body = await jsonBody(request);
     const profile = await requireRequestProfile(request, body);
     return jsonOk({ feedback: await submitMatchFeedback(profile.id, body) }, rid);
   } catch (error) {

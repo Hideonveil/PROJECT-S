@@ -1,7 +1,15 @@
 import { NextResponse } from "next/server";
 import { OPS_COOKIE_NAME, opsSessionValue, verifyOpsPassword } from "@/lib/ops";
+import { clientAddress, takeRateLimit } from "@/lib/rate-limit";
 
 export async function POST(request: Request) {
+  const limited = takeRateLimit(`ops-login:${clientAddress(request)}`, 5, 10 * 60 * 1000);
+  if (!limited.allowed) {
+    return NextResponse.json(
+      { error: { code: "RATE_LIMITED", message: "尝试次数过多，请稍后再试" } },
+      { status: 429, headers: { "Retry-After": String(limited.retryAfterSeconds) } }
+    );
+  }
   const body = await request.json().catch(() => ({}));
   const password = String(body.password || "");
   const verification = await verifyOpsPassword(password);
