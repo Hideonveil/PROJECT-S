@@ -190,7 +190,7 @@ async function mockProductBackend(
 
 async function login(page: Page) {
   await page.locator(".product-auth-actions").getByRole("button", { name: "登录", exact: true }).click();
-  await page.locator("#auth-username").fill("testplayer");
+  await page.locator("#auth-identifier").fill("testplayer");
   await page.locator("#auth-password").fill("Phase1-test!");
   await page.locator(".product-auth-submit").click();
   await expect(page.locator(".product-topbar-user span")).toHaveText("测试玩家");
@@ -199,7 +199,7 @@ async function login(page: Page) {
 
 async function reachDeadlockCasualFinal(page: Page) {
   await page.getByRole("button", { name: /Deadlock/ }).click();
-  await page.getByRole("button", { name: "娱乐", exact: true }).click();
+  await page.getByRole("button", { name: "休闲", exact: true }).click();
   await page.getByRole("button", { name: "下一步", exact: true }).click();
   await page.getByRole("button", { name: "找 1 人", exact: true }).click();
   await page.getByRole("button", { name: "下一步", exact: true }).click();
@@ -207,37 +207,131 @@ async function reachDeadlockCasualFinal(page: Page) {
   await expect(page.getByRole("button", { name: "开始匹配", exact: true })).toBeVisible();
 }
 
+type RecoveryProfile = { id: string; nickname: string; [key: string]: unknown };
+
+async function mockThreeMemberRecoveryBackend(
+  page: Page,
+  me: RecoveryProfile,
+  members: RecoveryProfile[],
+  capture: { offline: number },
+) {
+  const room = {
+    ...mockActiveRoom,
+    id: "00000000-0000-0000-0000-000000000777",
+    code: "REFRESH3",
+    need: { ...mockActiveRoom.need, mode: "娱乐", goal: "娱乐", target: 3 },
+    members: members.map((member) => ({ ...member, memberStatus: "active", exitedAt: null })),
+    goodbyeRequests: [],
+  };
+  const session = {
+    id: "session-refresh-3",
+    roomCode: room.code,
+    status: "playing",
+    players: members.map((member) => member.id),
+    members: room.members,
+    targetTotalPlayers: 3,
+  };
+  const stateSnapshot = () => ({
+    user: me,
+    friends: [],
+    friendRequests: { incoming: [], outgoing: [] },
+    recentConnections: [],
+    room,
+    session,
+    matching: 0,
+    playing: 3,
+    matchmaking: { ticket: null, pair: null, group: null, candidate: null, matching: 0, matchable: 0 },
+  });
+
+  await page.route("**/api/health", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({ ok: true, online: 3, matching: 0, playing: 3 }),
+  }));
+  await page.route("**/api/config", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({ supabaseUrl: "https://supabase.test", supabaseAnonKey: "test-anon-key" }),
+  }));
+  await page.route("https://supabase.test/**", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({
+      access_token: `test-access-token-${me.id}`,
+      token_type: "bearer",
+      expires_in: 3600,
+      refresh_token: `test-refresh-token-${me.id}`,
+      user: { id: `auth-${me.id}`, email: `${me.id}@project-s.local`, user_metadata: { username: me.nickname } },
+    }),
+  }));
+  await page.route("**/api/auth/login", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({ email: `${me.id}@project-s.local` }),
+  }));
+  await page.route("**/api/session", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({ authenticated: true, profile: me }),
+  }));
+  await page.route("**/api/state", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify(stateSnapshot()),
+  }));
+  await page.route("**/api/online", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({ ok: true }),
+  }));
+  await page.route("**/api/offline", (route) => {
+    capture.offline += 1;
+    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true }) });
+  });
+}
+
+async function loginAs(page: Page, me: RecoveryProfile) {
+  await page.locator(".product-auth-actions").getByRole("button", { name: "登录", exact: true }).click();
+  await page.locator("#auth-identifier").fill(me.nickname);
+  await page.locator("#auth-password").fill("Phase1-test!");
+  await page.locator(".product-auth-submit").click();
+  await expect(page.locator(".product-topbar-user span")).toHaveText(me.nickname);
+}
+
 test("first-time visitors land on the hero and enter the matching workspace", async ({ page }) => {
   await page.goto("/index.html");
 
-  await expect(page).toHaveTitle(/机缘/);
+  await expect(page).toHaveTitle(/机.{0,2}缘/);
   await expect(page.locator(".landing-shell")).toBeVisible();
   await expect(page.locator(".product-rail")).toHaveCount(0);
   await expect(page.locator(".landing-brand")).toHaveAttribute("href", "#/hero");
   await expect(page.locator(".landing-auth").getByRole("button", { name: "登录", exact: true })).toBeVisible();
   await expect(page.locator(".landing-auth").getByRole("button", { name: "注册", exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "进入摇人匹配" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "开始匹配", exact: true })).toBeVisible();
   await expect(page.locator("#landing-title")).toContainText("总有人想一起玩");
   const pageHeight = await page.evaluate(() => document.documentElement.scrollHeight / window.innerHeight);
   expect(pageHeight).toBeGreaterThan(1.3);
   expect(pageHeight).toBeLessThan(1.8);
-  const heroMatch = page.getByRole("button", { name: "进入摇人匹配" });
+  const heroMatch = page.getByRole("button", { name: "开始匹配", exact: true });
   await expect.poll(() => heroMatch.evaluate((element) => getComputedStyle(element).animationName)).toBe("none");
   await heroMatch.hover();
-  await expect.poll(() => heroMatch.evaluate((element) => getComputedStyle(element).animationName)).toContain("landingMatchHoverShake");
+  await expect.poll(() => heroMatch.evaluate((element) => getComputedStyle(element).transform)).not.toBe("none");
   await page.mouse.move(20, 20);
   await page.waitForTimeout(500);
   const heroMatchBefore = await heroMatch.boundingBox();
   await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
   await page.waitForTimeout(80);
   const heroMatchAfter = await heroMatch.boundingBox();
-  expect(Math.abs((heroMatchBefore?.y || 0) - (heroMatchAfter?.y || 0))).toBeLessThan(5);
+  // The current hero CTA is part of the document flow (the old fixed-card
+  // contract was retired with the hero shell); verify it scrolls with the
+  // page instead of asserting the removed layout.
+  expect((heroMatchAfter?.y || 0) - (heroMatchBefore?.y || 0)).toBeLessThan(-100);
   await page.evaluate(() => window.scrollTo(0, 0));
   await heroMatch.click();
   await expect(page.locator("[data-project-transition]")).toBeVisible();
   await expect(page.locator(".product-shell")).toBeVisible();
   await expect(page.getByRole("button", { name: /Deadlock/ })).toBeVisible();
-  await expect(page.getByRole("button", { name: "上分", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "冲分", exact: true })).toHaveCount(0);
   await expect(page.getByRole("link", { name: "摇人", exact: true })).toBeVisible();
   await expect(page.getByRole("link", { name: "社区", exact: true })).toBeVisible();
   await expect(page.getByRole("link", { name: "我的", exact: true })).toBeVisible();
@@ -272,10 +366,10 @@ test("game selection opens Deadlock steps and keeps other games coming soon", as
   await page.goto("/index.html#/home");
 
   await page.getByRole("button", { name: /Deadlock/ }).click();
-  await expect(page.getByRole("button", { name: "上分", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "冲分", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "返回游戏", exact: true }).click();
-  await page.getByRole("button", { name: /我的世界/ }).click();
-  await expect(page.getByRole("heading", { name: "我的世界还在准备。" })).toBeVisible();
+  await expect(page.locator(".match-games-soon")).toContainText("COMING SOON");
+  await expect(page.getByRole("button", { name: /我的世界/ })).toHaveCount(0);
   expect(errors).toEqual([]);
 });
 
@@ -309,7 +403,7 @@ test("Deadlock rank and casual paths expose different step systems", async ({ pa
   expect((nextButtonBox?.y || 0) + (nextButtonBox?.height || 0)).toBeLessThanOrEqual(768);
   const stage = page.locator("[data-home-wizard-stage]");
   await stage.evaluate((element) => element.setAttribute("data-test-persisted", "yes"));
-  await page.getByRole("button", { name: "上分", exact: true }).click();
+  await page.getByRole("button", { name: "冲分", exact: true }).click();
   await expect(stage).toHaveAttribute("data-test-persisted", "yes");
   const stepper = page.locator("[data-home-stepper]");
   await expect(stepper).toHaveAttribute("aria-label", "Deadlock 配置进度：第 1 步，共 4 步");
@@ -327,24 +421,24 @@ test("Deadlock rank and casual paths expose different step systems", async ({ pa
   await expect(ownRoles).toBeVisible();
   await expect(teammateRoles).toBeVisible();
   await expect(page.locator(".match-role-multi")).toHaveCount(2);
-  await expect(ownRoles.getByRole("button", { name: "1号位", exact: true }).locator(".match-role-number")).toContainText("1");
-  await expect(ownRoles.getByRole("button", { name: "1号位", exact: true }).locator("small")).toHaveText("号位");
+  await expect(ownRoles.getByRole("button", { name: /1号位/ }).locator(".match-role-number")).toContainText("1");
+  await expect(ownRoles.getByRole("button", { name: /1号位/ }).locator(".match-role-label")).toHaveText("主核");
   await ownRoles.getByRole("button", { name: /2号位/ }).click();
   await teammateRoles.getByRole("button", { name: /3号位/ }).click();
   await page.getByRole("button", { name: "下一步", exact: true }).click();
-  await expect(page.getByText("上分最好开麦哦", { exact: true })).toBeVisible();
+  await expect(page.getByText("冲分最好开麦哦", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "开麦", exact: true })).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByRole("button", { name: "开始匹配", exact: true })).toBeVisible();
 
   await page.getByRole("button", { name: "返回选择游戏", exact: true }).click();
   await expect(page.getByRole("button", { name: /Deadlock/ })).toBeVisible();
-  await expect(page.getByRole("button", { name: /我的世界/ })).toBeVisible();
+  await expect(page.locator(".match-games-soon")).toContainText("COMING SOON");
 
   await page.goto("/index.html?casual-path=1#/home");
   await page.getByRole("button", { name: /Deadlock/ }).click();
   const casualStage = page.locator("[data-home-wizard-stage]");
   await casualStage.evaluate((element) => element.setAttribute("data-test-persisted", "yes"));
-  await page.getByRole("button", { name: "娱乐", exact: true }).click();
+  await page.getByRole("button", { name: "休闲", exact: true }).click();
   await expect(casualStage).toHaveAttribute("data-test-persisted", "yes");
   await expect(page.locator("[data-home-stepper]")).toHaveAttribute("aria-label", "Deadlock 配置进度：第 1 步，共 3 步");
   await page.getByRole("button", { name: "下一步", exact: true }).click();
@@ -352,8 +446,67 @@ test("Deadlock rank and casual paths expose different step systems", async ({ pa
   await expect(page.getByRole("group", { name: /位置/ })).toHaveCount(0);
   await page.getByRole("button", { name: "找 2 人", exact: true }).click();
   await page.getByRole("button", { name: "下一步", exact: true }).click();
-  await expect(page.getByText("上分最好开麦哦", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("冲分最好开麦哦", { exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "无所谓", exact: true })).toBeVisible();
+});
+
+test("casual groups show progress and let the owner start with the minimum", async ({ page }) => {
+  await mockProductBackend(page);
+  let enoughMembers = false;
+  const owner = { userId: mockProfile.id, ticketId: "ticket-owner", isOwner: true, decision: "accepted", profile: mockProfile };
+  const teammate = { userId: mockPartner.id, ticketId: "ticket-peer", isOwner: false, decision: "pending", profile: mockPartner };
+  const secondTeammate = { userId: "00000000-0000-0000-0000-000000000333", ticketId: "ticket-peer-2", isOwner: false, decision: "pending", profile: { nickname: "第二位玩家" } };
+  const snapshot = () => ({
+    ticket: { id: "ticket-owner", state: "searching", search_started_at: new Date(Date.now() - 1200).toISOString() },
+    group: {
+      id: "group-1", ownerUserId: mockProfile.id, state: "partial_ready", desiredTeammates: 3, minTeammates: 2,
+      members: enoughMembers ? [owner, teammate, secondTeammate] : [owner, teammate],
+    },
+    pair: null, candidate: null, matching: 2, matchable: 2,
+  });
+  await page.unroute("**/api/matchmaking/start");
+  await page.unroute("**/api/matchmaking/status");
+  await page.route("**/api/matchmaking/start", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(snapshot()) }));
+  await page.route("**/api/matchmaking/status", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(snapshot()) }));
+  await page.route("**/api/matchmaking/group/start", (route) => route.fulfill({
+    status: 200, contentType: "application/json",
+    body: JSON.stringify({ ...snapshot(), group: { ...snapshot().group, state: "waiting_confirmation", members: [owner, { ...teammate, decision: "pending" }, { ...secondTeammate, decision: "pending" }] } }),
+  }));
+
+  await page.goto("/index.html#/home");
+  await login(page);
+  await page.getByRole("button", { name: /Deadlock/ }).click();
+  await page.getByRole("button", { name: "休闲", exact: true }).click();
+  await page.getByRole("button", { name: "下一步", exact: true }).click();
+  await page.getByRole("button", { name: "找 3 人", exact: true }).click();
+  await page.getByRole("button", { name: "下一步", exact: true }).click();
+  await page.getByRole("button", { name: "开始匹配", exact: true }).click();
+  await expect(page).toHaveURL(/#\/matching$/);
+  await expect(page.getByRole("heading", { name: "已找到 1/3 位队友" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /已满 2 人，开房/ })).toBeVisible();
+  await page.getByRole("button", { name: /已满 2 人，开房/ }).click();
+  await expect(page.getByRole("heading", { name: "队伍已锁定，等大家确认" })).toBeVisible();
+  await expect(page.getByText("等待确认", { exact: true })).toHaveCount(2);
+});
+
+test("a failed cancellation keeps the live matching state for reconciliation", async ({ page }) => {
+  await mockProductBackend(page);
+  await page.unroute("**/api/matchmaking/cancel");
+  await page.route("**/api/matchmaking/cancel", (route) =>
+    route.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({ error: { message: "服务暂不可用" } }) })
+  );
+  await page.goto("/index.html#/home");
+  await login(page);
+  await page.getByRole("button", { name: /Deadlock/ }).click();
+  await page.getByRole("button", { name: "休闲", exact: true }).click();
+  await page.getByRole("button", { name: "下一步", exact: true }).click();
+  await page.getByRole("button", { name: "找 1 人", exact: true }).click();
+  await page.getByRole("button", { name: "下一步", exact: true }).click();
+  await page.getByRole("button", { name: "开始匹配", exact: true }).click();
+  await expect(page).toHaveURL(/#\/matching$/);
+  await page.getByLabel("退出匹配").click();
+  await expect(page).toHaveURL(/#\/matching$/);
+  await expect(page.getByText("服务暂不可用", { exact: true })).toBeVisible();
 });
 
 test("hero auth actions use a dedicated transition without affecting auth tabs", async ({ page }) => {
@@ -473,14 +626,15 @@ test("starting a match while signed out opens the account flow", async ({ page }
   await expect(page.getByText("登录后即可开始匹配。", { exact: true })).toBeVisible();
 });
 
-test("registration continues to player identity and stores the real profile payload", async ({ page }) => {
+test("registration sends verification email before creating the player identity", async ({ page }) => {
   const capture: { profile?: Record<string, unknown> } = {};
   await mockProductBackend(page, capture);
   await page.goto("/index.html#/home");
 
   await page.locator(".product-auth-actions").getByRole("button", { name: "注册", exact: true }).click();
   await expect(page.locator("[data-registration-stepper]")).toHaveCount(0);
-  await page.locator("#auth-username").fill("testplayer");
+  await page.locator("#auth-identifier").fill("testplayer");
+  await page.locator("#auth-email").fill("testplayer@example.com");
   await page.locator("#auth-password").fill("Phase1-test!");
   const passwordEye = page.locator('[data-action="toggle-password"][data-target="auth-password"]');
   const eyeAlignment = await passwordEye.evaluate((element) => {
@@ -502,33 +656,12 @@ test("registration continues to player identity and stores the real profile payl
   await page.locator("#auth-password-confirm").fill("Phase1-test!");
   await page.locator(".product-auth-submit").click();
 
-  await expect(page).toHaveURL(/#\/welcome$/);
-  await expect(page.locator('[data-registration-stepper][aria-label="身份创建进度：第 1 步，共 5 步"]')).toBeVisible();
-  await page.locator("[data-registration-stepper]").evaluate((element) => element.setAttribute("data-test-persisted", "yes"));
-  await expect(page.getByRole("button", { name: /头像 1/ })).toHaveCount(0);
-  await page.locator("#nickname").fill("新玩家");
-  await page.getByRole("button", { name: "下一步", exact: true }).click();
-  await expect(page.locator('[aria-label="身份创建进度：第 2 步，共 5 步"]')).toBeVisible();
-  await expect(page.locator("[data-registration-stepper]")).toHaveAttribute("data-test-persisted", "yes");
-  await expect(page.locator(".identity-form--step")).toHaveClass(/is-forward/);
-  await page.getByRole("button", { name: /暂不设置头像/ }).click();
-  await page.getByRole("button", { name: "下一步", exact: true }).click();
-  await page.getByRole("button", { name: "PC", exact: true }).click();
-  await page.getByRole("button", { name: "下一步", exact: true }).click();
-  await page.getByRole("button", { name: /FPS/ }).click();
-  await page.getByRole("button", { name: "下一步", exact: true }).click();
-  await page.getByRole("button", { name: "保密", exact: true }).click();
-  await expect(page.getByText("目前版本会优先匹配同性玩家。", { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: /完成并进入机缘/ }).click();
-
-  await expect(page).toHaveURL(/#\/home$/);
-  expect(capture.profile).toMatchObject({
-    nickname: "新玩家",
-    avatarKey: "",
-    gender: "保密",
-    device: "PC",
-    genres: ["FPS"],
-  });
+  await expect(page).toHaveURL(/#\/auth$/);
+  await expect(page.getByText("验证邮件已发送，请先完成邮箱验证，再使用用户名或邮箱登录。", { exact: true })).toBeVisible();
+  await expect(page.locator("#auth-identifier")).toHaveValue("testplayer");
+  await expect(page.locator("#auth-email")).toBeDisabled();
+  await expect(page.locator("[data-auth-workspace]")).toHaveClass(/is-login/);
+  expect(capture.profile).toBeUndefined();
 });
 
 test("desktop match controls use target cursor but the primary action does not", async ({ page }) => {
@@ -542,7 +675,7 @@ test("desktop match controls use target cursor but the primary action does not",
   await page.getByRole("button", { name: "下一步", exact: true }).hover();
   await expect(page.locator(".target-cursor")).not.toHaveClass(/is-visible/);
 
-  await page.getByRole("button", { name: "娱乐", exact: true }).click();
+  await page.getByRole("button", { name: "休闲", exact: true }).click();
   await page.getByRole("button", { name: "下一步", exact: true }).click();
   await page.getByRole("button", { name: "找 1 人", exact: true }).click();
   await page.getByRole("button", { name: "下一步", exact: true }).click();
@@ -728,6 +861,7 @@ test("confirmation timeout updates the existing matching modal without resetting
 test("an active room resumes directly and goodbye patches the existing connection room", async ({ page }) => {
   await mockProductBackend(page);
   let goodbyeRequested = false;
+  let goodbyeCalls = 0;
   await page.unroute("**/api/state");
   await page.route("**/api/state", (route) => route.fulfill({
     status: 200,
@@ -744,13 +878,14 @@ test("an active room resumes directly and goodbye patches the existing connectio
       matchmaking: { ticket: null, pair: null, candidate: null, matching: 1, matchable: 1 },
     }),
   }));
-  await page.route("**/api/room/LINK42/goodbye", (route) => {
-    goodbyeRequested = true;
+  await page.route("**/api/room/LINK42/goodbye", async (route) => {
+    goodbyeCalls += 1;
+    goodbyeRequested = Boolean((await route.request().postDataJSON()).requested);
     return route.fulfill({
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({
-        room: { ...mockActiveRoom, goodbyeRequests: [{ userId: mockProfile.id, requestedAt: "2026-08-19T00:02:00.000Z" }] },
+        room: { ...mockActiveRoom, goodbyeRequests: goodbyeRequested ? [{ userId: mockProfile.id, requestedAt: "2026-08-19T00:02:00.000Z" }] : [] },
         session: { id: "session-1", roomCode: "LINK42", status: "playing" },
       }),
     });
@@ -761,15 +896,263 @@ test("an active room resumes directly and goodbye patches the existing connectio
   await expect(page).toHaveURL(/#\/room$/);
   const room = page.locator("[data-connection-room]");
   await expect(room).toBeVisible();
-  await expect(page.getByText("对方申请加你为机缘好友", { exact: true })).toBeVisible();
+  await expect(page.getByText("好友系统 COMING SOON", { exact: true })).toBeVisible();
   await room.evaluate((element) => element.setAttribute("data-test-persisted", "yes"));
   await page.getByRole("button", { name: "拜拜", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "确定要拜拜吗？", exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "确认拜拜", exact: true }).click();
-  await expect(page.getByText("已提出拜拜，等待对方", { exact: false })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "确定要拜拜吗？", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "拜拜（1/2）", exact: true })).toBeVisible();
+  await expect(page.getByText("已拜拜，等待其余 1 位成员", { exact: true })).toBeVisible();
   await expect(room).toHaveAttribute("data-test-persisted", "yes");
+  expect(goodbyeCalls).toBe(1);
+  await page.getByRole("button", { name: "拜拜（1/2）", exact: true }).click();
+  await expect(page.getByRole("button", { name: "拜拜", exact: true })).toBeVisible();
+  expect(goodbyeCalls).toBe(2);
   await page.getByRole("link", { name: "我的", exact: true }).click();
   await expect(page).toHaveURL(/#\/me$/);
+});
+
+test("a three-member room restores every member and uses a 1/3 goodbye state", async ({ page }) => {
+  await mockProductBackend(page);
+  let goodbyeRequested = false;
+  const memberC = {
+    id: "00000000-0000-0000-0000-000000000555",
+    nickname: "第三位玩家",
+    handle: "第三位玩家#0555",
+    avatarKey: "me-3",
+    device: "PC",
+    playStyle: "愿意沟通",
+    online: true,
+    memberStatus: "active",
+    exitedAt: null,
+    gameAccounts: { deadlock: { steamFriendCode: "76561198000000555" } },
+  };
+  const groupRoom = {
+    ...mockActiveRoom,
+    code: "GROUP3",
+    need: { ...mockActiveRoom.need, target: 3, mode: "娱乐", goal: "娱乐" },
+    members: [mockProfile, mockPartner, memberC].map((member) => ({ ...member, memberStatus: "active", exitedAt: null })),
+    goodbyeRequests: [],
+  };
+  await page.unroute("**/api/state");
+  await page.route("**/api/state", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({
+      user: mockProfile,
+      friends: [],
+      friendRequests: { incoming: [], outgoing: [] },
+      recentConnections: [],
+      room: { ...groupRoom, goodbyeRequests: goodbyeRequested ? [{ userId: mockProfile.id, requestedAt: "2026-08-19T00:03:00.000Z" }] : [] },
+      session: { id: "session-group-3", roomCode: "GROUP3", status: "playing", players: [mockProfile.id, mockPartner.id, memberC.id] },
+      matching: 0,
+      playing: 3,
+      matchmaking: { ticket: null, pair: null, candidate: null, group: null, matching: 0, matchable: 0 },
+    }),
+  }));
+  await page.route("**/api/room/GROUP3/goodbye", (route) => {
+    goodbyeRequested = true;
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        room: { ...groupRoom, goodbyeRequests: [{ userId: mockProfile.id, requestedAt: "2026-08-19T00:03:00.000Z" }] },
+        session: { id: "session-group-3", roomCode: "GROUP3", status: "playing", players: [mockProfile.id, mockPartner.id, memberC.id] },
+      }),
+    });
+  });
+
+  await page.goto("/index.html#/home");
+  await login(page);
+  await expect(page).toHaveURL(/#\/room$/);
+  await expect(page.getByRole("heading", { name: "连接玩家", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "第三位玩家", exact: true })).toBeVisible();
+  await expect(page.getByText("玩完后，由 3 位当前成员 各自确认拜拜。", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "拜拜", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "确定要拜拜吗？", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "拜拜（1/3）", exact: true })).toBeVisible();
+  await expect(page.getByText("已拜拜，等待其余 2 位成员", { exact: true })).toBeVisible();
+  await expect(page.locator("[data-connection-room] .connection-player")).toHaveCount(3);
+});
+
+test("server-backed Goodbye count survives refresh at 1/3 and 2/3", async ({ page }) => {
+  await mockProductBackend(page);
+  const memberC = {
+    id: "00000000-0000-0000-0000-000000000555",
+    nickname: "第三位玩家",
+    handle: "第三位玩家#0555",
+    avatarKey: "me-3",
+    device: "PC",
+    playStyle: "愿意沟通",
+    online: true,
+    memberStatus: "active",
+    exitedAt: null,
+    gameAccounts: { deadlock: { steamFriendCode: "76561198000000555" } },
+  };
+  const groupRoom = {
+    ...mockActiveRoom,
+    code: "GROUP3-REFRESH",
+    need: { ...mockActiveRoom.need, target: 3, mode: "娱乐", goal: "娱乐" },
+    members: [mockProfile, mockPartner, memberC].map((member) => ({ ...member, memberStatus: "active", exitedAt: null })),
+  };
+  const goodbyeIds: string[] = [];
+  const goodbyeRequests = () => goodbyeIds.map((userId) => ({ userId, requestedAt: "2026-08-19T00:04:00.000Z" }));
+  const snapshot = () => ({
+    user: mockProfile,
+    friends: [],
+    friendRequests: { incoming: [], outgoing: [] },
+    recentConnections: [],
+    room: { ...groupRoom, goodbyeRequests: goodbyeRequests() },
+    session: { id: "session-group-3-refresh", roomCode: groupRoom.code, status: "playing", players: groupRoom.members.map((member) => member.id) },
+    matching: 0,
+    playing: 3,
+    matchmaking: { ticket: null, pair: null, candidate: null, group: null, matching: 0, matchable: 0 },
+  });
+  await page.unroute("**/api/state");
+  await page.route("**/api/state", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify(snapshot()),
+  }));
+  await page.route("**/api/room/GROUP3-REFRESH/goodbye", async (route) => {
+    const body = await route.request().postDataJSON();
+    if (body.requested && !goodbyeIds.includes(mockProfile.id)) goodbyeIds.push(mockProfile.id);
+    if (!body.requested) goodbyeIds.splice(goodbyeIds.indexOf(mockProfile.id), 1);
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ room: { ...groupRoom, goodbyeRequests: goodbyeRequests() }, session: snapshot().session }),
+    });
+  });
+
+  await page.goto("/index.html#/home");
+  await login(page);
+  await expect(page).toHaveURL(/#\/room$/);
+  await page.getByRole("button", { name: "拜拜", exact: true }).click();
+  await expect(page.getByRole("button", { name: "拜拜（1/3）", exact: true })).toBeVisible();
+  await page.reload();
+  await expect(page).toHaveURL(/#\/room$/);
+  await expect(page.getByRole("button", { name: "拜拜（1/3）", exact: true })).toBeVisible();
+
+  goodbyeIds.push(memberC.id);
+  await page.reload();
+  await expect(page).toHaveURL(/#\/room$/);
+  await expect(page.getByRole("button", { name: "拜拜（2/3）", exact: true })).toBeVisible();
+  await expect(page.getByText("你已拜拜，等待其余 1 位成员。", { exact: true })).toBeVisible();
+});
+
+test("three-member fit table aligns names and restores match links", async ({ page }) => {
+  await mockProductBackend(page);
+  const memberC = {
+    id: "00000000-0000-0000-0000-000000000555",
+    nickname: "第三位玩家",
+    handle: "第三位玩家#0555",
+    avatarKey: "me-3",
+    device: "PC",
+    playStyle: "愿意沟通",
+    online: true,
+    memberStatus: "active",
+    exitedAt: null,
+    gameAccounts: {},
+  };
+  const groupRoom = {
+    ...mockActiveRoom,
+    code: "FIT3",
+    need: { ...mockActiveRoom.need, target: 3, mode: "娱乐", goal: "娱乐" },
+    members: [mockProfile, mockPartner, memberC].map((member) => ({ ...member, memberStatus: "active", exitedAt: null })),
+    goodbyeRequests: [],
+  };
+  await page.unroute("**/api/state");
+  await page.route("**/api/state", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({
+      user: mockProfile,
+      friends: [],
+      friendRequests: { incoming: [], outgoing: [] },
+      recentConnections: [],
+      room: groupRoom,
+      session: { id: "session-fit-3", roomCode: "FIT3", status: "playing", players: groupRoom.members.map((member) => member.id) },
+      matching: 0,
+      playing: 3,
+      matchmaking: { ticket: null, pair: null, candidate: null, group: null, matching: 0, matchable: 0 },
+    }),
+  }));
+
+  await page.goto("/index.html#/home");
+  await login(page);
+  await page.goto("/index.html#/matching");
+  await expect(page.locator("[data-session-preview]")).toBeVisible();
+  await expect(page.locator(".session-fit-row--head .session-fit-conditions--group > b")).toHaveCount(3);
+  await expect(page.locator(".session-fit-row--group:not(.session-fit-row--head)")).toHaveCount(5);
+  await expect(page.locator(".session-fit-row--group:not(.session-fit-row--head) .session-fit-link.is-match")).toHaveCount(10);
+
+  const headerLefts = await page.locator(".session-fit-row--head b").evaluateAll((nodes) => nodes.map((node) => Math.round(node.getBoundingClientRect().left)));
+  const firstRowLefts = await page.locator(".session-fit-row--group:not(.session-fit-row--head)").first().locator("strong").evaluateAll((nodes) => nodes.map((node) => Math.round(node.getBoundingClientRect().left)));
+  expect(firstRowLefts).toEqual(headerLefts);
+});
+
+test("three independent clients keep the same active Session across refresh and return", async ({ browser }) => {
+  const sharedProfileFields = {
+    friendCode: "TEST-RECOVERY",
+    gender: "保密",
+    ageRange: "23-29",
+    games: [],
+    genres: ["FPS"],
+    voice: true,
+  };
+  const members = [
+    { ...mockProfile, id: "00000000-0000-0000-0000-000000000111", nickname: "玩家 A", handle: "玩家 A#0111" },
+    { ...mockPartner, ...sharedProfileFields, id: "00000000-0000-0000-0000-000000000222", nickname: "玩家 B", handle: "玩家 B#0222" },
+    { ...mockPartner, ...sharedProfileFields, id: "00000000-0000-0000-0000-000000000555", nickname: "玩家 C", handle: "玩家 C#0555" },
+  ];
+  const contexts = await Promise.all(members.map(() => browser.newContext()));
+  const pages = await Promise.all(contexts.map((context) => context.newPage()));
+  const captures = members.map(() => ({ offline: 0 }));
+  let explicitExitCalls = 0;
+  try {
+    await Promise.all(pages.map((page, index) => mockThreeMemberRecoveryBackend(page, members[index], members, captures[index])));
+    await pages[2].route("**/api/room/REFRESH3/exit", (route) => {
+      explicitExitCalls += 1;
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ room: null, session: { id: "session-refresh-3", roomCode: "REFRESH3", status: "cancelled" } }),
+      });
+    });
+    await Promise.all(pages.map((page) => page.goto("/index.html#/home")));
+    await Promise.all(pages.map((page, index) => loginAs(page, members[index])));
+
+    for (const page of pages) {
+      await expect(page).toHaveURL(/#\/room$/);
+      await expect(page.locator("[data-connection-room] .connection-player")).toHaveCount(3);
+      await expect(page.getByText("玩完后，由 3 位当前成员 各自确认拜拜。", { exact: true })).toBeVisible();
+    }
+
+    await pages[0].locator("#chat-input").fill("刷新前消息");
+    await pages[0].locator('[data-form="room-chat"] button[type="submit"]').click();
+    await expect(pages[0].locator("#chat-input")).toHaveValue("");
+
+    await Promise.all([pages[0].reload(), pages[1].reload()]);
+    await pages[1].goto("/index.html#/me");
+    await expect(pages[1]).toHaveURL(/#\/me$/);
+    await pages[1].goto("/index.html#/room");
+
+    for (const page of pages) {
+      await expect(page).toHaveURL(/#\/room$/);
+      await expect(page.locator("[data-connection-room] .connection-player")).toHaveCount(3);
+      await expect(page.getByText("玩完后，由 3 位当前成员 各自确认拜拜。", { exact: true })).toBeVisible();
+    }
+    await pages[0].locator("#chat-input").fill("刷新后仍可聊天");
+    await pages[0].locator('[data-form="room-chat"] button[type="submit"]').click();
+    await expect(pages[0].locator("#chat-input")).toHaveValue("");
+    await pages[2].getByRole("button", { name: "主动退出", exact: true }).click();
+    await pages[2].getByRole("dialog", { name: "主动离开游戏" }).getByRole("button", { name: "主动离开", exact: true }).click();
+    await expect(pages[2]).toHaveURL(/#\/home$/);
+    expect(explicitExitCalls).toBe(1);
+    expect(captures).toEqual([{ offline: 0 }, { offline: 0 }, { offline: 0 }]);
+  } finally {
+    await Promise.all(contexts.map((context) => context.close()));
+  }
 });
 
 test("mobile visitors see the PC-only gate in the same product language", async ({ browser }) => {
@@ -788,7 +1171,7 @@ test("mobile visitors see the PC-only gate in the same product language", async 
 test("a narrow desktop window is not mistaken for a phone", async ({ page }) => {
   await page.setViewportSize({ width: 760, height: 844 });
   await page.goto("/index.html");
-  await expect(page.getByRole("button", { name: "进入摇人匹配" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "开始匹配", exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "请使用电脑打开" })).toBeHidden();
 });
 
@@ -821,7 +1204,7 @@ test("my page renders backend recent connections instead of stale local history"
 
   await expect(page).toHaveURL(/#\/me$/);
   await expect(page.getByText("旧队友", { exact: true })).toBeVisible();
-  await expect(page.getByText(/Deadlock · 3 次/)).toBeVisible();
+  await expect(page.getByText(/Deadlock · 一起玩过 3 次/)).toBeVisible();
 });
 
 test("friend code search sends a request to the exact profile without a fullscreen transition", async ({ page }) => {
@@ -830,18 +1213,8 @@ test("friend code search sends a request to the exact profile without a fullscre
   await page.goto("/index.html#/home");
   await login(page);
   await page.goto("/index.html#/friends");
-
-  await page.locator("#friend-code-input").fill("NODE-ABCD-EFGH");
-  await page.getByRole("button", { name: "搜索", exact: true }).click();
-  await expect(page.locator("[data-project-transition]")).toHaveCount(0);
-  await expect(page.getByText("代码好友", { exact: true })).toBeVisible();
-  await expect(page.getByText("NODE-ABCD-EFGH", { exact: false })).toBeVisible();
-  await page.getByRole("button", { name: "添加好友", exact: true }).click();
-
-  expect(capture.friendAdd).toMatchObject({ targetUserId: "00000000-0000-0000-0000-000000000333" });
-  await expect(page.getByRole("heading", { name: "朋友列表", exact: true })).toBeVisible();
-  await expect(page.getByText("代码好友", { exact: true })).toBeVisible();
-  await expect(page.getByText("好友申请待确认", { exact: true })).toBeVisible();
+  await expect(page).toHaveURL(/#\/me$/);
+  await expect(page.getByText("好友系统正在重新设计", { exact: false })).toBeVisible();
 });
 
 test("completed sessions restore friendship controls and feedback responds before saving", async ({ page }) => {
@@ -876,7 +1249,7 @@ test("completed sessions restore friendship controls and feedback responds befor
   await page.goto("/index.html#/home");
   await login(page);
   await expect(page).toHaveURL(/#\/gameover$/);
-  await expect(page.getByRole("button", { name: "添加为机缘好友", exact: true })).toBeVisible();
+  await expect(page.getByText("好友系统 COMING SOON", { exact: true })).toBeVisible();
 
   const like = page.getByRole("button", { name: "为 TA 点赞", exact: true });
   await like.click();

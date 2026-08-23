@@ -53,19 +53,20 @@ describe("P1 operations contract", () => {
     expect(opsPage).toContain("联系我们收件箱");
   });
 
-  it("uses page lifecycle events instead of a timer for player presence", () => {
+  it("keeps explicit logout separate from transient page lifecycle events", () => {
     const route = read("src/app/api/online/route.ts");
     const app = read("public/js/app.js");
     const api = read("public/js/api.js");
     expect(route).toContain("requireRequestProfile");
-    expect(route).toContain("last_seen");
+    expect(route).toContain('rpc("presence_heartbeat"');
     expect(app).toContain("markPresenceOnline");
     expect(app).toContain('addEventListener("pageshow"');
     expect(app).toContain('addEventListener("pagehide"');
-    expect(app).toContain("markPresenceOffline");
-    expect(api).toContain("navigator.sendBeacon");
-    expect(app).toContain("{ unloading: true }");
-    expect(app).not.toContain("setInterval(beat");
+    expect(app).toContain('api.goOffline({ reason: "explicit_logout" })');
+    expect(app).not.toMatch(/window\.addEventListener\("pagehide",[\s\S]*?markPresenceOffline\(\)/);
+    expect(app).not.toMatch(/window\.addEventListener\("beforeunload",[\s\S]*?markPresenceOffline\(\)/);
+    expect(api).toContain('reason = "explicit_logout"');
+    expect(app).toContain("setInterval(beat, 10_000)");
   });
 
   it("keeps the account menu inside the persistent navigation shell", () => {

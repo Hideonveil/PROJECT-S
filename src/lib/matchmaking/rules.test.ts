@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { assertTransition, canTransition } from "./state-machine";
-import { evaluateCompatibility, rankCandidates } from "./rules";
+import { assertGroupTransition, assertTransition, canGroupTransition, canTransition, isTerminalGroupState } from "./state-machine";
+import { evaluateCompatibility, normalizeMatchmakingInput, normalizeRankCode, rankCandidates } from "./rules";
 import type { MatchTicket, MatchmakingRuleSet } from "./types";
 
 const rules: MatchmakingRuleSet = {
@@ -9,7 +9,8 @@ const rules: MatchmakingRuleSet = {
   version: "official-2024-11-21",
   hardRules: {
     allowedModes: ["ranked", "casual"],
-    rankedPartyMax: 6,
+    rankedPartyMax: 2,
+    rankedTeammateMax: 1,
     highRankThreshold: "ascendant_1",
     highRankPartyMax: 3,
     maxRankDistance: null,
@@ -47,11 +48,55 @@ describe("Deadlock matchmaking skeleton", () => {
     expect(evaluateCompatibility(ticket({ rankCode: "initiate" }), ticket({ rankCode: "eternus" }), strict).hardFailures).toContain("rank_distance");
   });
 
+  it("enforces one adjacent rank when the legacy ruleset has no distance", () => {
+    expect(evaluateCompatibility(ticket({ rankCode: "initiate" }), ticket({ rankCode: "oracle" }), rules).hardFailures)
+      .toContain("rank_distance");
+    expect(evaluateCompatibility(ticket({ rankCode: "oracle" }), ticket({ rankCode: "phantom" }), rules).compatible).toBe(true);
+  });
+
+  it("only allows Eternus to match Eternus", () => {
+    expect(evaluateCompatibility(ticket({ rankCode: "eternus" }), ticket({ rankCode: "ascendant" }), rules).hardFailures)
+      .toContain("rank_distance");
+    expect(evaluateCompatibility(ticket({ rankCode: "eternus" }), ticket({ rankCode: "eternus" }), rules).compatible).toBe(true);
+  });
+
   it("5. orders simultaneous players by configured preferences then wait time", () => {
     const source = ticket();
     const older = ticket({ desiredRoles: [6], searchStartedAt: "2026-01-01T00:00:00Z" });
     const preferred = ticket({ desiredRoles: [1], searchStartedAt: "2026-01-02T00:00:00Z" });
     expect(rankCandidates(source, [older, preferred], rules)[0].ticket.id).toBe(preferred.id);
+  });
+
+  it("keeps explicit role matching strict for the first ten seconds", () => {
+    const source = ticket({
+      ownRoles: [1],
+      teammateRoles: [3, 4, 5],
+      searchStartedAt: new Date().toISOString(),
+    });
+    const exact = ticket({
+      ownRoles: [3],
+      teammateRoles: [1],
+    });
+    const fallback = ticket({
+      ownRoles: [2],
+      teammateRoles: [1],
+    });
+    expect(rankCandidates(source, [fallback, exact], rules).map(({ ticket: candidate }) => candidate.id))
+      .toEqual([exact.id]);
+  });
+
+  it("allows a role fallback after the source has waited ten seconds", () => {
+    const source = ticket({
+      ownRoles: [1],
+      teammateRoles: [3, 4, 5],
+      searchStartedAt: new Date(Date.now() - 11_000).toISOString(),
+    });
+    const fallback = ticket({
+      ownRoles: [2],
+      teammateRoles: [1],
+    });
+    expect(rankCandidates(source, [fallback], rules).map(({ ticket: candidate }) => candidate.id))
+      .toEqual([fallback.id]);
   });
 
   it.each([
@@ -79,5 +124,45 @@ describe("Deadlock matchmaking skeleton", () => {
     for (const state of ["completed", "cancelled", "expired"] as const) {
       expect(canTransition(state, "searching")).toBe(false);
     }
+  });
+
+  it("normalizes casual teammate targets without letting the minimum exceed the target", () => {
+    expect(normalizeMatchmakingInput({
+      mode: "casual",
+      desiredTeammates: 3,
+      minTeammates: 99,
+      microphonePreference: "any",
+    })).toMatchObject({ desiredTeammates: 3, minTeammates: 3 });
+    expect(normalizeMatchmakingInput({ mode: "casual", desiredTeammates: 0, minTeammates: 0 }))
+      .toMatchObject({ desiredTeammates: 1, minTeammates: 1 });
+    expect(normalizeMatchmakingInput({ mode: "casual", desiredTeammates: 3 }))
+      .toMatchObject({ desiredTeammates: 3, minTeammates: 3 });
+  });
+
+  it("only allows casual tickets whose teammate ranges intersect", () => {
+    const casual = ticket({ mode: "casual", rankCode: null, desiredTeammates: 1, minTeammates: 1 });
+    expect(evaluateCompatibility(casual, ticket({ mode: "casual", rankCode: null, desiredTeammates: 3, minTeammates: 3 }), rules).hardFailures)
+      .toContain("group_size_conflict");
+    expect(evaluateCompatibility(casual, ticket({ mode: "casual", rankCode: null, desiredTeammates: 3, minTeammates: 1 }), rules).compatible).toBe(true);
+  });
+
+  it("keeps ranked mode as a duo queue", () => {
+    expect(rules.hardRules.rankedPartyMax).toBe(2);
+    expect(rules.hardRules.rankedTeammateMax).toBe(1);
+    expect(normalizeMatchmakingInput({ mode: "ranked", desiredTeammates: 5 }))
+      .toMatchObject({ mode: "ranked", desiredTeammates: undefined, minTeammates: undefined });
+  });
+
+  it("normalizes supported UI rank labels and rejects arbitrary ranks", () => {
+    expect(normalizeRankCode("神谕者（钻石）")).toBe("oracle");
+    expect(normalizeMatchmakingInput({ mode: "ranked", rankCode: "神谕者（钻石）" }).rankCode).toBe("oracle");
+    expect(normalizeRankCode("not-a-real-rank")).toBeNull();
+  });
+
+  it("keeps the casual group lifecycle explicit", () => {
+    expect(canGroupTransition("partial_ready", "waiting_confirmation")).toBe(true);
+    expect(canGroupTransition("waiting_confirmation", "partial_ready")).toBe(true);
+    expect(isTerminalGroupState("expired")).toBe(true);
+    expect(() => assertGroupTransition("matched", "searching")).toThrow("INVALID_GROUP_MATCH_TRANSITION");
   });
 });

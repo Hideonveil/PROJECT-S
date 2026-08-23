@@ -12,7 +12,7 @@ describe("room connection flow contract", () => {
   it("starts matched rooms automatically and ends normal play through mutual goodbye", () => {
     const room = read("public/js/pages/room.js");
     expect(room).not.toContain("开始游戏");
-    expect(room).toContain("确定要拜拜吗");
+    expect(room).toContain("拜拜是正常共同结束");
     expect(existsSync("src/app/api/room/[code]/goodbye/route.ts")).toBe(true);
     expect(existsSync("src/app/api/room/[code]/start/route.ts")).toBe(false);
   });
@@ -27,7 +27,14 @@ describe("room connection flow contract", () => {
     const gameover = read("public/js/pages/gameover.js");
     expect(gameover).not.toContain("下次还愿意");
     expect(gameover).not.toContain("set-room-want");
-    expect(gameover).toContain("已是好友");
+    expect(gameover).toContain("好友系统 COMING SOON");
+  });
+
+  it("routes a Session UPDATE to the game-over screen for both goodbye participants", () => {
+    const realtime = read("public/js/realtime.js");
+    expect(realtime).toContain('table: "sessions" }, async (payload) =>');
+    expect(realtime).toContain("terminalSessionFromChange(payload)");
+    expect(realtime).toContain('handlers["game-over"]?.({ session })');
   });
 
   it("uses ranked role groups and a casual teammate count", () => {
