@@ -274,9 +274,9 @@ Gate Evidence 额外允许：`PENDING` · `PASS` · `FAIL`。
 
 ## FACT SOURCE CONFLICT
 
-本次未修改已有事实源；以下冲突保留记录，等待正式文档同步授权：
+本次同步前曾存在以下冲突；当前正式事实源中的 P0 closure 措辞已完成同步：
 
-1. 最新执行指令与 03 的回归结论将 `LEGACY_ROOM_DUAL_RENDER_PATH` 判定为 `P0 CLOSED`；但当前 `docs/project/CURRENT_STATE.md` 与 `docs/project/CHANGELOG.md` 仍保留“P0 closure awaiting 03 / closure pending”的旧措辞。此文件按最新明确结论登记为 `JIY-P0-001 = CLOSED`，不把 Git baseline 与 Production deployment label 混为一谈。
+1. `docs/project/CURRENT_STATE.md` 与 `docs/project/CHANGELOG.md` 原先保留的“P0 closure awaiting 03 / closure pending”旧措辞，已同步为三个 P0 均 `CLOSED`，Current New P0 = `0`；`JIY-P0-001`、`JIY-P0-002`、`JIY-P0-003` 的 closure 记录未改变。Git baseline 与 Production deployment label 仍是两个概念。
 2. `PROJECT_HANDOFF.md` 是历史档案，仍包含旧 branch / HEAD 与旧阶段描述；当前 `CURRENT_STATE.md`、`DECISIONS.md`、`MIGRATION_PROVENANCE.md` 及当前 `main` 实际状态优先。旧 handoff 中与当前 Production 回归结果冲突的旧快照不自动重新登记为当前 P0。
 3. `PROJECT_HANDOFF.md` 中部分旧 BUG 条目是静态风险或历史快照；只有能与当前证据对应的风险才登记为 P1/P2，未验证项明确标记 `INVESTIGATING` 或 `PRODUCTION_QA_PENDING`。
 

@@ -6,10 +6,12 @@
 
 ## 1. 当前阶段
 
-- 当前阶段：Final Private Pilot Gate 准备阶段。
+- 当前阶段：Final Private Pilot Gate（`PENDING / NO-GO`）。
 - 下一阶段目标：5–10 名真实玩家的 Private Pilot。
-- 当前唯一任务：由 03 审核 Final Private Pilot Gate evidence，并决定是否关闭 `LEGACY_ROOM_DUAL_RENDER_PATH` P0；不得自动替代 03 给出最终 Gate 结论。
-- 本阶段不扩大产品、测试或审计范围；本次 P0 candidate deployment 已完成，后续仅执行 03 明确要求的证据审核与定向回归。
+- 当前 New P0：`0`。
+- 已确认关闭的 P0：`LEGACY_ROOM_DUAL_RENDER_PATH`、`ROOM_SESSION_TERMINAL_LIFECYCLE_GHOST`、`REFRESH_PAGEHIDE_FALSE_EXIT`。
+- 当前唯一任务：由 03 审核并补齐 Final Private Pilot Gate 剩余 evidence；不得把已关闭 P0 误写成 Final Gate PASS，也不得自动替代 03 给出最终 Gate 结论。
+- 本阶段不扩大产品、测试或审计范围；P0 Active Room regression 已完成并通过，后续仅执行 03 明确要求的剩余 Gate 证据。
 
 ## 2. Git 与源码基线
 
@@ -27,7 +29,7 @@
 
 - 公网入口：`https://www.jiyuan.online`
 - 部署方式：腾讯云中国香港节点上的 Docker Compose，Caddy 对外提供 HTTPS 和代理。
-- 最近 Production deployment label：`cd51a83`（本次 Docker Compose 发布的 `APP_VERSION` / `/api/health.version`）；此前 `7bee0a2-dirty-presence-2c0143f4` 作为历史部署标签保留。
+- 最近 Production runtime version / deployed candidate：`cd51a831cf4435ceb03c10740cf5c0e2b80aeef0`；runtime deployment label / `/api/health.version` 为 `cd51a83`；此前 `7bee0a2-dirty-presence-2c0143f4` 作为历史部署标签保留。
 - Git 当前可信源码基线与 Production deployment label 仍是两个不同概念；本次有源码同步、容器 build、health 与静态 bundle 证据，但不把 `/api/health.version` 单独解释为容器字节级证明。
 - 最近生产 `/api/health` 已确认：`ok=true`、`status=ready`、`version=cd51a83`、`online=2`、`matching=0`、`playing=0`、`users=29`。
 - 该次健康检查时间：`2026-08-23T14:06:06.683Z`。
@@ -42,8 +44,10 @@
 
 - Production backup + staging restore：PASS。逻辑备份、custom-format archive、SHA-256、schema / data / roles / migration history / function-trigger / ghost baseline 恢复核对均已有记录。
 - Room / Session lifecycle P0 修复：已部署。
-- `LEGACY_ROOM_DUAL_RENDER_PATH` 前端 candidate `cd51a831cf4435ceb03c10740cf5c0e2b80aeef0`：已部署；Production canonical bundle 已包含 `sessionPage` / `#/room` guard，旧 `public/js/pages/room.js` URL 已返回 404。该 P0 是否关闭由 03 审核 evidence 后决定。
-- 发布后定向浏览器检查：已登录测试账号无 Active Room 时，直接访问 `#/room` 安全归一至 `#/home`；空 `#/matching` 归一至 `#/home`；未创建业务实体。真实 Active Room 多账号完整回归仍未在本轮重复执行。
+- `LEGACY_ROOM_DUAL_RENDER_PATH`：`CLOSED`。Production Active Room regression PASS；canonical bundle 已包含 `sessionPage` / `#/room` guard，旧 `public/js/pages/room.js` URL 已返回 404；03 已正式确认关闭。
+- `ROOM_SESSION_TERMINAL_LIFECYCLE_GHOST`：`CLOSED`。Terminal Session 与 Room 终态一致性已部署并通过 New Ghost / terminal consistency 证据核对。
+- `REFRESH_PAGEHIDE_FALSE_EXIT`：`CLOSED`。Refresh、relogin、Home、Back/Forward 与 direct `#/room` recovery PASS，未触发错误退出或重复业务实体。
+- 发布后定向浏览器检查：已登录测试账号无 Active Room 时，直接访问 `#/room` 安全归一至 `#/home`；空 `#/matching` 归一至 `#/home`；未创建业务实体。随后完成的 Active Room 多账号定向回归为 PASS；该回归不等于完整 Final Private Pilot Gate PASS。
 - 新 ghost Room：0；历史 5 个 ghost Room 保持不变、未清理。
 - Casual 多人 `members[]` 模型：已部署。
 - 三账号 Production 匹配进入同一个三人 Session：PASS。
@@ -68,13 +72,19 @@
 
 ### 当前 Gate 需要保留的未闭合项
 
-- Final Private Pilot Gate 的最小 Observability、Security 补证据和 Desktop UI Sanity 证据属于当前阶段事项；不得把它们自动写成已经完成。
+- Final Private Pilot Gate：`PENDING / NO-GO`。
+- Matching transition Refresh：`PENDING`。
+- Matching Back / Forward：`PENDING`。
+- Minimum Security：`PENDING`。
+- Minimum Observability：`PENDING`。
+- Desktop UI 1366×768 / 1440×900 / 1920×1080：`PENDING`。
+- 以上是 Gate Evidence 缺口，不是新的 P0；不得把 P0 closure 写成 Final Gate PASS。
 
 ### 非阻断但必须保留的事实
 
 - Production health 当前返回 `version=cd51a83`，但该值来自部署环境标记；仍不能单独作为容器字节级一致性证明。
 - Project source working tree 当前 clean；Production deployment label 与 Git 基线分开记录，Production release provenance 仍需结合源码同步、容器 build、health 和静态 bundle 证据理解。
-- `LEGACY_ROOM_DUAL_RENDER_PATH` 的 Production Active Room 完整回归和 P0 closure 尚待 03 审核；本次定向回归未重跑完整三账号闭环。
+- 三个已登记的 P0 均保持 `CLOSED`；当前不存在新的 P0。后续只按 `Final Private Pilot Gate` 剩余范围补证据。
 - 历史 5 个 ghost Room 仍存在，属于已知历史基线，不是本轮新增问题。
 - 旧兼容代码和旧 API 仍可能存在；不能仅因为某个字段或 API 存在，就推断其为当前主产品路径。
 

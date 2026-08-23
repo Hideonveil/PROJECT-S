@@ -2,14 +2,17 @@
 
 > 只记录已经影响 Production、或已完成 Production 验收的事件。测试中的本地改动、未部署方案和未授权修复不写入本表。
 
-## 2026-08-23 — Active Session 双渲染路径 P0 candidate 发布
+## 2026-08-23 — Active Session 双渲染路径 P0 发布与关闭
 
 - Git baseline：`cd51a831cf4435ceb03c10740cf5c0e2b80aeef0`，`fix: unify active room session renderer`。
 - 已按中国香港 Docker Compose 流程发布；应用镜像 build 成功，`china-hk-app-1` healthy，gateway 保持运行。
+- Production runtime version / deployed candidate：`cd51a831cf4435ceb03c10740cf5c0e2b80aeef0`；runtime deployment label 为 `cd51a83`。两者分别记录，不将 deployment label 单独解释为容器字节级证明。
 - `/api/health`：`ok=true`、`status=ready`、`version=cd51a83`、`online=2`、`matching=0`、`playing=0`、`users=29`；检查时间 `2026-08-23T14:06:06.683Z`。
 - Production 静态 bundle 已确认导出 canonical `sessionPage`、`#/room` guard 与 `replaceCanonicalRoute`；旧 `public/js/pages/room.js` 已移除并返回 404。
-- 发布后定向浏览器检查：已登录测试账号无 Active Room 时，直接访问 `#/room` 安全归一至 `#/home`；空 `#/matching` 归一至 `#/home`；未创建业务实体，未执行完整三账号闭环。
-- 未执行：数据库写入、migration、migration history repair、历史 ghost 清理；`LEGACY_ROOM_DUAL_RENDER_PATH` 是否关闭由 03 审核本证据后决定。
+- Active Room 定向回归 PASS：正常匹配、Refresh、重新登录恢复、Home 恢复、Back/Forward、直接 `#/room`、Realtime hydration、Chat、Goodbye `1/3 → 2/3 → 3/3`、Explicit Leave、Completed、Feedback；三端未出现 `.room-page`，Duplicate = `0`、New Ghost = `0`、New Active Residue = `0`。
+- `LEGACY_ROOM_DUAL_RENDER_PATH`、`ROOM_SESSION_TERMINAL_LIFECYCLE_GHOST`、`REFRESH_PAGEHIDE_FALSE_EXIT`：均为 `P0 CLOSED`；Current New P0 = `0`。
+- Final Private Pilot Gate：`PENDING / NO-GO`，不因上述 P0 closure 变为 Gate PASS。剩余 evidence：Matching transition Refresh、Matching Back / Forward、Minimum Security、Minimum Observability、Desktop UI 三视口。
+- 未执行：数据库写入、migration、migration history repair、历史 ghost 清理；上述三个 P0 closure 不代表执行了新的数据库或历史数据操作。
 
 ## 2026-08-23 — Presence / Online / Offline 发布
 
