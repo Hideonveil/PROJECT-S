@@ -1,6 +1,6 @@
 import { requireRequestProfile } from "@/lib/auth";
 import { supabaseAdmin } from "@/lib/supabase";
-import { errorResponse, jsonBody, jsonOk, requestId } from "@/lib/http";
+import { AppError, errorResponse, jsonBody, jsonOk, requestId } from "@/lib/http";
 import { sessionForRoomCode } from "@/lib/session";
 
 export async function POST(request: Request, { params }: { params: Promise<{ code: string }> }) {
@@ -24,22 +24,44 @@ export async function POST(request: Request, { params }: { params: Promise<{ cod
     const rating = ["happy", "meh", "bad"].includes(String(body.rating || "")) ? String(body.rating) : null;
     const wantAgain = typeof body.wantAgain === "boolean" ? body.wantAgain : null;
     const liked = typeof body.liked === "boolean" ? body.liked : null;
-    const { data: existingResponse } = await admin
-      .from("session_responses")
-      .select("liked")
-      .eq("session_id", session.id)
-      .eq("user_id", me.id)
-      .maybeSingle();
-    const effectiveLiked = liked ?? existingResponse?.liked ?? false;
-    const patch: Record<string, unknown> = {
-      session_id: session.id,
-      user_id: me.id,
-      updated_at: new Date().toISOString(),
-    };
-    if (rating) patch.rating = rating;
-    if (wantAgain !== null) patch.want_again = wantAgain;
-    if (liked !== null) patch.liked = liked;
-    if (Object.keys(patch).length) {
+
+    if (liked !== null) {
+      const targetUserId = String(body.targetUserId || "").trim();
+      if (!targetUserId) throw new AppError("LIKE_TARGET_REQUIRED", "请选择要点赞的队友", 422);
+      if (targetUserId === me.id) throw new AppError("LIKE_SELF_FORBIDDEN", "不能给自己点赞", 422);
+      if (!(session.players || []).includes(targetUserId)) {
+        throw new AppError("LIKE_TARGET_FORBIDDEN", "只能给同一 Session 中的队友点赞", 403);
+      }
+
+      if (liked) {
+        const { error } = await admin.from("session_member_likes").upsert({
+          session_id: session.id,
+          from_user_id: me.id,
+          to_user_id: targetUserId,
+        }, {
+          onConflict: "session_id,from_user_id,to_user_id",
+          ignoreDuplicates: true,
+        });
+        if (error) throw error;
+      } else {
+        const { error } = await admin
+          .from("session_member_likes")
+          .delete()
+          .eq("session_id", session.id)
+          .eq("from_user_id", me.id)
+          .eq("to_user_id", targetUserId);
+        if (error) throw error;
+      }
+    }
+
+    if (rating !== null || wantAgain !== null) {
+      const patch: Record<string, unknown> = {
+        session_id: session.id,
+        user_id: me.id,
+        updated_at: new Date().toISOString(),
+      };
+      if (rating !== null) patch.rating = rating;
+      if (wantAgain !== null) patch.want_again = wantAgain;
       const { error } = await admin.from("session_responses").upsert(patch, {
         onConflict: "session_id,user_id",
       });
@@ -51,14 +73,14 @@ export async function POST(request: Request, { params }: { params: Promise<{ cod
       .select("id")
       .eq("session_id", session.id)
       .maybeSingle();
-    if (matchPair?.id) {
+    if (matchPair?.id && (rating !== null || wantAgain !== null)) {
       const { error: matchFeedbackError } = await admin.rpc("matchmaking_submit_feedback", {
         p_pair_id: matchPair.id,
         p_user_id: me.id,
         p_did_play: true,
         p_rating: rating,
         p_want_again: wantAgain,
-        p_tags: effectiveLiked ? ["liked"] : [],
+        p_tags: [],
         p_note: "",
       });
       if (matchFeedbackError) throw matchFeedbackError;

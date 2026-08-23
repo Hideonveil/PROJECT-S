@@ -1431,14 +1431,15 @@ function normalizeServerRoom(room) {
 
 function sessionMemberSnapshot(session) {
   const ids = Array.isArray(session?.players) ? session.players.filter(Boolean) : [];
-  const sourceMembers = (state.room?.members || []).filter((member) => ids.includes(member.id));
+  const hydratedMembers = Array.isArray(session?.members) && session.members.length ? session.members : state.room?.members || [];
+  const sourceMembers = hydratedMembers.filter((member) => !ids.length || ids.includes(member.id));
   const members = sourceMembers.length
     ? sourceMembers
     : ids.map((id) => ({ id, name: id === state.user.id ? state.user.nickname || "我" : "玩家", memberStatus: "active" }));
   return sessionMembers({
     members,
-    target: state.room?.targetTotalPlayers || state.room?.target || ids.length,
-    goodbyeRequests: state.room?.goodbyeRequests,
+    target: session?.targetTotalPlayers || session?.target || state.room?.targetTotalPlayers || state.room?.target || ids.length,
+    goodbyeRequests: session?.goodbyeRequests || state.room?.goodbyeRequests,
   }, state.user.id);
 }
 
@@ -1508,15 +1509,19 @@ function updateSessionView(nextRoom) {
 function updateGameoverView() {
   const root = document.querySelector("[data-gameover-root]");
   if (!root) return false;
-  const like = root.querySelector("[data-gameover-like]");
-  if (like) {
-    const liked = Boolean(state.session?.liked);
+  const members = Array.isArray(state.session?.members)
+    ? state.session.members
+    : state.session?.otherMembers || [];
+  root.querySelectorAll("[data-gameover-like]").forEach((like) => {
+    const target = members.find((member) => member.id === like.dataset.targetUserId);
+    const liked = Boolean(target?.likedByMe);
+    const name = memberDisplayName(target, "这位队友");
     like.classList.toggle("is-liked", liked);
     like.dataset.value = liked ? "no" : "yes";
     like.setAttribute("aria-pressed", String(liked));
-    const teammateCount = state.session?.otherMembers?.length || 1;
-    like.innerHTML = `${icon("heart", 22)}<span>${liked ? "已点赞" : teammateCount > 1 ? `为 ${teammateCount} 位队友点赞` : "为 TA 点赞"}</span>`;
-  }
+    like.setAttribute("aria-label", liked ? `取消${name}的点赞` : `给${name}点赞`);
+    like.innerHTML = `${icon("heart", 20)}<span>${liked ? "已点赞" : "点赞"}</span>`;
+  });
   root.querySelectorAll('[data-action="set-room-rating"]').forEach((choice) => {
     const selected = choice.dataset.value === state.session?.rating;
     choice.classList.toggle("is-selected", selected);
@@ -1868,7 +1873,23 @@ function handleServerRoom(room) {
 
 function handleServerGameOver(session) {
   if (!["completed", "cancelled"].includes(session?.status)) return;
-  if (state.session && state.session.roomCode === session.roomCode && parseRoute().name === "gameover") return;
+  if (state.session && state.session.roomCode === session.roomCode && parseRoute().name === "gameover") {
+    const memberModel = sessionMemberSnapshot(session);
+    update({ session: {
+      ...state.session,
+      players: session.players || state.session.players,
+      members: memberModel.members,
+      activeMembers: memberModel.activeMembers,
+      otherMembers: memberModel.otherMembers,
+      currentMemberCount: memberModel.currentMemberCount,
+      activeMemberCount: memberModel.activeMemberCount,
+      targetTotalPlayers: memberModel.targetTotalPlayers,
+      rating: session.rating ?? state.session.rating ?? null,
+      wantAgain: session.wantAgain ?? state.session.wantAgain ?? null,
+    } });
+    updateGameoverView();
+    return;
+  }
   if (session.status === "cancelled") {
     update({
       room: null,
@@ -1889,6 +1910,7 @@ function handleServerGameOver(session) {
     match: { ...state.match, status: "idle", lifecycle: null, pair: null, group: null, candidate: null },
     lastRoomCode: session.roomCode,
     session: {
+      ...session,
       players: session.players || memberModel.members.map((member) => member.id),
       members: memberModel.members,
       activeMembers: memberModel.activeMembers,
@@ -1900,6 +1922,8 @@ function handleServerGameOver(session) {
       roomCode: session.roomCode,
       title: `${gameName}${mode ? ` · ${mode}` : ""}`,
       time,
+      rating: session.rating ?? null,
+      wantAgain: session.wantAgain ?? null,
       outcome: null,
     },
     stats: {
@@ -2396,20 +2420,31 @@ async function setGoodbyeRequest(requested) {
   }
 }
 
-async function setRoomLiked(liked) {
+async function setRoomLiked(targetUserId, liked) {
   const code = state.session?.roomCode || state.lastRoomCode;
-  if (!code || !ONLINE) return;
-  const previousLiked = state.session?.liked;
-  update({ session: { ...state.session, liked } });
+  const members = Array.isArray(state.session?.members) ? state.session.members : [];
+  const target = members.find((member) => member.id === targetUserId);
+  if (!targetUserId || !target || targetUserId === state.user.id || !code || !ONLINE) return;
+  const previousLiked = Boolean(target.likedByMe);
+  const updateTarget = (value) => {
+    const nextMembers = members.map((member) => member.id === targetUserId ? { ...member, likedByMe: value } : member);
+    const activeMembers = nextMembers.filter((member) => (member.memberStatus || "active") === "active");
+    update({ session: {
+      ...state.session,
+      members: nextMembers,
+      activeMembers,
+      otherMembers: activeMembers.filter((member) => member.id !== state.user.id),
+    } });
+  };
+  updateTarget(liked);
   updateGameoverView();
   try {
-    await api.roomFeedback(code, { liked });
-    if (liked) toast(state.session?.otherMembers?.length > 1 ? "已给本局队友点赞" : "已给对方点赞");
+    await api.roomFeedback(code, { targetUserId, liked });
+    toast(liked ? "已点赞" : "已取消点赞");
   } catch (err) {
-    if (state.session?.liked === liked) {
-      update({ session: { ...state.session, liked: previousLiked } });
-      updateGameoverView();
-    }
+    const currentTarget = state.session?.members?.find((member) => member.id === targetUserId);
+    if (currentTarget?.likedByMe === liked) updateTarget(previousLiked);
+    updateGameoverView();
     toast(err.message);
   }
 }
@@ -3339,7 +3374,7 @@ document.addEventListener("click", (event) => {
     "go-recent": () => navigate("#/connections"),
     "say-goodbye": () => setGoodbyeRequest(true),
     "withdraw-goodbye": () => setGoodbyeRequest(false),
-    "set-room-like": (value) => setRoomLiked(value === "yes"),
+    "set-room-like": (value) => setRoomLiked(actionEl?.dataset.targetUserId, value === "yes"),
     "open-profile-edit": openProfileEdit,
     "close-sheet": closeSheet,
     "save-profile": saveProfile,

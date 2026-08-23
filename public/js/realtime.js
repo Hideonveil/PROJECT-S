@@ -149,6 +149,7 @@ export async function openRealtime(handlers) {
       }
     })
     .on("postgres_changes", { event: "*", schema: "public", table: "session_goodbye_requests" }, schedule)
+    .on("postgres_changes", { event: "*", schema: "public", table: "session_member_likes" }, schedule)
     .on("postgres_changes", { event: "*", schema: "public", table: "friendships" }, schedule)
     .on("postgres_changes", { event: "*", schema: "public", table: "room_members" }, schedule);
 

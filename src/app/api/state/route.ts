@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireRequestProfile } from "@/lib/auth";
-import { activeRoomFor, activeSessionFor, friendsFor, poolCounts, profileWithGames, recentConnectionsFor } from "@/lib/api";
+import { activeRoomFor, activeSessionFor, completedSessionViewFor, friendsFor, poolCounts, profileWithGames, recentConnectionsFor } from "@/lib/api";
 import { errorResponse, requestId } from "@/lib/http";
 import { mapSession } from "@/lib/session";
 import { matchmakingStatus } from "@/lib/matchmaking/service";
@@ -16,7 +16,7 @@ export async function GET(request: Request) {
       friendsFor(profile.id),
       friendRequestsFor(profile.id),
       activeRoomFor(profile.id),
-      activeSessionFor(profile.id),
+      activeSessionFor(profile.id).then((active) => active ? mapSession(active) : completedSessionViewFor(profile.id)),
       recentConnectionsFor(profile.id),
       // A state snapshot is read-only. Updating matchmaking here creates a
       // realtime feedback loop: table change -> snapshot -> table change.
@@ -33,7 +33,7 @@ export async function GET(request: Request) {
       friends,
       friendRequests,
       room,
-      session: mapSession(session),
+      session,
       recentConnections,
       matchmaking,
     });

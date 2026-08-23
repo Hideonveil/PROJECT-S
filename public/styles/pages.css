@@ -2582,6 +2582,7 @@
 .connection-gameover-member .connection-player__index { left: 14px; top: 11px; }
 .connection-gameover-member .connection-gameover__identity { gap: 14px; }
 .connection-gameover-member .connection-gameover__identity h2 { font-size: 20px; }
+.connection-member-like { width: 100%; min-width: 0; min-height: 42px; margin-top: 16px; }
 
 .connection-gameover__partner::before {
   content: "";

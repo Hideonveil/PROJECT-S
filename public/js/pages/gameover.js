@@ -25,9 +25,13 @@ export function gameoverPage(state) {
     { id: "meh", label: "一般", note: "完成了游戏，但体验普通" },
     { id: "bad", label: "不太顺利", note: "交流或游玩过程有问题" },
   ];
-  const teammateLabel = teammates.length > 1 ? `${teammates.length} 位队友` : "TA";
+  const memberLikeButton = (member) => {
+    const liked = Boolean(member.likedByMe);
+    const name = memberDisplayName(member, "这位队友");
+    return `<button type="button" class="connection-like connection-member-like ${liked ? "is-liked" : ""}" data-action="set-room-like" data-target-user-id="${esc(member.id)}" data-value="${liked ? "no" : "yes"}" data-gameover-like aria-label="${liked ? `取消${name}的点赞` : `给${name}点赞`}" aria-pressed="${liked}">${icon("heart", 20)}<span>${liked ? "已点赞" : "点赞"}</span></button>`;
+  };
   const memberCards = teammates.length
-    ? teammates.map((member, index) => `<article class="connection-gameover-member"><span class="connection-player__index">PLAYER ${String(index + 2).padStart(2, "0")} / MEMBER</span><div class="connection-gameover__identity">${avatarWrap(member.avatarKey, 70, member.online)}<div><h2>${esc(memberDisplayName(member, "玩家"))}</h2><p>${esc(member.device || "PC")} · ${esc(session.title || "刚刚一起玩过")}</p></div></div></article>`).join("")
+    ? teammates.map((member, index) => `<article class="connection-gameover-member"><span class="connection-player__index">PLAYER ${String(index + 2).padStart(2, "0")} / MEMBER</span><div class="connection-gameover__identity">${avatarWrap(member.avatarKey, 70, member.online)}<div><h2>${esc(memberDisplayName(member, "玩家"))}</h2><p>${esc(member.device || "PC")} · ${esc(session.title || "刚刚一起玩过")}</p></div></div>${memberLikeButton(member)}</article>`).join("")
     : `<p class="dim">本次 Session 没有可展示的其他成员。</p>`;
 
   return homeShell(
@@ -45,9 +49,6 @@ export function gameoverPage(state) {
       <section class="connection-gameover__partner connection-gameover__members">
         <span class="connection-player__index">${teammates.length} OTHER MEMBER${teammates.length === 1 ? "" : "S"} / LAST CONNECTIONS</span>
         <div class="connection-gameover-member-list">${memberCards}</div>
-        <button type="button" class="connection-like ${session.liked ? "is-liked" : ""}" data-action="set-room-like" data-value="${session.liked ? "no" : "yes"}" data-gameover-like aria-pressed="${Boolean(session.liked)}">
-          ${icon("heart", 22)}<span>${session.liked ? "已点赞" : `为 ${teammateLabel} 点赞`}</span>
-        </button>
         <div class="connection-gameover__friend" data-gameover-friendship>${friendshipControl()}</div>
       </section>
 

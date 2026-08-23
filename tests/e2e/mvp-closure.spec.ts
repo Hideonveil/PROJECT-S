@@ -1233,6 +1233,11 @@ test("completed sessions restore friendship controls and feedback responds befor
         id: "session-completed",
         roomCode: "DONE42",
         players: [mockProfile.id, mockPartner.id],
+        members: [
+          { ...mockProfile, memberStatus: "active" },
+          { ...mockPartner, likedByMe: false },
+        ],
+        targetTotalPlayers: 2,
         need: { game: "deadlock", mode: "娱乐" },
         status: "completed",
       },
@@ -1251,13 +1256,100 @@ test("completed sessions restore friendship controls and feedback responds befor
   await expect(page).toHaveURL(/#\/gameover$/);
   await expect(page.getByText("好友系统 COMING SOON", { exact: true })).toBeVisible();
 
-  const like = page.getByRole("button", { name: "为 TA 点赞", exact: true });
+  const like = page.locator("[data-gameover-like]").first();
+  await expect(like).toHaveText("点赞");
   await like.click();
-  await expect(page.getByRole("button", { name: "已点赞", exact: true })).toHaveAttribute("aria-pressed", "true", { timeout: 250 });
+  await expect(like).toHaveText("已点赞");
+  await expect(like).toHaveAttribute("aria-pressed", "true", { timeout: 250 });
 
   const rating = page.getByRole("button", { name: /01 很开心/ });
   await rating.click();
   await expect(rating).toHaveAttribute("aria-pressed", "true", { timeout: 250 });
+});
+
+test("completed casual Sessions keep each teammate like independent across refresh", async ({ page }) => {
+  await mockProductBackend(page);
+  const memberC = {
+    id: "00000000-0000-0000-0000-000000000555",
+    nickname: "第三位玩家",
+    handle: "第三位玩家#0555",
+    avatarKey: "me-3",
+    device: "PC",
+    online: true,
+    memberStatus: "active",
+    exitedAt: null,
+  };
+  const likedTargets = new Set<string>();
+  const feedbackRequests: Record<string, unknown>[] = [];
+  await page.unroute("**/api/state");
+  await page.route("**/api/state", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({
+      user: mockProfile,
+      friends: [],
+      friendRequests: { incoming: [], outgoing: [] },
+      recentConnections: [],
+      room: null,
+      session: {
+        id: "session-completed-3",
+        roomCode: "DONE43",
+        players: [mockProfile.id, mockPartner.id, memberC.id],
+        members: [
+          { ...mockProfile, memberStatus: "active" },
+          { ...mockPartner, likedByMe: likedTargets.has(mockPartner.id) },
+          { ...memberC, likedByMe: likedTargets.has(memberC.id) },
+        ],
+        targetTotalPlayers: 3,
+        need: { game: "deadlock", mode: "娱乐" },
+        status: "completed",
+      },
+      matching: 0,
+      playing: 0,
+      matchmaking: { ticket: null, pair: null, candidate: null, group: null, matching: 0, matchable: 0 },
+    }),
+  }));
+  await page.route("**/api/room/DONE43/feedback", async (route) => {
+    const payload = route.request().postDataJSON() as Record<string, unknown>;
+    feedbackRequests.push(payload);
+    if (typeof payload.targetUserId === "string") {
+      if (payload.liked) likedTargets.add(payload.targetUserId);
+      else likedTargets.delete(payload.targetUserId);
+    }
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true }) });
+  });
+
+  await page.goto("/index.html#/home");
+  await login(page);
+  await expect(page).toHaveURL(/#\/gameover$/);
+  const likes = page.locator("[data-gameover-like]");
+  await expect(likes).toHaveCount(2);
+  const first = likes.nth(0);
+  const second = likes.nth(1);
+  await expect(first).toHaveText("点赞");
+  await expect(second).toHaveText("点赞");
+
+  await first.click();
+  await expect(first).toHaveText("已点赞");
+  await expect(second).toHaveText("点赞");
+  await second.click();
+  await expect(second).toHaveText("已点赞");
+  await first.click();
+  await expect(first).toHaveText("点赞");
+  await expect(second).toHaveText("已点赞");
+
+  await page.reload();
+  await expect(page).toHaveURL(/#\/gameover$/);
+  await expect(page.locator("[data-gameover-like]").nth(0)).toHaveText("点赞");
+  await expect(page.locator("[data-gameover-like]").nth(1)).toHaveText("已点赞");
+  await page.getByRole("button", { name: /01 很开心/ }).click();
+  await expect(page.getByRole("button", { name: /01 很开心/ })).toHaveAttribute("aria-pressed", "true");
+  expect(feedbackRequests).toEqual(expect.arrayContaining([
+    expect.objectContaining({ targetUserId: mockPartner.id, liked: true }),
+    expect.objectContaining({ targetUserId: mockPartner.id, liked: false }),
+    expect.objectContaining({ targetUserId: memberC.id, liked: true }),
+    expect.objectContaining({ rating: "happy" }),
+  ]));
 });
 
 test("community is a separate clean route", async ({ page }) => {

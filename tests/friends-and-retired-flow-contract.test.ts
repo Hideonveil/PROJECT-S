@@ -27,11 +27,14 @@ describe("friends flow and retired matching cleanup", () => {
     expect(me).not.toContain("localHistory");
   });
 
-  it("keeps an earlier like when the player submits the rest of the feedback later", () => {
+  it("keeps per-member likes separate from experience feedback", () => {
     const feedback = readFileSync("src/app/api/room/[code]/feedback/route.ts", "utf8");
-    expect(feedback).toContain('select("liked")');
-    expect(feedback).toContain("const effectiveLiked = liked ?? existingResponse?.liked ?? false");
-    expect(feedback).toContain('p_tags: effectiveLiked ? ["liked"] : []');
+    expect(feedback).toContain("targetUserId");
+    expect(feedback).toContain('from("session_member_likes")');
+    expect(feedback).toContain("session_responses");
+    expect(feedback).not.toContain('select("liked")');
+    expect(feedback).not.toContain("effectiveLiked");
+    expect(feedback).toContain("p_tags: []");
   });
 
   it("does not let one player complete a normal game alone", () => {

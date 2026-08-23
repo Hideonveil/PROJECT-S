@@ -1,6 +1,7 @@
 import { supabaseAdmin } from "./supabase";
 import { gamesForProfile, publicProfile, publicProfilesFor } from "./data";
 import { mapGoodbyeRequests } from "./session-goodbye";
+import { mapSession } from "./session";
 import { presenceCutoffIso } from "./presence";
 import type {
   EnrichedRecentConnection,
@@ -347,6 +348,69 @@ export async function activeSessionFor(profileId: string): Promise<Session | nul
     .limit(1)
     .maybeSingle();
   return (data as Session) || null;
+}
+
+/**
+ * Restore the latest completed Session without exposing a session-level like.
+ * Per-member likes are intentionally hydrated from the new directed table so
+ * each teammate card can render its own state after refresh or re-entry.
+ */
+export async function completedSessionViewFor(profileId: string): Promise<Record<string, unknown> | null> {
+  const admin = supabaseAdmin();
+  const { data: session } = await admin
+    .from("sessions")
+    .select("*")
+    .eq("status", "completed")
+    .contains("players", [profileId])
+    .order("ended_at", { ascending: false })
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (!session) return null;
+
+  const [{ data: room }, { data: likes }, { data: response }] = await Promise.all([
+    session.room_id
+      ? admin.from("rooms").select("*").eq("id", session.room_id).maybeSingle()
+      : Promise.resolve({ data: null }),
+    admin
+      .from("session_member_likes")
+      .select("to_user_id")
+      .eq("session_id", session.id)
+      .eq("from_user_id", profileId),
+    admin
+      .from("session_responses")
+      .select("rating,want_again")
+      .eq("session_id", session.id)
+      .eq("user_id", profileId)
+      .maybeSingle(),
+  ]);
+
+  const enriched = room ? await enrichRoom(room as Record<string, unknown>) : null;
+  const fallbackProfiles = !enriched
+    ? await publicProfilesFor(Array.isArray(session.players) ? session.players : [])
+    : [];
+  const sourceMembers = enriched?.members?.length
+    ? enriched.members
+    : fallbackProfiles.map((member) => ({ ...member, memberStatus: "active", exitedAt: null }));
+  const likedIds = new Set((likes || []).map((like) => like.to_user_id));
+  const members = sourceMembers.map((member) => ({
+    ...member,
+    likedByMe: member.id !== profileId && likedIds.has(member.id),
+  }));
+  const activeMembers = members.filter((member) => (member.memberStatus || "active") === "active");
+
+  return {
+    ...mapSession(session as Session),
+    members,
+    activeMembers,
+    otherMembers: activeMembers.filter((member) => member.id !== profileId),
+    currentMemberCount: members.length,
+    activeMemberCount: activeMembers.length,
+    targetTotalPlayers: enriched?.targetTotalPlayers || members.length || session.players?.length || 1,
+    goodbyeRequests: enriched?.goodbyeRequests || [],
+    rating: response?.rating || null,
+    wantAgain: response?.want_again ?? null,
+  };
 }
 
 export async function friendsFor(profileId: string): Promise<PublicProfile[]> {
