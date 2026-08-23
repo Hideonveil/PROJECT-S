@@ -1086,9 +1086,67 @@ test("three-member fit table aligns names and restores match links", async ({ pa
   await expect(page.locator(".session-fit-row--group:not(.session-fit-row--head)")).toHaveCount(5);
   await expect(page.locator(".session-fit-row--group:not(.session-fit-row--head) .session-fit-link.is-match")).toHaveCount(10);
 
+  const geometry = await page.locator(".session-fit-row--group:not(.session-fit-row--head)").first().evaluate((row) => {
+    const members = [...row.querySelectorAll(".session-fit-member")];
+    const links = [...row.querySelectorAll(".session-fit-link")];
+    return {
+      members: members.length,
+      links: links.map((link, index) => {
+        const linkRect = link.getBoundingClientRect();
+        const lineRect = link.querySelector(".session-fit-line")?.getBoundingClientRect();
+        const previousRect = members[index].getBoundingClientRect();
+        const nextRect = members[index + 1].getBoundingClientRect();
+        return {
+          center: linkRect.left + linkRect.width / 2,
+          midpoint: (previousRect.left + previousRect.width / 2 + nextRect.left + nextRect.width / 2) / 2,
+          lineWidth: lineRect?.width || 0,
+          linkWidth: linkRect.width,
+        };
+      }),
+    };
+  });
+  expect(geometry.members).toBe(3);
+  expect(geometry.links).toHaveLength(2);
+  geometry.links.forEach((link) => {
+    expect(Math.abs(link.center - link.midpoint)).toBeLessThanOrEqual(2);
+    expect(link.lineWidth).toBeGreaterThanOrEqual(link.linkWidth * 0.8);
+  });
+
   const headerLefts = await page.locator(".session-fit-row--head b").evaluateAll((nodes) => nodes.map((node) => Math.round(node.getBoundingClientRect().left)));
   const firstRowLefts = await page.locator(".session-fit-row--group:not(.session-fit-row--head)").first().locator("strong").evaluateAll((nodes) => nodes.map((node) => Math.round(node.getBoundingClientRect().left)));
   expect(firstRowLefts).toEqual(headerLefts);
+});
+
+test("two-member fit links keep real geometry at all required desktop viewports", async ({ page }) => {
+  for (const viewport of [{ width: 1366, height: 768 }, { width: 1440, height: 900 }, { width: 1920, height: 1080 }]) {
+    await page.setViewportSize(viewport);
+    await page.goto("/index.html#/session-preview");
+    await expect(page.locator("[data-session-preview]")).toBeVisible();
+    const geometry = await page.locator(".session-fit-row:not(.session-fit-row--head)").first().evaluate((row) => {
+      const members = [...row.querySelectorAll(".session-fit-member")];
+      const link = row.querySelector(".session-fit-link");
+      const line = row.querySelector(".session-fit-line");
+      const linkRect = link?.getBoundingClientRect();
+      const lineRect = line?.getBoundingClientRect();
+      const firstRect = members[0].getBoundingClientRect();
+      const secondRect = members[1].getBoundingClientRect();
+      return {
+        members: members.length,
+        links: row.querySelectorAll(".session-fit-link").length,
+        center: linkRect ? linkRect.left + linkRect.width / 2 : 0,
+        midpoint: (firstRect.left + firstRect.width / 2 + secondRect.left + secondRect.width / 2) / 2,
+        lineWidth: lineRect?.width || 0,
+        linkWidth: linkRect?.width || 0,
+        scrollWidth: document.documentElement.scrollWidth,
+        viewportWidth: window.innerWidth,
+      };
+    });
+    expect(geometry.members).toBe(2);
+    expect(geometry.links).toBe(1);
+    expect(Math.abs(geometry.center - geometry.midpoint)).toBeLessThanOrEqual(2);
+    expect(geometry.lineWidth).toBeGreaterThanOrEqual(geometry.linkWidth * 0.8);
+    expect(geometry.scrollWidth).toBeLessThanOrEqual(geometry.viewportWidth);
+  }
 });
 
 test("three independent clients keep the same active Session across refresh and return", async ({ browser }) => {

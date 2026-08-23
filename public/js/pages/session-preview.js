@@ -73,7 +73,7 @@ function fitGridStyle(memberCount) {
   const columns = [];
   for (let index = 0; index < memberCount; index += 1) {
     columns.push("minmax(0, 1fr)");
-    if (index < memberCount - 1) columns.push("minmax(28px, .18fr)");
+    if (index < memberCount - 1) columns.push("minmax(64px, .42fr)");
   }
   return `grid-template-columns:${columns.join(" ")};`;
 }
@@ -84,7 +84,7 @@ function fitLink(matches, label) {
 
 function groupFitCells(members, valueFor, matches, tag = "strong") {
   return members.map((member, index) => {
-    const value = `<${tag} title="${esc(memberDisplayName(member))}">${esc(valueFor(member))}</${tag}>`;
+    const value = `<${tag} class="session-fit-member" title="${esc(memberDisplayName(member))}">${esc(valueFor(member))}</${tag}>`;
     if (index >= members.length - 1) return value;
     return `${value}${fitLink(matches, matches ? "匹配" : "未完全匹配")}`;
   }).join("");
@@ -167,12 +167,12 @@ function fitRows(model) {
       ["位置", roleValue(mine.need), roleValue(partner.need), rolePairMatches(mine.need, partner.need)],
       ["开麦", voiceLabel(mine.need), voiceLabel(partner.need), voiceLabel(mine.need) === voiceLabel(partner.need)],
     ];
-    return pairRows.map(([label, mineValue, partnerValue, matches]) => `<div class="session-fit-row" role="row"><span>${esc(label)}</span><div class="session-fit-conditions" style="${fitGridStyle(members.length)}"><strong>${esc(mineValue)}</strong>${fitLink(matches, matches ? "匹配" : "不匹配")}<strong>${esc(partnerValue)}</strong></div></div>`).join("");
+    return pairRows.map(([label, mineValue, partnerValue, matches]) => `<div class="session-fit-row" role="row"><span class="session-fit-label">${esc(label)}</span><div class="session-fit-conditions" style="${fitGridStyle(members.length)}"><strong class="session-fit-member">${esc(mineValue)}</strong>${fitLink(matches, matches ? "匹配" : "不匹配")}<strong class="session-fit-member">${esc(partnerValue)}</strong></div></div>`).join("");
   }
   return rows.map(([label, valueFor]) => {
     const values = members.map(valueFor);
     const matches = values.every((value) => value === values[0]);
-    return `<div class="session-fit-row session-fit-row--group" role="row"><span>${esc(label)}</span><div class="session-fit-conditions session-fit-conditions--group" style="${fitGridStyle(members.length)}">${groupFitCells(members, valueFor, matches)}</div></div>`;
+    return `<div class="session-fit-row session-fit-row--group" role="row"><span class="session-fit-label">${esc(label)}</span><div class="session-fit-conditions session-fit-conditions--group" style="${fitGridStyle(members.length)}">${groupFitCells(members, valueFor, matches)}</div></div>`;
   }).join("");
 }
 

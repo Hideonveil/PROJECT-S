@@ -8,9 +8,12 @@ describe("Session fit connector contract", () => {
     const preview = read("public/js/pages/session-preview.js");
     const styles = read("public/styles/product-shell.css");
     expect(preview).toContain("session-fit-line");
+    expect(preview).toContain("session-fit-member");
     expect(preview).toContain("fitGridStyle(members.length)");
     expect(styles).toContain(".session-fit-line");
-    expect(styles).not.toContain(".session-fit-link::before");
+    expect(styles).not.toMatch(/\.session-fit-link(?:\.is-match)?::(?:before|after)/);
+    expect(styles).not.toContain(".session-fit-link.is-match::before");
+    expect(styles).not.toContain(".session-fit-link.is-match::after");
   });
 
   it("keeps casual members dynamic instead of hardcoding two players", () => {
