@@ -2,7 +2,6 @@ import { GAME_BY_ID } from "../data.js";
 import { icon } from "../icons.js";
 import { rankLabel } from "../ranks.js?v=20260821-rank-label-01";
 import { esc, homeShell } from "../ui.js";
-import { sessionHandoffPage, sessionPage } from "./session-preview.js";
 
 function queryPills(need) {
   const game = GAME_BY_ID[need.game]?.name || need.game || "Deadlock";
@@ -266,8 +265,7 @@ function groupMatchingPage(state) {
   return matchingWorkbench(state, { group: state.match.group });
 }
 
-export function matchingPage(state, { handoffSeconds = 0 } = {}) {
-  if (state.room) return handoffSeconds > 0 ? sessionHandoffPage(state, handoffSeconds) : sessionPage(state);
+export function matchingPage(state) {
   return state.match.group ? groupMatchingPage(state) : matchingWorkbench(state);
 }
 

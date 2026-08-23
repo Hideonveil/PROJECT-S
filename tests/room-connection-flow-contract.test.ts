@@ -4,15 +4,18 @@ import { describe, expect, it } from "vitest";
 const read = (path: string) => readFileSync(path, "utf8");
 
 describe("room connection flow contract", () => {
-  it("does not force an active room over the route selected by the player", () => {
+  it("forces every active room onto the canonical Session route", () => {
     const app = read("public/js/app.js");
-    expect(app).not.toContain('if (patch.room && routeName !== "room")');
+    expect(app).toContain('if (isActiveSessionRoom(state.room) && route.name !== "room")');
+    expect(app).toContain('replaceCanonicalRoute("#/room")');
+    expect(app).toContain("html = sessionPage(state);");
+    expect(app).not.toContain("function updateRoomView");
   });
 
   it("starts matched rooms automatically and ends normal play through mutual goodbye", () => {
-    const room = read("public/js/pages/room.js");
-    expect(room).not.toContain("开始游戏");
-    expect(room).toContain("拜拜是正常共同结束");
+    const session = read("public/js/pages/session-preview.js");
+    expect(session).not.toContain("开始游戏");
+    expect(session).toContain("所有成员都确认后进入赛后反馈");
     expect(existsSync("src/app/api/room/[code]/goodbye/route.ts")).toBe(true);
     expect(existsSync("src/app/api/room/[code]/start/route.ts")).toBe(false);
   });

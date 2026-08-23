@@ -221,23 +221,8 @@ function sessionMarkup(model) {
   </section></div>`;
 }
 
-function sessionHandoffMarkup(model, seconds) {
-  return `<div class="matching-modal-page" role="dialog" aria-modal="true" aria-labelledby="session-handoff-title"><div class="matching-modal-backdrop" aria-hidden="true"></div><section class="matching-modal matching-session-handoff-modal" data-session-handoff>
-    <header class="matching-modal-head"><div><span class="matching-modal-live"><i></i>MATCHING / LIVE → SESSION</span><p>成员已进入，正在建立同一局连接</p></div><span class="matching-session-state">${icon("link", 14)}无需成员确认</span></header>
-    <div class="matching-session-handoff-content">
-      ${playerRail(model)}
-      <section class="matching-session-handoff-copy"><span class="session-preview-kicker">MEMBERS CONNECTED / ${model.target}</span><div class="matching-session-countdown" id="session-handoff-countdown" aria-live="assertive">${Math.max(1, seconds)}</div><h1 id="session-handoff-title">${Math.max(1, seconds)} 秒后进入 Session</h1><p>成员已经自动连接，马上可以直接聊天。倒计时结束后会在当前窗口切换，不需要再次确认。</p><div class="matching-session-handoff-track"><span style="--handoff-progress:${Math.max(0, Math.min(100, ((3 - seconds) / 3) * 100))}%"></span></div></section>
-    </div>
-    <footer class="matching-modal-footer matching-session-footer"><p><i></i>连接已建立，正在准备 Session。</p><button type="button" class="session-preview-leave" data-action="exit-room">${icon("logOut", 16)}<span>离开</span></button></footer>
-  </section></div>`;
-}
-
 export function sessionPage(state) {
-  return homeShell(state, sessionMarkup(modelFor(state)), "home");
-}
-
-export function sessionHandoffPage(state, seconds = 3) {
-  return homeShell(state, sessionHandoffMarkup(modelFor(state), seconds), "home");
+  return homeShell(state, sessionMarkup(modelFor(state)), "room");
 }
 
 export function sessionPreviewPage() {

@@ -50,7 +50,7 @@ describe("multi-member Session contract", () => {
 
   it("renders all members and avoids a hardcoded Session 2/2 counter", () => {
     const preview = read("public/js/pages/session-preview.js");
-    const room = read("public/js/pages/room.js");
+    const room = read("public/js/pages/session-preview.js");
     const gameover = read("public/js/pages/gameover.js");
     const app = read("public/js/app.js");
 
@@ -59,8 +59,8 @@ describe("multi-member Session contract", () => {
     expect(preview).toContain("session-fit-conditions--group");
     expect(preview).toContain("session-fit-link");
     expect(preview).not.toContain("Math.min(2, requestIds.size)");
-    expect(room).toContain("members.map");
-    expect(room).toContain("model.otherMembers.map");
+    expect(room).toContain("visiblePlayers.map");
+    expect(room).toContain("groupFitCells(model.players");
     expect(gameover).toContain("teammates.map");
     expect(app).toContain("memberModel.goodbyeDenominator");
     expect(app).not.toContain('textContent = `${count}/2`');
@@ -68,13 +68,13 @@ describe("multi-member Session contract", () => {
 
   it("submits Goodbye immediately and keeps the dynamic count on the button", () => {
     const preview = read("public/js/pages/session-preview.js");
-    const room = read("public/js/pages/room.js");
+    const room = read("public/js/pages/session-preview.js");
     const app = read("public/js/app.js");
 
     expect(preview).toContain("拜拜（${goodbye.count}/${goodbye.denominator}）");
     expect(preview).toContain('goodbye.mine ? "withdraw-goodbye" : "say-goodbye"');
-    expect(room).toContain("拜拜（${goodbyeCount}/${goodbyeDenominator}）");
-    expect(room).toContain('mineGoodbye ? "withdraw-goodbye" : "say-goodbye"');
+    expect(room).toContain("拜拜（${goodbye.count}/${goodbye.denominator}）");
+    expect(room).toContain('goodbye.mine ? "withdraw-goodbye" : "say-goodbye"');
     expect(app).toContain('"say-goodbye": () => setGoodbyeRequest(true)');
     expect(app).not.toContain("connection-goodbye-confirm");
     expect(app).not.toContain('"confirm-goodbye"');

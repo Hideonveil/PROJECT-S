@@ -2,12 +2,13 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 describe("realtime component patch contract", () => {
-  it("subscribes to goodbye changes and does not force every route into the room", () => {
+  it("subscribes to goodbye changes and updates only the canonical Session UI", () => {
     const realtime = readFileSync("public/js/realtime.js", "utf8");
     const app = readFileSync("public/js/app.js", "utf8");
     expect(realtime).toContain('table: "session_goodbye_requests"');
-    expect(app).toContain("function updateRoomView");
-    expect(app).not.toContain('if (patch.room && routeName !== "room")');
+    expect(app).toContain("function updateSessionView");
+    expect(app).not.toContain("function updateRoomView");
+    expect(app).not.toContain('document.querySelector(".room-page")');
   });
 
   it("keeps an explicit room entry in the product navigation", () => {

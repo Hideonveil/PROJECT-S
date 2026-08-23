@@ -13,8 +13,7 @@ import { welcomePage } from "./pages/welcome.js";
 import { homeFlowStepper, homePage, matchingDirectoryMarkup, matchingDirectoryPersonMarkup } from "./pages/home.js?v=20260822-directory-readonly-01";
 import { communityPage } from "./pages/community.js";
 import { matchingPage, matchingPreviewPage } from "./pages/matching.js";
-import { roomPage } from "./pages/room.js";
-import { sessionHandoffPage, sessionPreviewPage } from "./pages/session-preview.js?v=20260822-role-fit-01";
+import { sessionPage, sessionPreviewPage } from "./pages/session-preview.js?v=20260822-role-fit-01";
 import { gameoverPage } from "./pages/gameover.js";
 import { connectionsPage } from "./pages/connections.js";
 import { mePage } from "./pages/me.js";
@@ -108,7 +107,6 @@ let verificationPending = false;
 let verificationResendPending = false;
 let forgotPasswordPending = false;
 let passwordResetPending = false;
-let sessionHandoff = null;
 
 function trackCurrentPage() {
   if (!state.authenticated) return;
@@ -146,38 +144,6 @@ function clearTimers() {
   targetCursorCleanup = null;
   staggeredRailCleanup?.();
   staggeredRailCleanup = null;
-}
-
-function isSessionHandoffActive() {
-  return Boolean(
-    sessionHandoff?.roomCode
-      && state.room?.code === sessionHandoff.roomCode
-      && sessionHandoff.until > Date.now()
-  );
-}
-
-function beginSessionHandoff(room) {
-  if (!room?.code) return;
-  sessionHandoff = { roomCode: room.code, until: Date.now() + 3000 };
-}
-
-function startSessionHandoff() {
-  if (!isSessionHandoffActive()) return;
-  const tick = () => {
-    if (!sessionHandoff?.roomCode || state.room?.code !== sessionHandoff.roomCode || parseRoute().name !== "matching") return;
-    const remain = Math.max(0, Math.ceil((sessionHandoff.until - Date.now()) / 1000));
-    const countdown = document.getElementById("session-handoff-countdown");
-    if (countdown) countdown.textContent = String(remain);
-    const handoffTitle = document.getElementById("session-handoff-title");
-    if (handoffTitle && remain > 0) handoffTitle.textContent = `${remain} 秒后进入 Session`;
-    const progress = document.querySelector(".matching-session-handoff-track span");
-    if (progress) progress.style.setProperty("--handoff-progress", `${Math.min(100, ((3000 - Math.max(0, sessionHandoff.until - Date.now())) / 3000) * 100)}%`);
-    if (remain > 0) return;
-    sessionHandoff = null;
-    render();
-  };
-  tick();
-  timers.push(window.setInterval(tick, 100));
 }
 
 function initProductTicker() {
@@ -664,6 +630,13 @@ function navigate(path) {
   }
 }
 
+function replaceCanonicalRoute(path) {
+  const nextUrl = `${location.pathname}${location.search}${path}`;
+  if (location.hash !== path) history.replaceState(history.state, "", nextUrl);
+  render();
+  trackCurrentPage();
+}
+
 function resetHomeFilter() {
   HOME_FILTER.game = "";
   HOME_FILTER.goal = "";
@@ -722,6 +695,13 @@ function parseRoute() {
   const path = clean.startsWith("/") ? clean : "/auth";
   const parts = path.split("/").filter(Boolean);
   return { name: parts[0] || "home", id: parts[1] || "" };
+}
+
+function isActiveSessionRoom(room) {
+  if (!room?.id) return false;
+  const terminal = new Set(["completed", "cancelled", "expired"]);
+  return !terminal.has(String(room.status || "").toLowerCase())
+    && !terminal.has(String(room.sessionStatus || "").toLowerCase());
 }
 
 function isLocalOnboardingPreview(route = parseRoute()) {
@@ -968,6 +948,10 @@ function render() {
     location.hash = "#/welcome";
     return;
   }
+  if (isActiveSessionRoom(state.room) && route.name !== "room") {
+    replaceCanonicalRoute("#/room");
+    return;
+  }
   if (!localOnboardingPreview && !localMatchingPreview && !localHeroPreview && !localSessionPreview && state.authenticated && state.onboarded && (route.name === "auth" || route.name === "welcome")) {
     location.hash = "#/home";
     return;
@@ -1008,15 +992,16 @@ function render() {
       html = connectionsPage(state);
       break;
     case "matching": {
-      if (state.match.status !== "active" && !state.room) {
+      if (state.room) {
+        update({ room: null });
+        replaceCanonicalRoute(state.session?.status === "completed" ? "#/gameover" : "#/home");
+        return;
+      }
+      if (state.match.status !== "active") {
         navigate("#/home");
         return;
       }
-      html = matchingPage(state, {
-        handoffSeconds: isSessionHandoffActive()
-          ? Math.max(1, Math.ceil((sessionHandoff.until - Date.now()) / 1000))
-          : 0,
-      });
+      html = matchingPage(state);
       immersive = true;
       break;
     }
@@ -1037,11 +1022,16 @@ function render() {
       immersive = true;
       break;
     case "room": {
-      if (!state.room) {
-        navigate("#/home");
+      if (!isActiveSessionRoom(state.room)) {
+        if (state.session?.status === "completed") {
+          replaceCanonicalRoute("#/gameover");
+        } else {
+          update({ room: null });
+          replaceCanonicalRoute("#/home");
+        }
         return;
       }
-      html = roomPage(state);
+      html = sessionPage(state);
       immersive = true;
       break;
     }
@@ -1102,11 +1092,10 @@ function render() {
     timers.push(window.setInterval(rotateHomeDirectory, 8000));
   }
   if (route.name === "matching") {
-    if (state.room && isSessionHandoffActive()) startSessionHandoff();
-    else if (!state.room) startMatchingFlow();
+    startMatchingFlow();
   }
   if (route.name === "room" && state.room?.status === "playing") startRoomTimer();
-  if (["room", "matching"].includes(route.name) && state.room?.id && !isSessionHandoffActive()) {
+  if (route.name === "room" && state.room?.id) {
     initRoomChat();
   }
 }
@@ -1484,45 +1473,6 @@ function roomShapeChanged(next, prev) {
   return members !== oldMembers;
 }
 
-function updateRoomView(nextRoom) {
-  const root = document.querySelector(".room-page");
-  if (!root || !nextRoom) return false;
-  const memberModel = sessionMembers(nextRoom, state.user.id);
-  const gameId = nextRoom.need?.game || state.need?.game;
-  root.querySelectorAll("[data-member-account-key]").forEach((row) => {
-    const member = memberModel.members.find((candidate) => candidate.id === row.dataset.memberId);
-    const accounts = member?.gameAccounts?.[gameId] || {};
-    const key = row.dataset.memberAccountKey;
-    const target = row.querySelector("[data-partner-account-value]");
-    if (!target) return;
-    const value = String(accounts[key] || "").trim();
-    target.classList.toggle("dim", !value);
-    target.classList.toggle("room-account-value", Boolean(value));
-    target.innerHTML = value
-      ? `${esc(value)}${button({ label: "复制", action: "copy-room-account", value, kind: "ghost", size: "sm", iconName: "copy" })}`
-      : "这位成员还没填写";
-  });
-
-  const goodbye = root.querySelector("[data-room-goodbye-status]");
-  if (goodbye) {
-    const mine = memberModel.requestIds.has(state.user.id);
-    const count = memberModel.goodbyeCount;
-    const denominator = memberModel.goodbyeDenominator;
-    const remaining = Math.max(0, denominator - count);
-    const label = count > 0 ? `拜拜（${count}/${denominator}）` : "拜拜";
-    goodbye.textContent = count >= denominator
-      ? `${count}/${denominator} 位成员都已拜拜`
-      : mine
-        ? `已拜拜，等待其余 ${remaining} 位成员`
-        : count > 0
-          ? `${count}/${denominator} 位成员已拜拜，你可以回应。`
-          : `当前 ${denominator} 位成员分别确认拜拜`;
-    const actions = root.querySelector("[data-room-farewell-actions]");
-    if (actions) actions.innerHTML = button({ label, action: mine ? "withdraw-goodbye" : "say-goodbye", kind: "primary", extra: "connection-goodbye-button", iconName: "handshake", disabled: goodbyeRequestPending });
-  }
-  return true;
-}
-
 function updateSessionView(nextRoom) {
   const root = document.querySelector("[data-session-preview]");
   if (!root || !nextRoom) return false;
@@ -1772,15 +1722,7 @@ function applyServerSnapshot(data) {
   if (data.friendRequests) patch.friendRequests = mapServerFriendRequests(data.friendRequests);
   if (data.room) {
     patch.room = normalizeServerRoom(data.room);
-  } else if (data.room === null && state.room && !(
-    routeName === "matching"
-      && (isSessionHandoffActive() || document.querySelector("[data-session-preview]"))
-  )) {
-    // A state poll can briefly lag the room-created event while the pair is
-    // being promoted into Session. Do not tear down the already-visible room
-    // inside the matching window; doing so remounts the modal and makes the
-    // three-second handoff flash or restart. The explicit room/game-over
-    // handlers still clear it when the Session really ends.
+  } else if (data.room === null && state.room) {
     patch.room = null;
   }
   if (Array.isArray(data.recentConnections)) {
@@ -1818,11 +1760,6 @@ function applyServerSnapshot(data) {
     };
   }
   const roomChanged = patch.room ? roomShapeChanged(patch.room, state.room) : false;
-  const newMatchingRoom = Boolean(
-    patch.room
-      && routeName === "matching"
-      && (!state.room || state.room.code !== patch.room.code)
-  );
   update(patch);
   if (routeName === "matching" && matchmakingHasTicketField && !matchmakingLiveTicket && !matchmakingPartial && !patch.room && !state.room) {
     navigate("#/home");
@@ -1838,23 +1775,13 @@ function applyServerSnapshot(data) {
     if (routeName === "hero") updateHeroActivityView(state.match);
     if (routeName === "home" && Array.isArray(data.matchmaking?.directory)) render();
   }
-  const sessionViewVisible = routeName === "matching" && Boolean(document.querySelector("[data-session-preview]"));
-  if (patch.room && routeName === "matching") {
-    if (newMatchingRoom) {
-      beginSessionHandoff(state.room);
-      render();
-    } else if (sessionViewVisible) {
-      updateSessionView(state.room);
-    } else if (!isSessionHandoffActive() && roomChanged) {
-      // Once the handoff is finished, only meaningful room changes should
-      // repaint the Session. Repeated status polls must not restart the
-      // countdown or flash the entire matching modal.
-      render();
-    }
+  if (patch.room && routeName === "matching" && isActiveSessionRoom(state.room)) {
+    replaceCanonicalRoute("#/room");
+    return;
   } else if (patch.room === null && routeName === "room") {
     render();
   } else if (patch.room && routeName === "room" && (roomChanged || friendRequestsChanged)) {
-    updateRoomView(state.room);
+    updateSessionView(state.room);
   }
   if (routeName === "matching" && matchmakingChanged && !patch.room && !state.room) updateMatchingView(previousMatch, state.match);
   if (patch.session) render();
@@ -1932,12 +1859,11 @@ function handleServerRoom(room) {
     need: room.need || state.need,
     session: null,
   });
-  if (isNewRoom && parseRoute().name === "matching") {
-    beginSessionHandoff(normalized);
-    render();
-  } else if (parseRoute().name === "matching" && document.querySelector("[data-session-preview]")) {
+  if (isActiveSessionRoom(normalized) && parseRoute().name !== "room") {
+    replaceCanonicalRoute("#/room");
+  } else if (parseRoute().name === "room") {
     updateSessionView(normalized);
-  } else if (parseRoute().name === "room") updateRoomView(normalized);
+  }
 }
 
 function handleServerGameOver(session) {
@@ -2044,7 +1970,7 @@ async function refreshAuthenticatedState({ restoreRoute = false } = {}) {
     if (snapshot.user) update({ user: snapshot.user });
     applyServerSnapshot(snapshot);
     if (restoreRoute && snapshot.room && ["home", "auth", "welcome", "matching"].includes(parseRoute().name)) {
-      navigate("#/room");
+      replaceCanonicalRoute("#/room");
     }
   } catch {
     // Realtime will retry; a transient resume failure must not turn a live
@@ -2445,14 +2371,12 @@ async function setGoodbyeRequest(requested) {
   if (goodbyeRequestPending) return;
   goodbyeRequestPending = true;
   updateSessionView(room);
-  updateRoomView(room);
   try {
     const result = await api.requestRoomGoodbye(room.code, requested);
     if (result.room) {
       const normalized = normalizeServerRoom(result.room);
       update({ room: normalized });
       updateSessionView(normalized);
-      updateRoomView(normalized);
     }
     if (result.session && ["completed", "cancelled"].includes(result.session.status)) {
       handleServerGameOver(result.session);
@@ -2469,7 +2393,6 @@ async function setGoodbyeRequest(requested) {
   } finally {
     goodbyeRequestPending = false;
     updateSessionView(state.room);
-    updateRoomView(state.room);
   }
 }
 
@@ -2539,7 +2462,6 @@ async function confirmExitRoom() {
     );
     if (result.session && ["completed", "cancelled"].includes(result.session.status)) {
       closeSheet();
-      sessionHandoff = null;
       update({ room: null, session: null, match: { ...state.match, status: "idle", lifecycle: null, pair: null, group: null, candidate: null } });
       closeSheet();
       navigate("#/home");
@@ -2569,7 +2491,6 @@ async function confirmExitRoom() {
         wantAgain: null,
       },
     });
-    sessionHandoff = null;
     update({ lastRoomCode: room.code });
     navigate("#/home");
     toast("已主动离开，本次不计入正常对局");
@@ -2577,28 +2498,6 @@ async function confirmExitRoom() {
     toast(err.message);
   } finally {
     exitRequestPending = false;
-  }
-}
-
-async function saveRoomGameAccount() {
-  const form = document.querySelector('[data-form="room-account"]');
-  if (!form || !ONLINE) return;
-  const gameId = state.need?.game || state.room?.need?.game;
-  if (!gameId) return;
-  const fd = new FormData(form);
-  const next = {
-    ...(state.user.gameAccounts || {}),
-    [gameId]: { ...((state.user.gameAccounts || {})[gameId] || {}) },
-  };
-  for (const [key, value] of fd.entries()) {
-    next[gameId][key] = String(value || "").trim();
-  }
-  try {
-    const data = await api.updateProfile({ gameAccounts: next });
-    update({ user: { ...state.user, ...data.user } });
-    toast("游戏账号已保存，所有成员会自动看到");
-  } catch (err) {
-    toast(err.message);
   }
 }
 
@@ -2631,7 +2530,6 @@ function prepareMatchingSetup(gameId = "deadlock") {
   HOME_FILTER.rank = "";
   HOME_FILTER.step = 0;
   HOME_FILTER.direction = -1;
-  sessionHandoff = null;
   update({
     room: null,
     session: null,
@@ -2655,7 +2553,6 @@ async function returnToMatchingSetup() {
 
 async function cancelMatch() {
   clearTimers();
-  sessionHandoff = null;
   if (ONLINE) {
     try {
       await api.cancelMatchmaking();
@@ -2854,13 +2751,13 @@ async function searchFriendByCode() {
   }
 }
 
-async function addProjectFriend(targetUserId, { fromRoom = false } = {}) {
+async function addProjectFriend(targetUserId) {
   if (!ONLINE) {
     toast("在线版才支持添加好友");
     return;
   }
   update({ friendSearchStatus: "adding", friendSearchError: "" });
-  if (!fromRoom) render();
+  render();
   try {
     const data = await api.addFriend({ targetUserId });
     update({
@@ -2869,14 +2766,13 @@ async function addProjectFriend(targetUserId, { fromRoom = false } = {}) {
       friendSearchResult: data.status === "accepted" ? null : state.friendSearchResult,
       friendSearchStatus: "idle",
     });
-    if (parseRoute().name === "room") updateRoomView(state.room);
-    else if (parseRoute().name === "gameover") updateGameoverView();
+    if (parseRoute().name === "gameover") updateGameoverView();
     else render();
     toast(data.status === "accepted" ? `你和 ${data.user.nickname || "对方"} 已成为“机”缘好友` : "好友申请已发送，等待对方确认");
   } catch (err) {
     update({ friendSearchStatus: "idle", friendSearchError: err.message });
-    if (!fromRoom) render();
-    else toast(err.message);
+    render();
+    toast(err.message);
   }
 }
 
@@ -2885,8 +2781,7 @@ async function respondProjectFriend(requesterId, decision) {
   try {
     const data = await api.respondFriend(requesterId, decision);
     update({ friends: mapServerFriends(data.friends), friendRequests: mapServerFriendRequests(data.friendRequests) });
-    if (parseRoute().name === "room") updateRoomView(state.room);
-    else if (parseRoute().name === "gameover") updateGameoverView();
+    if (parseRoute().name === "gameover") updateGameoverView();
     else render();
     toast(decision === "accepted" ? "已接受好友申请" : "已拒绝好友申请");
   } catch (err) {
@@ -3434,16 +3329,10 @@ document.addEventListener("click", (event) => {
     "start-group-match": (id) => startGroupMatch(id),
     "confirm-group-match": (id) => confirmGroupMatch(id, "accepted"),
     "reject-group-match": (id) => confirmGroupMatch(id, "rejected"),
-    "open-room": () => navigate("#/room"),
+    "open-room": () => replaceCanonicalRoute("#/room"),
     "leave-room": exitRoomPrompt,
     "exit-room": exitRoomPrompt,
     "confirm-exit-room": confirmExitRoom,
-    "save-room-account": saveRoomGameAccount,
-    "copy-room-account": (value) => {
-      api.trackEvent("game_account_copied", { gameId: state.need?.game || null, roomId: state.room?.id || null });
-      copyText(value);
-    },
-    "add-project-friend": (value) => addProjectFriend(value, { fromRoom: true }),
     "set-room-rating": (value) => setRoomRating(value),
     "rematch-recent": (id) => rematchRecent(id),
     "back-to-match": returnToMatchingSetup,
@@ -3676,15 +3565,13 @@ async function handleAuthSuccess() {
   });
   if (profileReady) {
     let destination = "#/home";
+    let hasActiveRoom = false;
     update({ user: status.profile });
     try {
       const snapshot = await api.getState();
       update({ user: snapshot.user });
       applyServerSnapshot(snapshot);
-      // A server-backed active Room is already a live Session. Restoring it
-      // to the matching modal re-enters the obsolete handoff path and can
-      // lose members on refresh. Only newly-created rooms use #/matching for
-      // the short handoff; login/refresh resumes the canonical Room view.
+      hasActiveRoom = Boolean(snapshot.room);
       destination = snapshot.room
         ? "#/room"
         : snapshot.session?.status === "completed"
@@ -3696,7 +3583,8 @@ async function handleAuthSuccess() {
       // profile-only state is enough to enter home
     }
     connectEvents();
-    navigate(destination);
+    if (hasActiveRoom) replaceCanonicalRoute("#/room");
+    else navigate(destination);
     toast(`欢迎回来，${state.user.nickname}`);
   } else {
     update({ user: { ...state.user, nickname: "", avatarKey: "", device: "", gender: "男", games: [], genres: [], playStyle: "" } });
@@ -3738,7 +3626,7 @@ async function restoreSession() {
         update({ user: snapshot.user });
         applyServerSnapshot(snapshot);
         if (snapshot.room && ["home", "auth", "welcome", "matching"].includes(parseRoute().name)) {
-          navigate("#/room");
+          replaceCanonicalRoute("#/room");
         }
       } catch {
         // keep profile-only state

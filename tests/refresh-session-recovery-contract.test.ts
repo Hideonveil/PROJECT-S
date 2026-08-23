@@ -26,7 +26,8 @@ describe("active Session refresh recovery", () => {
     expect(app).toContain('const snapshot = await api.getState();');
     expect(app).toContain('if (restoreRoute && snapshot.room');
     expect(app).toContain('["home", "auth", "welcome", "matching"].includes(parseRoute().name)');
-    expect(app).toContain('navigate("#/room")');
+    expect(app).toContain('replaceCanonicalRoute("#/room")');
+    expect(app).toContain("history.replaceState");
   });
 
   it("looks up the active room through room_members and restores all members", () => {
