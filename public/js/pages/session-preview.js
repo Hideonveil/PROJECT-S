@@ -72,10 +72,10 @@ function rolePairMatches(mineNeed, partnerNeed) {
 function fitGridStyle(memberCount) {
   const columns = [];
   for (let index = 0; index < memberCount; index += 1) {
-    columns.push("minmax(0, 1fr)");
-    if (index < memberCount - 1) columns.push("minmax(64px, .42fr)");
+    columns.push("minmax(0, max-content)");
+    if (index < memberCount - 1) columns.push("minmax(64px, 1fr)");
   }
-  return `grid-template-columns:${columns.join(" ")};`;
+  return `grid-template-columns:60px ${columns.join(" ")};`;
 }
 
 function fitLink(matches, label) {
@@ -167,12 +167,12 @@ function fitRows(model) {
       ["位置", roleValue(mine.need), roleValue(partner.need), rolePairMatches(mine.need, partner.need)],
       ["开麦", voiceLabel(mine.need), voiceLabel(partner.need), voiceLabel(mine.need) === voiceLabel(partner.need)],
     ];
-    return pairRows.map(([label, mineValue, partnerValue, matches]) => `<div class="session-fit-row" role="row"><span class="session-fit-label">${esc(label)}</span><div class="session-fit-conditions" style="${fitGridStyle(members.length)}"><strong class="session-fit-member">${esc(mineValue)}</strong>${fitLink(matches, matches ? "匹配" : "不匹配")}<strong class="session-fit-member">${esc(partnerValue)}</strong></div></div>`).join("");
+    return pairRows.map(([label, mineValue, partnerValue, matches]) => `<div class="session-fit-row" role="row"><span class="session-fit-label">${esc(label)}</span><div class="session-fit-conditions"><strong class="session-fit-member">${esc(mineValue)}</strong>${fitLink(matches, matches ? "匹配" : "不匹配")}<strong class="session-fit-member">${esc(partnerValue)}</strong></div></div>`).join("");
   }
   return rows.map(([label, valueFor]) => {
     const values = members.map(valueFor);
     const matches = values.every((value) => value === values[0]);
-    return `<div class="session-fit-row session-fit-row--group" role="row"><span class="session-fit-label">${esc(label)}</span><div class="session-fit-conditions session-fit-conditions--group" style="${fitGridStyle(members.length)}">${groupFitCells(members, valueFor, matches)}</div></div>`;
+    return `<div class="session-fit-row session-fit-row--group" role="row"><span class="session-fit-label">${esc(label)}</span><div class="session-fit-conditions session-fit-conditions--group">${groupFitCells(members, valueFor, matches)}</div></div>`;
   }).join("");
 }
 
@@ -206,7 +206,7 @@ function chatPanel(model) {
   const seedMessages = model.preview ? `<div class="session-preview-message session-preview-message--partner"><span>hideonhome</span><p>怎么说，来一把？</p><time>现在</time></div><div class="session-preview-message session-preview-message--me"><span>你</span><p>行，我加你。</p><time>现在</time></div>` : `<div class="chat-empty">还没有消息，打个招呼吧</div>`;
   return `<section class="session-preview-chat" aria-label="Session 聊天">
     <header class="session-preview-chat__head"><div><span class="session-preview-kicker">成员的选择</span><h2>高度拟合 <i>${icon("star", 18)}</i></h2><p>匹配条件已对齐，现在把这局玩起来。</p></div><span class="session-preview-live"><i></i>LIVE</span></header>
-    <div class="session-fit-table" role="table" aria-label="成员匹配条件"><div class="session-fit-row session-fit-row--head session-fit-row--group" role="row"><span></span><div class="session-fit-conditions session-fit-conditions--group" style="${fitGridStyle(model.players.length)}">${groupFitCells(model.players, (player) => player.label || player.name, true, "b")}</div></div>${fitRows(model)}</div>
+    <div class="session-fit-table" role="table" aria-label="成员匹配条件" style="${fitGridStyle(model.players.length)}"><div class="session-fit-row session-fit-row--head session-fit-row--group" role="row"><span></span><div class="session-fit-conditions session-fit-conditions--group">${groupFitCells(model.players, (player) => player.label || player.name, true, "b")}</div></div>${fitRows(model)}</div>
     <div class="session-preview-chat__divider"><span>聊天</span><i></i><small>实时同步</small></div>
     <div id="room-chat" class="session-preview-messages" aria-label="聊天记录">${seedMessages}</div>
     <div class="session-preview-quick" aria-label="快捷回复">${quickReplies.map((reply) => `<button type="button" data-chat-quick-reply="${esc(reply)}">${esc(reply)}</button>`).join("")}</div>

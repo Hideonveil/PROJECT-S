@@ -1089,18 +1089,29 @@ test("three-member fit table aligns names and restores match links", async ({ pa
   const geometry = await page.locator(".session-fit-row--group:not(.session-fit-row--head)").first().evaluate((row) => {
     const members = [...row.querySelectorAll(".session-fit-member")];
     const links = [...row.querySelectorAll(".session-fit-link")];
+    const textRect = (node: Element) => {
+      const range = document.createRange();
+      range.selectNodeContents(node);
+      const rect = range.getBoundingClientRect();
+      return { left: rect.left, right: rect.right, center: rect.left + rect.width / 2 };
+    };
     return {
       members: members.length,
       links: links.map((link, index) => {
-        const linkRect = link.getBoundingClientRect();
         const lineRect = link.querySelector(".session-fit-line")?.getBoundingClientRect();
-        const previousRect = members[index].getBoundingClientRect();
-        const nextRect = members[index + 1].getBoundingClientRect();
+        const previousText = textRect(members[index]);
+        const nextText = textRect(members[index + 1]);
+        const gapCenter = (previousText.right + nextText.left) / 2;
+        const gapWidth = nextText.left - previousText.right;
         return {
-          center: linkRect.left + linkRect.width / 2,
-          midpoint: (previousRect.left + previousRect.width / 2 + nextRect.left + nextRect.width / 2) / 2,
+          center: lineRect ? lineRect.left + lineRect.width / 2 : 0,
+          gapCenter,
+          left: lineRect?.left || 0,
+          right: lineRect?.right || 0,
+          leftTextRight: previousText.right,
+          rightTextLeft: nextText.left,
+          gapWidth,
           lineWidth: lineRect?.width || 0,
-          linkWidth: linkRect.width,
         };
       }),
     };
@@ -1108,8 +1119,10 @@ test("three-member fit table aligns names and restores match links", async ({ pa
   expect(geometry.members).toBe(3);
   expect(geometry.links).toHaveLength(2);
   geometry.links.forEach((link) => {
-    expect(Math.abs(link.center - link.midpoint)).toBeLessThanOrEqual(2);
-    expect(link.lineWidth).toBeGreaterThanOrEqual(link.linkWidth * 0.8);
+    expect(link.left).toBeGreaterThanOrEqual(link.leftTextRight + 12 - 0.5);
+    expect(link.right).toBeLessThanOrEqual(link.rightTextLeft - 12 + 0.5);
+    expect(Math.abs(link.center - link.gapCenter)).toBeLessThanOrEqual(4);
+    expect(link.lineWidth).toBeGreaterThanOrEqual(link.gapWidth * 0.8);
   });
 
   const headerLefts = await page.locator(".session-fit-row--head b").evaluateAll((nodes) => nodes.map((node) => Math.round(node.getBoundingClientRect().left)));
@@ -1124,27 +1137,39 @@ test("two-member fit links keep real geometry at all required desktop viewports"
     await expect(page.locator("[data-session-preview]")).toBeVisible();
     const geometry = await page.locator(".session-fit-row:not(.session-fit-row--head)").first().evaluate((row) => {
       const members = [...row.querySelectorAll(".session-fit-member")];
-      const link = row.querySelector(".session-fit-link");
       const line = row.querySelector(".session-fit-line");
-      const linkRect = link?.getBoundingClientRect();
       const lineRect = line?.getBoundingClientRect();
-      const firstRect = members[0].getBoundingClientRect();
-      const secondRect = members[1].getBoundingClientRect();
+      const textRect = (node: Element) => {
+        const range = document.createRange();
+        range.selectNodeContents(node);
+        const rect = range.getBoundingClientRect();
+        return { left: rect.left, right: rect.right };
+      };
+      const firstText = textRect(members[0]);
+      const secondText = textRect(members[1]);
+      const gapCenter = (firstText.right + secondText.left) / 2;
+      const gapWidth = secondText.left - firstText.right;
       return {
         members: members.length,
         links: row.querySelectorAll(".session-fit-link").length,
-        center: linkRect ? linkRect.left + linkRect.width / 2 : 0,
-        midpoint: (firstRect.left + firstRect.width / 2 + secondRect.left + secondRect.width / 2) / 2,
+        left: lineRect?.left || 0,
+        right: lineRect?.right || 0,
+        center: lineRect ? lineRect.left + lineRect.width / 2 : 0,
+        gapCenter,
+        leftTextRight: firstText.right,
+        rightTextLeft: secondText.left,
+        gapWidth,
         lineWidth: lineRect?.width || 0,
-        linkWidth: linkRect?.width || 0,
         scrollWidth: document.documentElement.scrollWidth,
         viewportWidth: window.innerWidth,
       };
     });
     expect(geometry.members).toBe(2);
     expect(geometry.links).toBe(1);
-    expect(Math.abs(geometry.center - geometry.midpoint)).toBeLessThanOrEqual(2);
-    expect(geometry.lineWidth).toBeGreaterThanOrEqual(geometry.linkWidth * 0.8);
+    expect(geometry.left).toBeGreaterThanOrEqual(geometry.leftTextRight + 12 - 0.5);
+    expect(geometry.right).toBeLessThanOrEqual(geometry.rightTextLeft - 12 + 0.5);
+    expect(Math.abs(geometry.center - geometry.gapCenter)).toBeLessThanOrEqual(4);
+    expect(geometry.lineWidth).toBeGreaterThanOrEqual(geometry.gapWidth * 0.8);
     expect(geometry.scrollWidth).toBeLessThanOrEqual(geometry.viewportWidth);
   }
 });
