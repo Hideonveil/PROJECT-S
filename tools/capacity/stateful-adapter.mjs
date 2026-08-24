@@ -1,0 +1,571 @@
+import { randomUUID } from "node:crypto";
+import { mkdir, writeFile } from "node:fs/promises";
+import path from "node:path";
+import { performance } from "node:perf_hooks";
+import { createClient } from "@supabase/supabase-js";
+import {
+  assertSafeOperation,
+  authenticateIdentity,
+  clearActorTokens,
+  fetchJson,
+  loadAuthConfig,
+  STATEFUL_PATHS,
+} from "./runner.mjs";
+
+const STAGES = Object.freeze([
+  { name: "5", count: 5, ranked: 2, casual: 3, fragmented: 0 },
+  { name: "10", count: 10, ranked: 4, casual: 6, fragmented: 0 },
+  { name: "20", count: 20, ranked: 12, casual: 6, fragmented: 2 },
+]);
+
+const ACTIVE_SESSION_STATES = new Set(["active", "playing", "matched"]);
+const TERMINAL_SESSION_STATES = new Set(["completed", "cancelled"]);
+
+function safeError(error) {
+  return String(error?.message || error || "unknown error")
+    .replace(/Bearer\s+[^\s]+/gi, "Bearer [REDACTED]")
+    .replace(/(?:access[_-]?token|refresh[_-]?token|password|secret)[=:][^\s,}]+/gi, "$1=[REDACTED]");
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function stageDefinition(name) {
+  const stage = STAGES.find((item) => item.name === String(name));
+  if (!stage) throw new Error(`CAPACITY_STATEFUL: unsupported stage ${name}`);
+  return stage;
+}
+
+export function buildStatefulPlan({ actors, runId, maxUsers = 20 }) {
+  if (!Array.isArray(actors) || actors.length < 20) {
+    throw new Error("CAPACITY_STATEFUL: manifest must contain at least 20 dedicated actors");
+  }
+  if (maxUsers !== 20) throw new Error("CAPACITY_STATEFUL: only the fixed 5 -> 10 -> 20 sequence is supported");
+  const stages = STAGES.map((stage) => {
+    const selected = actors.slice(0, stage.count);
+    if (selected.length !== stage.count) throw new Error(`CAPACITY_STATEFUL: stage ${stage.name} lacks actors`);
+    const counts = selected.reduce((acc, actor) => {
+      const role = String(actor.role || actor.mode || "").toLowerCase();
+      acc[role] = (acc[role] || 0) + 1;
+      return acc;
+    }, {});
+    if ((counts.ranked || 0) !== stage.ranked || (counts.casual || 0) !== stage.casual || (counts.fragmented || 0) !== stage.fragmented) {
+      throw new Error(`CAPACITY_STATEFUL: stage ${stage.name} actor roles do not match the approved workload`);
+    }
+    return { ...stage, actorIds: selected.map((actor) => actor.actorId) };
+  });
+  return { runId, mode: "stateful", maxUsers, stages, allowedPostPaths: STATEFUL_PATHS.map((pattern) => pattern.toString()) };
+}
+
+export function statefulDryRunPlan({ actors = [], runId, maxUsers = 20 }) {
+  const plan = buildStatefulPlan({ actors, runId, maxUsers });
+  return {
+    ...plan,
+    networkExecuted: false,
+    mutationPaths: ["/api/auth/login", "/api/online", "/api/offline", "/api/matchmaking/*", "/api/room/:code/*", "Supabase messages insert", "Supabase Realtime subscribe"],
+    safety: {
+      maxStageUsers: 20,
+      fixedSequence: "5 -> 10 -> 20",
+      rawSql: false,
+      serviceRole: false,
+      globalKillSwitch: true,
+    },
+  };
+}
+
+function matchInput(actor) {
+  const role = String(actor.role || actor.mode || "").toLowerCase();
+  if (role === "ranked") {
+    return { gameId: "deadlock", mode: "ranked", rankCode: actor.match?.rankCode || "oracle", desiredRoles: [], ownRoles: [], teammateRoles: [], microphonePreference: "any" };
+  }
+  if (role === "fragmented") {
+    const size = actor.match?.fragmentedSize || (actor.actorId.endsWith("A") ? 1 : 5);
+    return { gameId: "deadlock", mode: "casual", desiredRoles: [], ownRoles: [], teammateRoles: [], microphonePreference: "any", desiredTeammates: size, minTeammates: size };
+  }
+  return { gameId: "deadlock", mode: "casual", desiredRoles: [], ownRoles: [], teammateRoles: [], microphonePreference: "any", desiredTeammates: 2, minTeammates: 2 };
+}
+
+function actorById(runtimes, actorId) {
+  const runtime = runtimes.get(actorId);
+  if (!runtime) throw new Error(`CAPACITY_STATEFUL: unknown actor ${actorId}`);
+  return runtime;
+}
+
+function recordEvent(runtime, event) {
+  runtime.events.push({
+    timestamp: new Date().toISOString(),
+    actor_id: runtime.actorId,
+    user_id: runtime.userId,
+    ...event,
+  });
+}
+
+async function statefulRequest({ runtime, options, stage, action, method = "GET", requestPath, body, ledger }) {
+  const operation = assertSafeOperation({ mode: "stateful", method, path: requestPath });
+  if (ledger.requestCount >= options.maxRequests) throw new Error("CAPACITY_STATEFUL: request budget exhausted");
+  ledger.requestCount += 1;
+  const requestId = randomUUID();
+  const headers = {
+    Accept: "application/json",
+    Authorization: `Bearer ${runtime.accessToken}`,
+    "User-Agent": `jiyuan-capacity-stateful/${options.runId}`,
+    "X-Capacity-Run-Id": options.runId,
+    "X-Request-ID": requestId,
+  };
+  if (body !== undefined) {
+    headers["Content-Type"] = "application/json";
+    headers["Idempotency-Key"] = requestId;
+  }
+  const started = performance.now();
+  let status = null;
+  try {
+    const response = await fetch(new URL(operation.path, options.baseUrl), {
+      method: operation.method,
+      headers,
+      body: body === undefined ? undefined : JSON.stringify(body),
+      signal: AbortSignal.timeout(options.requestTimeoutMs),
+    });
+    status = response.status;
+    let data = {};
+    try { data = await response.json(); } catch { /* body intentionally omitted */ }
+    const event = {
+      stage,
+      action,
+      method: operation.method,
+      path: operation.path,
+      request_id: requestId,
+      status,
+      duration_ms: Number((performance.now() - started).toFixed(2)),
+      mutation: operation.mutation,
+      error: status >= 400 ? `HTTP_${status}` : null,
+    };
+    recordEvent(runtime, event);
+    if (!response.ok) throw new Error(`${action} returned HTTP ${status}`);
+    return { data, status, requestId };
+  } catch (error) {
+    if (error?.message?.includes(`returned HTTP ${status}`)) throw error;
+    recordEvent(runtime, {
+      stage,
+      action,
+      method: operation.method,
+      path: operation.path,
+      request_id: requestId,
+      status,
+      duration_ms: Number((performance.now() - started).toFixed(2)),
+      mutation: operation.mutation,
+      error: safeError(error),
+    });
+    throw error;
+  }
+}
+
+async function createRealtimeClient(runtime) {
+  const client = createClient(runtime.config.supabaseUrl, runtime.config.supabaseAnonKey, {
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+  });
+  const { error } = await client.auth.setSession({ access_token: runtime.accessToken, refresh_token: runtime.refreshToken });
+  if (error) throw error;
+  return client;
+}
+
+function realtimeRecord(runtime, stage, payload) {
+  const record = {
+    stage,
+    actor_id: runtime.actorId,
+    user_id: runtime.userId,
+    received_at: new Date().toISOString(),
+    channel: payload.channel || "node-events",
+    status: payload.status || null,
+    table: payload.table || null,
+    event: payload.event || null,
+    message_id: payload.messageId || null,
+    room_id: payload.roomId || null,
+    sender_user_id: payload.senderUserId || null,
+  };
+  runtime.realtime.push(record);
+  runtime.realtimeLedger?.push(record);
+}
+
+async function subscribeChannel(runtime, stage, name, configure) {
+  const channel = runtime.client.channel(name);
+  configure(channel);
+  let subscribed = false;
+  let terminalStatus = null;
+  const statusPromise = new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(false), 15_000);
+    channel.subscribe((status) => {
+      realtimeRecord(runtime, stage, { channel: name, status });
+      if (status === "SUBSCRIBED") {
+        subscribed = true;
+        clearTimeout(timer);
+        resolve(true);
+      } else if (["CHANNEL_ERROR", "TIMED_OUT", "CLOSED"].includes(status)) {
+        terminalStatus = status;
+        clearTimeout(timer);
+        resolve(false);
+      }
+    });
+  });
+  const ok = await statusPromise;
+  if (!ok) throw new Error(`Realtime ${name} ${terminalStatus || "subscribe timeout"}`);
+  return subscribed;
+}
+
+async function subscribeActor(runtime, stage) {
+  runtime.client = await createRealtimeClient(runtime);
+  await subscribeChannel(runtime, stage, "node-events", (channel) => {
+    for (const table of ["matchmaking_tickets", "matchmaking_pairs", "matchmaking_confirmations", "matchmaking_groups", "matchmaking_group_members", "rooms", "sessions", "session_goodbye_requests", "friendships", "room_members"]) {
+      channel.on("postgres_changes", { event: "*", schema: "public", table }, (payload) => {
+        realtimeRecord(runtime, stage, { table, event: payload.event, roomId: payload.new?.room_id || payload.old?.room_id, messageId: payload.new?.id || payload.old?.id });
+      });
+    }
+  });
+}
+
+async function subscribeRoom(runtime, stage, roomId) {
+  if (runtime.roomChannels.has(roomId)) return;
+  const name = `room-chat-${roomId}`;
+  await subscribeChannel(runtime, stage, name, (channel) => {
+    channel.on("postgres_changes", { event: "INSERT", schema: "public", table: "messages", filter: `room_id=eq.${roomId}` }, (payload) => {
+      realtimeRecord(runtime, stage, {
+        channel: name,
+        table: "messages",
+        event: "INSERT",
+        messageId: payload.new?.id,
+        roomId: payload.new?.room_id,
+        senderUserId: payload.new?.sender_id,
+      });
+    });
+  });
+  runtime.roomChannels.add(roomId);
+}
+
+function startHeartbeat(runtime, options, stage, ledger) {
+  if (runtime.heartbeat) return;
+  const beat = async () => {
+    try {
+      await statefulRequest({ runtime, options, stage, action: "presence.heartbeat", method: "POST", requestPath: "/api/online", body: {}, ledger });
+      runtime.presence.push({ stage, actor_id: runtime.actorId, timestamp: new Date().toISOString(), online: true });
+    } catch (error) {
+      runtime.presence.push({ stage, actor_id: runtime.actorId, timestamp: new Date().toISOString(), online: false, error: safeError(error) });
+    }
+  };
+  runtime.heartbeat = setInterval(beat, 10_000);
+}
+
+function stopHeartbeat(runtime) {
+  if (runtime.heartbeat) clearInterval(runtime.heartbeat);
+  runtime.heartbeat = null;
+}
+
+async function closeClient(runtime) {
+  stopHeartbeat(runtime);
+  if (runtime.client) {
+    await runtime.client.removeAllChannels();
+    runtime.client = null;
+  }
+  runtime.roomChannels.clear();
+}
+
+function snapshotIds(runtime) {
+  const state = runtime.state || {};
+  const mm = state.matchmaking || {};
+  return {
+    ticket_id: mm.ticket?.id || null,
+    pair_id: mm.pair?.id || null,
+    group_id: mm.group?.id || null,
+    room_id: state.room?.id || null,
+    room_code: state.room?.code || state.session?.roomCode || null,
+    session_id: state.session?.id || null,
+  };
+}
+
+async function refreshState(runtime, options, stage, ledger, action = "state.read") {
+  const result = await statefulRequest({ runtime, options, stage, action, requestPath: "/api/state", ledger });
+  runtime.state = result.data;
+  runtime.ids = { ...runtime.ids, ...snapshotIds(runtime) };
+  if (runtime.ids.room_id) await subscribeRoom(runtime, stage, runtime.ids.room_id);
+  return result.data;
+}
+
+async function startActor(runtime, options, stage, ledger) {
+  await statefulRequest({ runtime, options, stage, action: "presence.online", method: "POST", requestPath: "/api/online", body: {}, ledger });
+  startHeartbeat(runtime, options, stage, ledger);
+  await statefulRequest({ runtime, options, stage, action: "matchmaking.start", method: "POST", requestPath: "/api/matchmaking/start", body: { match: matchInput(runtime.actor) }, ledger });
+}
+
+async function controlGroups(runtimes, options, stage, ledger, controls) {
+  for (const runtime of runtimes.values()) {
+    const group = runtime.state?.matchmaking?.group;
+    if (!group) continue;
+    const liveMembers = (group.members || []).filter((member) => member.decision !== "rejected");
+    if (["searching", "partial_ready"].includes(group.state) && group.ownerUserId === runtime.userId && liveMembers.length >= Number(group.desiredTeammates || 1) + 1 && !controls.started.has(group.id)) {
+      controls.started.add(group.id);
+      await statefulRequest({ runtime, options, stage, action: "matchmaking.group.start", method: "POST", requestPath: "/api/matchmaking/group/start", body: { groupId: group.id }, ledger });
+    }
+    if (group.state === "waiting_confirmation") {
+      for (const member of liveMembers) {
+        if (member.userId === group.ownerUserId || member.decision === "accepted" || controls.confirmed.has(`${group.id}:${member.userId}`)) continue;
+        const memberRuntime = [...runtimes.values()].find((candidate) => candidate.userId === member.userId);
+        if (!memberRuntime) continue;
+        controls.confirmed.add(`${group.id}:${member.userId}`);
+        await statefulRequest({ runtime: memberRuntime, options, stage, action: "matchmaking.group.confirm", method: "POST", requestPath: "/api/matchmaking/confirm", body: { groupId: group.id, decision: "accepted" }, ledger });
+      }
+    }
+  }
+}
+
+async function waitForRooms(runtimes, expectedCount, options, stage, ledger) {
+  const controls = { started: new Set(), confirmed: new Set() };
+  const deadline = Date.now() + Math.min(120_000, options.durationSec * 1000);
+  while (Date.now() < deadline) {
+    await Promise.all([...runtimes.values()].map((runtime) => refreshState(runtime, options, stage, ledger)));
+    await controlGroups(runtimes, options, stage, ledger, controls);
+    const active = [...runtimes.values()].filter((runtime) => ACTIVE_SESSION_STATES.has(runtime.state?.session?.status) && runtime.state?.room);
+    if (active.length >= expectedCount) {
+      await Promise.all(active.map((runtime) => refreshState(runtime, options, stage, ledger)));
+      const stable = active.filter((runtime) => ACTIVE_SESSION_STATES.has(runtime.state?.session?.status) && runtime.state?.room);
+      if (stable.length >= expectedCount) return;
+    }
+    await sleep(1000);
+  }
+  throw new Error(`CAPACITY_STATEFUL: stage ${stage} did not form ${expectedCount} active sessions`);
+}
+
+function roomGroups(runtimes) {
+  const groups = new Map();
+  for (const runtime of runtimes.values()) {
+    const code = runtime.state?.room?.code || runtime.state?.session?.roomCode;
+    if (!code) continue;
+    if (!groups.has(code)) groups.set(code, []);
+    groups.get(code).push(runtime);
+  }
+  return groups;
+}
+
+async function verifyRoomShape(groups, expectedRooms, stage) {
+  if (groups.size !== expectedRooms) throw new Error(`CAPACITY_STATEFUL: stage ${stage} expected ${expectedRooms} rooms, saw ${groups.size}`);
+  const seenSessions = new Set();
+  for (const [code, members] of groups) {
+    const sessionIds = new Set(members.map((runtime) => runtime.state?.session?.id).filter(Boolean));
+    if (sessionIds.size !== 1) throw new Error(`CAPACITY_STATEFUL: room ${code} has inconsistent session IDs`);
+    const sessionId = [...sessionIds][0];
+    if (seenSessions.has(sessionId)) throw new Error(`CAPACITY_STATEFUL: duplicate session ${sessionId}`);
+    seenSessions.add(sessionId);
+    const expectedMembers = Number(members[0].state?.session?.targetTotalPlayers || members[0].state?.session?.players?.length || members.length);
+    if (expectedMembers !== members.length) throw new Error(`CAPACITY_STATEFUL: room ${code} member count mismatch`);
+  }
+}
+
+async function sendRoomMessages(group, runtime, options, stage, ledger, messageLedger) {
+  const roomId = runtime.state?.room?.id;
+  if (!roomId || !runtime.client) throw new Error("CAPACITY_STATEFUL: cannot send chat without a room client");
+  await subscribeRoom(runtime, stage, roomId);
+  const markers = [
+    `capacity-${options.runId}-${stage}-${runtime.actorId}-${randomUUID()}`,
+    `quick-${options.runId}-${stage}-${runtime.actorId}-${randomUUID()}`,
+  ];
+  for (const marker of markers) {
+    const sentAt = new Date().toISOString();
+    const { data, error } = await runtime.client.from("messages").insert({ room_id: roomId, sender_id: runtime.userId, content: marker }).select("id,room_id,sender_id,created_at").single();
+    if (error) throw error;
+    messageLedger.push({ stage, message_id: data.id, room_id: roomId, session_id: runtime.state?.session?.id || null, sender_user_id: runtime.userId, marker, sent_at: sentAt, persisted_at: data.created_at || new Date().toISOString(), expected_recipients: group.map((member) => member.userId), received_by: [] });
+  }
+  await sleep(1500);
+  for (const message of messageLedger.filter((entry) => entry.stage === stage && entry.room_id === roomId)) {
+    message.received_by = group.filter((member) => member.realtime.some((event) => event.message_id === message.message_id)).map((member) => member.userId);
+    if (message.received_by.length !== group.length) throw new Error(`CAPACITY_STATEFUL: realtime message delivery incomplete for ${message.message_id}`);
+  }
+}
+
+async function refreshActor(runtime, options, stage, ledger) {
+  const before = snapshotIds(runtime);
+  await closeClient(runtime);
+  await sleep(250);
+  await subscribeActor(runtime, stage);
+  startHeartbeat(runtime, options, stage, ledger);
+  await refreshState(runtime, options, stage, ledger, "refresh.recover");
+  const after = snapshotIds(runtime);
+  recordEvent(runtime, { stage, action: "refresh.verify", before, after, side_effect: false });
+  if (before.room_id && (before.room_id !== after.room_id || before.session_id !== after.session_id)) throw new Error(`CAPACITY_STATEFUL: refresh changed room/session for ${runtime.actorId}`);
+}
+
+async function disconnectAndReconnect(runtime, options, stage, ledger, durationMs) {
+  const before = snapshotIds(runtime);
+  stopHeartbeat(runtime);
+  await closeClient(runtime);
+  recordEvent(runtime, { stage, action: "reconnect.disconnected", duration_ms: durationMs, before });
+  await sleep(durationMs);
+  await subscribeActor(runtime, stage);
+  startHeartbeat(runtime, options, stage, ledger);
+  await refreshState(runtime, options, stage, ledger, "reconnect.recover");
+  const after = snapshotIds(runtime);
+  recordEvent(runtime, { stage, action: "reconnect.verify", before, after, within_grace: durationMs < 180_000, side_effect: false });
+  return { before, after, recoveredSameSession: before.session_id === after.session_id && before.room_id === after.room_id };
+}
+
+async function requestGoodbye(group, options, stage, ledger) {
+  const code = group[0].state?.room?.code || group[0].state?.session?.roomCode;
+  await Promise.all(group.map((runtime) => statefulRequest({ runtime, options, stage, action: "goodbye", method: "POST", requestPath: `/api/room/${code}/goodbye`, body: { requested: true }, ledger })));
+}
+
+async function explicitLeave(runtime, options, stage, ledger) {
+  const code = runtime.state?.room?.code || runtime.state?.session?.roomCode;
+  if (!code) return;
+  await statefulRequest({ runtime, options, stage, action: "leave", method: "POST", requestPath: `/api/room/${code}/exit`, body: {}, ledger });
+}
+
+async function submitFeedback(runtime, options, stage, ledger) {
+  const session = runtime.state?.session;
+  const code = runtime.state?.room?.code || session?.roomCode;
+  if (!code || session?.status !== "completed") return;
+  const members = Array.isArray(session.members) ? session.members : (session.players || []).map((id) => ({ userId: id }));
+  await statefulRequest({ runtime, options, stage, action: "feedback.rating", method: "POST", requestPath: `/api/room/${code}/feedback`, body: { rating: "happy", wantAgain: true }, ledger });
+  for (const member of members) {
+    const targetUserId = member.userId || member.id;
+    if (targetUserId && targetUserId !== runtime.userId) {
+      await statefulRequest({ runtime, options, stage, action: "feedback.like", method: "POST", requestPath: `/api/room/${code}/feedback`, body: { targetUserId, liked: true }, ledger });
+    }
+  }
+}
+
+async function waitForTerminal(runtimes, options, stage, ledger, timeoutMs = 30_000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    await Promise.all([...runtimes.values()].map((runtime) => refreshState(runtime, options, stage, ledger, "state.reconcile")));
+    const active = [...runtimes.values()].filter((runtime) => runtime.state?.room && ACTIVE_SESSION_STATES.has(runtime.state?.session?.status));
+    if (!active.length) return;
+    await sleep(1000);
+  }
+  throw new Error(`CAPACITY_STATEFUL: stage ${stage} lifecycle did not converge`);
+}
+
+async function cancelRemaining(runtimes, options, stage, ledger) {
+  for (const runtime of runtimes.values()) {
+    const mm = runtime.state?.matchmaking;
+    if (mm?.ticket && !runtime.state?.room) {
+      await statefulRequest({ runtime, options, stage, action: "matchmaking.cancel", method: "POST", requestPath: "/api/matchmaking/cancel", body: { reason: "capacity_rehearsal_cleanup" }, ledger }).catch(() => {});
+    }
+  }
+}
+
+async function runStage({ stage, runtimes, options, ledger, messageLedger }) {
+  const expectedActive = stage.count - stage.fragmented;
+  const expectedRooms = stage.ranked / 2 + stage.casual / 3;
+  const activeRuntimes = new Map([...runtimes].filter(([, runtime]) => runtime.role !== "fragmented"));
+  await Promise.all([...runtimes.values()].map((runtime) => closeClient(runtime)));
+  await Promise.all([...runtimes.values()].map((runtime) => subscribeActor(runtime, stage.name)));
+  await Promise.all([...runtimes.values()].map((runtime) => startActor(runtime, options, stage.name, ledger)));
+  await waitForRooms(runtimes, expectedActive, options, stage.name, ledger);
+  const groups = roomGroups(activeRuntimes);
+  await verifyRoomShape(groups, expectedRooms, stage.name);
+  await Promise.all([...groups.values()].map((group) => sendRoomMessages(group, group[0], options, stage.name, ledger, messageLedger)));
+
+  const refreshTargets = stage.name === "5" ? [activeRuntimes.values().next().value] : [...activeRuntimes.values()].slice(0, 2);
+  await Promise.all(refreshTargets.filter(Boolean).map((runtime) => refreshActor(runtime, options, stage.name, ledger)));
+  const reconnectTarget = [...activeRuntimes.values()][stage.name === "5" ? 0 : 1];
+  if (reconnectTarget) await disconnectAndReconnect(reconnectTarget, options, stage.name, ledger, 60_000);
+  if (stage.name === "20") {
+    const longDisconnectTarget = [...activeRuntimes.values()][2];
+    if (longDisconnectTarget) await disconnectAndReconnect(longDisconnectTarget, options, stage.name, ledger, 181_000);
+  }
+
+  const finalGroups = roomGroups(activeRuntimes);
+  const leaveGroup = stage.name === "5" ? null : [...finalGroups.values()][0];
+  if (leaveGroup?.[0]) await explicitLeave(leaveGroup[0], options, stage.name, ledger);
+  for (const [code, group] of finalGroups) {
+    if (leaveGroup === group) continue;
+    const live = group.filter((runtime) => ACTIVE_SESSION_STATES.has(runtime.state?.session?.status));
+    if (live.length) await requestGoodbye(live, options, stage.name, ledger);
+  }
+  await waitForTerminal(runtimes, options, stage.name, ledger, stage.name === "20" ? 45_000 : 30_000).catch((error) => { throw error; });
+  await Promise.all([...runtimes.values()].map((runtime) => refreshState(runtime, options, stage.name, ledger, "state.final")));
+  await Promise.all([...runtimes.values()].map((runtime) => submitFeedback(runtime, options, stage.name, ledger)));
+  await cancelRemaining(runtimes, options, stage.name, ledger);
+  const activeAfter = [...runtimes.values()].filter((runtime) => runtime.state?.room && ACTIVE_SESSION_STATES.has(runtime.state?.session?.status));
+  if (activeAfter.length) throw new Error(`CAPACITY_STATEFUL: stage ${stage.name} left ${activeAfter.length} active test sessions`);
+  return {
+    stage: stage.name,
+    status: "PASS",
+    users: stage.count,
+    expectedRooms,
+    activeUsers: expectedActive,
+    actorIds: [...runtimes.keys()],
+    realtimeSubscriptions: [...runtimes.values()].map((runtime) => runtime.realtime.filter((event) => event.status === "SUBSCRIBED").length),
+    messages: messageLedger.filter((message) => message.stage === stage.name).map(({ marker, ...safe }) => safe),
+  };
+}
+
+export async function runStatefulRehearsal({ options, manifest, credentials }) {
+  const plan = buildStatefulPlan({ actors: manifest.actors, runId: options.runId, maxUsers: options.maxUsers });
+  const config = await loadAuthConfig(options.baseUrl);
+  const credentialsById = new Map(credentials.map((credential) => [credential.identity, credential]));
+  const runtimes = new Map();
+  const ledger = { requestCount: 0, events: [] };
+  const messageLedger = [];
+  const presenceLedger = [];
+  const realtimeLedger = [];
+  const startedAt = new Date().toISOString();
+  try {
+    for (const actor of manifest.actors.slice(0, 20)) {
+      const credential = credentialsById.get(actor.actorId);
+      if (!credential) throw new Error(`CAPACITY_AUTH: no stateful credential for ${actor.actorId}`);
+      const session = await authenticateIdentity({ baseUrl: options.baseUrl, credential, config });
+      const runtime = {
+        actor,
+        actorId: actor.actorId,
+        role: String(actor.role || actor.mode || "").toLowerCase(),
+        userId: actor.userId !== "UNKNOWN" ? actor.userId : null,
+        accessToken: session.accessToken,
+        refreshToken: session.refreshToken,
+        tokenExpiry: session.tokenExpiry,
+        config,
+        client: null,
+        heartbeat: null,
+        roomChannels: new Set(),
+        state: null,
+        ids: {},
+        events: ledger.events,
+        realtime: [],
+        realtimeLedger,
+        presence: presenceLedger,
+      };
+      const state = await statefulRequest({ runtime, options, stage: "preflight", action: "state.smoke", requestPath: "/api/state", ledger });
+      runtime.state = state.data;
+      runtime.userId = state.data?.user?.id || runtime.userId;
+      if (!runtime.userId) throw new Error(`CAPACITY_AUTH: ${actor.actorId} state has no user id`);
+      actor.userId = runtime.userId;
+      runtimes.set(actor.actorId, runtime);
+    }
+    const userIds = new Set([...runtimes.values()].map((runtime) => runtime.userId));
+    if (userIds.size !== runtimes.size) throw new Error("CAPACITY_AUTH: stateful identity isolation failed");
+    const stages = [];
+    for (const stage of plan.stages) {
+      const selected = new Map([...runtimes.entries()].filter(([actorId]) => stage.actorIds.includes(actorId)));
+      const result = await runStage({ stage, runtimes: selected, options, ledger, messageLedger });
+      stages.push(result);
+    }
+    return { runId: options.runId, mode: "stateful", startedAt, endedAt: new Date().toISOString(), stages, requests: ledger.events, messages: messageLedger, presence: presenceLedger, realtime: realtimeLedger, identityIsolation: true, productionMutation: true, plan };
+  } finally {
+    await Promise.all([...runtimes.values()].map((runtime) => closeClient(runtime).catch(() => {})));
+    clearActorTokens([...runtimes.values()]);
+  }
+}
+
+export async function writeStatefulEvidence({ directory, manifest, result }) {
+  await mkdir(directory, { recursive: true });
+  const safeManifest = {
+    run_id: result?.runId || manifest.run_id || "UNKNOWN",
+    actors: manifest.actors.slice(0, 20).map(({ actorId, userId, mode, profile, role, match, scenario }) => ({ actor_id: actorId, user_id: userId, mode, profile, role, match, scenario })),
+  };
+  const safe = JSON.stringify(safeManifest);
+  if (/password|access_token|refresh_token|service_role/i.test(safe)) throw new Error("CAPACITY_STATEFUL: unsafe evidence manifest");
+  await writeFile(path.join(directory, "run-manifest.json"), `${JSON.stringify(safeManifest, null, 2)}\n`);
+  await writeFile(path.join(directory, "summary.json"), `${JSON.stringify({ runId: result?.runId, mode: result?.mode, startedAt: result?.startedAt, endedAt: result?.endedAt, stages: result?.stages, identityIsolation: result?.identityIsolation, productionMutation: result?.productionMutation }, null, 2)}\n`);
+  await writeFile(path.join(directory, "lifecycle-ledger.ndjson"), `${(result?.requests || []).map((event) => JSON.stringify(event)).join("\n")}\n`);
+  await writeFile(path.join(directory, "message-ledger.json"), `${JSON.stringify(result?.messages || [], null, 2)}\n`);
+  await writeFile(path.join(directory, "presence-ledger.json"), `${JSON.stringify(result?.presence || [], null, 2)}\n`);
+  await writeFile(path.join(directory, "realtime-ledger.json"), `${JSON.stringify(result?.realtime || [], null, 2)}\n`);
+  await writeFile(path.join(directory, "plan.json"), `${JSON.stringify(result?.plan || {}, null, 2)}\n`);
+}

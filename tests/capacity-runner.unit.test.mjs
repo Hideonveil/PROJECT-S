@@ -8,12 +8,14 @@ import {
   buildAuthManifest,
   buildReaderAllocation,
   buildReadOnlyPlan,
+  normalizeStatefulCredentials,
   dryRunPlan,
   normalizeCredentials,
   parseArgs,
   readCredentialsFile,
   writeAuthManifest,
 } from "../tools/capacity/runner.mjs";
+import { buildStatefulPlan, statefulDryRunPlan } from "../tools/capacity/stateful-adapter.mjs";
 
 const actors = Array.from({ length: 100 }, (_, index) => ({
   actorId: `capacity-${String(index + 1).padStart(3, "0")}`,
@@ -27,7 +29,7 @@ describe("capacity runner safety contract", () => {
     const options = parseArgs(["--run-id", "cap100-test"]);
     expect(options.mode).toBe("dry-run");
     expect(options.maxRps).toBe(DEFAULT_OPTIONS.maxRps);
-    expect(dryRunPlan({ options, manifest: { actors } })).toMatchObject({ networkExecuted: false, statefulExecution: expect.stringContaining("not implemented") });
+    expect(dryRunPlan({ options, manifest: { actors } })).toMatchObject({ networkExecuted: false, statefulExecution: expect.stringContaining("5 -> 10 -> 20") });
   });
 
   it("only permits fixed read paths and GET/HEAD in read-only mode", () => {
@@ -133,6 +135,38 @@ describe("capacity runner safety contract", () => {
       { identity: "A", identifier: "b", password: "two" },
       { identity: "C", identifier: "c", password: "three" },
     ] })).toThrow(/distinct/);
+  });
+
+  it("validates the fixed 20-user stateful credential envelope", () => {
+    const credentials = normalizeStatefulCredentials({ identities: Array.from({ length: 20 }, (_, index) => ({
+      identity: `S${String(index + 1).padStart(2, "0")}`,
+      identifier: `stateful-${index + 1}`,
+      password: "not-written-to-evidence",
+    })) });
+    expect(credentials).toHaveLength(20);
+    expect(() => normalizeStatefulCredentials({ identities: credentials.slice(0, 4) })).toThrow(/5 to 20/);
+    expect(() => normalizeStatefulCredentials({ identities: [...credentials, { identity: "S21", identifier: "x", password: "y" }] })).toThrow(/5 to 20/);
+  });
+
+  it("builds only the approved 5 -> 10 -> 20 stateful stages", () => {
+    const statefulActors = [
+      { actorId: "R01", role: "ranked", mode: "ranked" },
+      { actorId: "R02", role: "ranked", mode: "ranked" },
+      { actorId: "C01", role: "casual", mode: "casual" },
+      { actorId: "C02", role: "casual", mode: "casual" },
+      { actorId: "C03", role: "casual", mode: "casual" },
+      { actorId: "R03", role: "ranked", mode: "ranked" },
+      { actorId: "R04", role: "ranked", mode: "ranked" },
+      { actorId: "C04", role: "casual", mode: "casual" },
+      { actorId: "C05", role: "casual", mode: "casual" },
+      { actorId: "C06", role: "casual", mode: "casual" },
+      ...Array.from({ length: 8 }, (_, index) => ({ actorId: `R${String(index + 5).padStart(2, "0")}`, role: "ranked", mode: "ranked" })),
+      { actorId: "F01", role: "fragmented", mode: "fragmented" },
+      { actorId: "F02", role: "fragmented", mode: "fragmented" },
+    ];
+    const plan = buildStatefulPlan({ actors: statefulActors, runId: "stateful-test", maxUsers: 20 });
+    expect(plan.stages.map((stage) => stage.count)).toEqual([5, 10, 20]);
+    expect(statefulDryRunPlan({ actors: statefulActors, runId: "stateful-test", maxUsers: 20 })).toMatchObject({ networkExecuted: false, safety: { rawSql: false, serviceRole: false, fixedSequence: "5 -> 10 -> 20" } });
   });
 
   it("reads 0600 secrets and writes a manifest without credentials", async () => {

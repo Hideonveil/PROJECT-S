@@ -24,7 +24,8 @@ export const READ_ONLY_PATHS = Object.freeze([
   /^\/styles\/product-shell\.css$/,
 ]);
 
-const STATEFUL_PATHS = Object.freeze([
+export const STATEFUL_PATHS = Object.freeze([
+  /^\/api\/auth\/login$/,
   /^\/api\/online$/,
   /^\/api\/offline$/,
   /^\/api\/matchmaking\/start$/,
@@ -290,6 +291,53 @@ export async function readCredentialsFile(file) {
   }
 }
 
+export function normalizeStatefulCredentials(value) {
+  const records = Array.isArray(value) ? value : value?.identities;
+  if (!Array.isArray(records) || records.length < 5 || records.length > 20) {
+    throw new Error("CAPACITY_AUTH: stateful rehearsal requires 5 to 20 identities");
+  }
+  const seen = new Set();
+  return records.map((record, index) => {
+    if (!record || typeof record !== "object") throw new Error(`CAPACITY_AUTH: stateful identity ${index + 1} is invalid`);
+    const identity = String(record.identity || record.id || "").trim();
+    const identifier = String(record.identifier || record.username || record.email || "").trim();
+    const password = String(record.password || "");
+    if (!/^[A-Za-z0-9][A-Za-z0-9._-]{1,31}$/.test(identity)) {
+      throw new Error(`CAPACITY_AUTH: stateful identity ${index + 1} has an invalid identity`);
+    }
+    if (!identifier || !password) throw new Error(`CAPACITY_AUTH: stateful identity ${identity || index + 1} is incomplete`);
+    if (seen.has(identity)) throw new Error(`CAPACITY_AUTH: duplicate stateful identity ${identity}`);
+    seen.add(identity);
+    return { identity, identifier, password };
+  });
+}
+
+export async function readStatefulCredentialsFile(file) {
+  const fileStat = await stat(file);
+  if (!fileStat.isFile()) throw new Error("CAPACITY_AUTH: stateful secret path is not a file");
+  if ((fileStat.mode & 0o777) !== 0o600) throw new Error("CAPACITY_AUTH: stateful secret file must have mode 0600");
+  const buffer = await readFile(file);
+  try {
+    return normalizeStatefulCredentials(JSON.parse(buffer.toString("utf8")));
+  } catch (error) {
+    if (error?.message?.startsWith("CAPACITY_AUTH:")) throw error;
+    throw new Error("CAPACITY_AUTH: stateful secret file must contain valid JSON credentials");
+  } finally {
+    buffer.fill(0);
+  }
+}
+
+export async function readStatefulCredentials(options) {
+  if (!options.authSecretFile) throw new Error("CAPACITY_AUTH: stateful rehearsal requires --auth-secret-file");
+  const credentials = await readStatefulCredentialsFile(options.authSecretFile);
+  return {
+    credentials,
+    cleanup: async () => {
+      await unlink(options.authSecretFile).catch(() => {});
+    },
+  };
+}
+
 async function promptVisible(question, input, output) {
   const readline = createInterface({ input, output });
   try {
@@ -396,6 +444,9 @@ export async function loadManifest(file) {
       mode: actor.mode || "UNKNOWN",
       profile: actor.profile || "UNKNOWN",
       tokenExpiry: actor.token_expiry || actor.tokenExpiry || "UNKNOWN",
+      role: actor.role || actor.mode || "UNKNOWN",
+      match: actor.match && typeof actor.match === "object" ? actor.match : null,
+      scenario: actor.scenario || null,
     };
   });
   if (actors.length > 100) throw new Error("CAPACITY_MANIFEST: maximum 100 identities");
@@ -473,7 +524,7 @@ export function buildReadOnlyPlan({ actors, maxUsers, maxRequests, runId, reader
   };
 }
 
-async function fetchJson({ url, method = "GET", headers = {}, body, timeoutMs = 10_000 }) {
+export async function fetchJson({ url, method = "GET", headers = {}, body, timeoutMs = 10_000 }) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -497,7 +548,7 @@ async function fetchJson({ url, method = "GET", headers = {}, body, timeoutMs = 
   }
 }
 
-async function loadAuthConfig(baseUrl) {
+export async function loadAuthConfig(baseUrl) {
   const { response, data } = await fetchJson({ url: new URL("/api/config", baseUrl).toString() });
   if (response.status !== 200 || !data?.supabaseUrl || !data?.supabaseAnonKey) {
     throw new Error(`CAPACITY_AUTH: /api/config returned HTTP ${response.status}`);
@@ -505,7 +556,7 @@ async function loadAuthConfig(baseUrl) {
   return { supabaseUrl: data.supabaseUrl, supabaseAnonKey: data.supabaseAnonKey };
 }
 
-async function authenticateIdentity({ baseUrl, credential, config }) {
+export async function authenticateIdentity({ baseUrl, credential, config }) {
   const loginBody = JSON.stringify({ identifier: credential.identifier, password: credential.password });
   const login = await fetchJson({
     url: new URL("/api/auth/login", baseUrl).toString(),
@@ -528,6 +579,8 @@ async function authenticateIdentity({ baseUrl, credential, config }) {
     identity: credential.identity,
     authUserId: data.user.id,
     accessToken: data.session.access_token,
+    refreshToken: data.session.refresh_token || "",
+    email: login.data.email,
     tokenExpiry: data.session.expires_at ? new Date(data.session.expires_at * 1000).toISOString() : "UNKNOWN",
   };
 }
@@ -575,6 +628,7 @@ export async function authenticateActors({ baseUrl, actors, credentials, runId }
 export function clearActorTokens(actors = []) {
   for (const actor of actors) {
     if (Object.prototype.hasOwnProperty.call(actor, "accessToken")) actor.accessToken = "";
+    if (Object.prototype.hasOwnProperty.call(actor, "refreshToken")) actor.refreshToken = "";
   }
 }
 
@@ -797,7 +851,7 @@ export function dryRunPlan({ options, manifest = { actors: [] } }) {
     durationSec: options.durationSec,
     readOnlyPaths: READ_ONLY_PATHS.map((pattern) => pattern.toString()),
     actorSlots: manifest.actors.length,
-    statefulExecution: "guarded scaffold only; Realtime/lifecycle adapter not implemented",
+    statefulExecution: "use --stateful --scenario dry-run for the fixed 5 -> 10 -> 20 adapter plan",
   };
 }
 
@@ -808,7 +862,7 @@ export async function writeEvidence({ directory, manifest, plan, result }) {
     release_candidate: manifest.release_candidate || "UNKNOWN",
     endpoint: manifest.endpoint || "/api/state",
     reader_allocation: manifest.readerAllocation || manifest.reader_allocation || null,
-    actors: manifest.actors.map(({ actorId, userId, mode, profile, tokenExpiry }) => ({ actor_id: actorId, user_id: userId, mode, profile, token_expiry: tokenExpiry })),
+    actors: manifest.actors.map(({ actorId, userId, mode, profile, tokenExpiry, role, match, scenario }) => ({ actor_id: actorId, user_id: userId, mode, profile, token_expiry: tokenExpiry, role, match, scenario })),
   };
   assertNoCredentialFields(safeManifest, "evidence manifest");
   await writeFile(path.join(directory, "run-manifest.json"), `${JSON.stringify(safeManifest, null, 2)}\n`);
@@ -834,7 +888,24 @@ async function main() {
     return;
   }
   if (options.mode === "stateful") {
-    throw new Error("CAPACITY_RUNNER_NOT_READY: stateful lifecycle and Realtime adapter is not implemented; no request was sent");
+    const { buildStatefulPlan, runStatefulRehearsal, statefulDryRunPlan, writeStatefulEvidence } = await import("./stateful-adapter.mjs");
+    const manifest = await loadManifest(options.manifest);
+    if (options.scenario === "dry-run") {
+      console.log(JSON.stringify(statefulDryRunPlan({ actors: manifest.actors, runId: options.runId, maxUsers: options.maxUsers }), null, 2));
+      return;
+    }
+    const statefulAuth = await readStatefulCredentials(options);
+    try {
+      buildStatefulPlan({ actors: manifest.actors, runId: options.runId, maxUsers: options.maxUsers });
+      const result = await runStatefulRehearsal({ options, manifest, credentials: statefulAuth.credentials });
+      const directory = options.evidenceDir || path.join(process.cwd(), "output", "capacity-validation", options.runId);
+      await writeStatefulEvidence({ directory, manifest, result });
+      console.log(JSON.stringify({ runId: result.runId, mode: result.mode, startedAt: result.startedAt, endedAt: result.endedAt, stages: result.stages, identityIsolation: result.identityIsolation, evidenceDir: directory }, null, 2));
+    } finally {
+      clearCredentials(statefulAuth.credentials);
+      await statefulAuth.cleanup();
+    }
+    return;
   }
   let authInput = null;
   let manifest = { actors: [] };
