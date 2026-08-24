@@ -9,6 +9,7 @@ import {
   clearActorTokens,
   fetchJson,
   loadAuthConfig,
+  STATEFUL_MAX_USERS,
   STATEFUL_PATHS,
 } from "./runner.mjs";
 
@@ -16,6 +17,11 @@ const STAGES = Object.freeze([
   { name: "5", count: 5, ranked: 2, casual: 3, fragmented: 0 },
   { name: "10", count: 10, ranked: 4, casual: 6, fragmented: 0 },
   { name: "20", count: 20, ranked: 12, casual: 6, fragmented: 2 },
+  { name: "30", count: 30, ranked: 18, casual: 9, fragmented: 3 },
+  { name: "40", count: 40, ranked: 24, casual: 12, fragmented: 4 },
+  { name: "50", count: 50, ranked: 30, casual: 15, fragmented: 5 },
+  { name: "75", count: 75, ranked: 42, casual: 24, fragmented: 9 },
+  { name: "100", count: 100, ranked: 60, casual: 30, fragmented: 10 },
 ]);
 
 const ACTIVE_SESSION_STATES = new Set(["active", "playing", "matched"]);
@@ -37,12 +43,14 @@ function stageDefinition(name) {
   return stage;
 }
 
-export function buildStatefulPlan({ actors, runId, maxUsers = 20 }) {
-  if (!Array.isArray(actors) || actors.length < 20) {
-    throw new Error("CAPACITY_STATEFUL: manifest must contain at least 20 dedicated actors");
+export function buildStatefulPlan({ actors, runId, maxUsers = STATEFUL_MAX_USERS }) {
+  if (!Array.isArray(actors) || actors.length < maxUsers) {
+    throw new Error(`CAPACITY_STATEFUL: manifest must contain at least ${maxUsers} dedicated actors`);
   }
-  if (maxUsers !== 20) throw new Error("CAPACITY_STATEFUL: only the fixed 5 -> 10 -> 20 sequence is supported");
-  const stages = STAGES.map((stage) => {
+  if (maxUsers < 5 || maxUsers > STATEFUL_MAX_USERS || !STAGES.some((stage) => stage.count === maxUsers)) {
+    throw new Error(`CAPACITY_STATEFUL: maxUsers must be one of the progressive levels up to ${STATEFUL_MAX_USERS}`);
+  }
+  const stages = STAGES.filter((stage) => stage.count <= maxUsers).map((stage) => {
     const selected = actors.slice(0, stage.count);
     if (selected.length !== stage.count) throw new Error(`CAPACITY_STATEFUL: stage ${stage.name} lacks actors`);
     const counts = selected.reduce((acc, actor) => {
@@ -58,15 +66,15 @@ export function buildStatefulPlan({ actors, runId, maxUsers = 20 }) {
   return { runId, mode: "stateful", maxUsers, stages, allowedPostPaths: STATEFUL_PATHS.map((pattern) => pattern.toString()) };
 }
 
-export function statefulDryRunPlan({ actors = [], runId, maxUsers = 20 }) {
+export function statefulDryRunPlan({ actors = [], runId, maxUsers = STATEFUL_MAX_USERS }) {
   const plan = buildStatefulPlan({ actors, runId, maxUsers });
   return {
     ...plan,
     networkExecuted: false,
     mutationPaths: ["/api/auth/login", "/api/online", "/api/offline", "/api/matchmaking/*", "/api/room/:code/*", "Supabase messages insert", "Supabase Realtime subscribe"],
     safety: {
-      maxStageUsers: 20,
-      fixedSequence: "5 -> 10 -> 20",
+      maxStageUsers: STATEFUL_MAX_USERS,
+      progressiveSequence: "5 -> 10 -> 20 -> 30 -> 40 -> 50 -> 75 -> 100",
       rawSql: false,
       serviceRole: false,
       globalKillSwitch: true,
@@ -508,7 +516,7 @@ export async function runStatefulRehearsal({ options, manifest, credentials }) {
   const realtimeLedger = [];
   const startedAt = new Date().toISOString();
   try {
-    for (const actor of manifest.actors.slice(0, 20)) {
+    for (const actor of manifest.actors.slice(0, plan.maxUsers)) {
       const credential = credentialsById.get(actor.actorId);
       if (!credential) throw new Error(`CAPACITY_AUTH: no stateful credential for ${actor.actorId}`);
       const session = await authenticateIdentity({ baseUrl: options.baseUrl, credential, config });
@@ -557,7 +565,7 @@ export async function writeStatefulEvidence({ directory, manifest, result }) {
   await mkdir(directory, { recursive: true });
   const safeManifest = {
     run_id: result?.runId || manifest.run_id || "UNKNOWN",
-    actors: manifest.actors.slice(0, 20).map(({ actorId, userId, mode, profile, role, match, scenario }) => ({ actor_id: actorId, user_id: userId, mode, profile, role, match, scenario })),
+    actors: manifest.actors.slice(0, result?.plan?.maxUsers || manifest.actors.length).map(({ actorId, userId, mode, profile, role, match, scenario }) => ({ actor_id: actorId, user_id: userId, mode, profile, role, match, scenario })),
   };
   const safe = JSON.stringify(safeManifest);
   if (/password|access_token|refresh_token|service_role/i.test(safe)) throw new Error("CAPACITY_STATEFUL: unsafe evidence manifest");

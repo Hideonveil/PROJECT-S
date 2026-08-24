@@ -29,7 +29,7 @@ describe("capacity runner safety contract", () => {
     const options = parseArgs(["--run-id", "cap100-test"]);
     expect(options.mode).toBe("dry-run");
     expect(options.maxRps).toBe(DEFAULT_OPTIONS.maxRps);
-    expect(dryRunPlan({ options, manifest: { actors } })).toMatchObject({ networkExecuted: false, statefulExecution: expect.stringContaining("5 -> 10 -> 20") });
+    expect(dryRunPlan({ options, manifest: { actors } })).toMatchObject({ networkExecuted: false, statefulExecution: expect.stringContaining("5 -> 10 -> 20 -> 30 -> 40 -> 50 -> 75 -> 100") });
   });
 
   it("only permits fixed read paths and GET/HEAD in read-only mode", () => {
@@ -137,18 +137,18 @@ describe("capacity runner safety contract", () => {
     ] })).toThrow(/distinct/);
   });
 
-  it("validates the fixed 20-user stateful credential envelope", () => {
-    const credentials = normalizeStatefulCredentials({ identities: Array.from({ length: 20 }, (_, index) => ({
+  it("validates the progressive 100-user stateful credential envelope", () => {
+    const credentials = normalizeStatefulCredentials({ identities: Array.from({ length: 100 }, (_, index) => ({
       identity: `S${String(index + 1).padStart(2, "0")}`,
       identifier: `stateful-${index + 1}`,
       password: "not-written-to-evidence",
     })) });
-    expect(credentials).toHaveLength(20);
-    expect(() => normalizeStatefulCredentials({ identities: credentials.slice(0, 4) })).toThrow(/5 to 20/);
-    expect(() => normalizeStatefulCredentials({ identities: [...credentials, { identity: "S21", identifier: "x", password: "y" }] })).toThrow(/5 to 20/);
+    expect(credentials).toHaveLength(100);
+    expect(() => normalizeStatefulCredentials({ identities: credentials.slice(0, 4) })).toThrow(/5 to 100/);
+    expect(() => normalizeStatefulCredentials({ identities: [...credentials, { identity: "S101", identifier: "x", password: "y" }] })).toThrow(/5 to 100/);
   });
 
-  it("builds only the approved 5 -> 10 -> 20 stateful stages", () => {
+  it("builds the progressive 5 -> 100 stateful stages", () => {
     const statefulActors = [
       { actorId: "R01", role: "ranked", mode: "ranked" },
       { actorId: "R02", role: "ranked", mode: "ranked" },
@@ -163,10 +163,17 @@ describe("capacity runner safety contract", () => {
       ...Array.from({ length: 8 }, (_, index) => ({ actorId: `R${String(index + 5).padStart(2, "0")}`, role: "ranked", mode: "ranked" })),
       { actorId: "F01", role: "fragmented", mode: "fragmented" },
       { actorId: "F02", role: "fragmented", mode: "fragmented" },
+      ...[
+        ...Array(6).fill("ranked"), ...Array(3).fill("casual"), ...Array(1).fill("fragmented"),
+        ...Array(6).fill("ranked"), ...Array(3).fill("casual"), ...Array(1).fill("fragmented"),
+        ...Array(6).fill("ranked"), ...Array(3).fill("casual"), ...Array(1).fill("fragmented"),
+        ...Array(12).fill("ranked"), ...Array(9).fill("casual"), ...Array(4).fill("fragmented"),
+        ...Array(18).fill("ranked"), ...Array(6).fill("casual"), ...Array(1).fill("fragmented"),
+      ].map((role, index) => ({ actorId: `X${String(index + 1).padStart(2, "0")}`, role, mode: role })),
     ];
-    const plan = buildStatefulPlan({ actors: statefulActors, runId: "stateful-test", maxUsers: 20 });
-    expect(plan.stages.map((stage) => stage.count)).toEqual([5, 10, 20]);
-    expect(statefulDryRunPlan({ actors: statefulActors, runId: "stateful-test", maxUsers: 20 })).toMatchObject({ networkExecuted: false, safety: { rawSql: false, serviceRole: false, fixedSequence: "5 -> 10 -> 20" } });
+    const plan = buildStatefulPlan({ actors: statefulActors, runId: "stateful-test", maxUsers: 100 });
+    expect(plan.stages.map((stage) => stage.count)).toEqual([5, 10, 20, 30, 40, 50, 75, 100]);
+    expect(statefulDryRunPlan({ actors: statefulActors, runId: "stateful-test", maxUsers: 100 })).toMatchObject({ networkExecuted: false, safety: { rawSql: false, serviceRole: false, progressiveSequence: "5 -> 10 -> 20 -> 30 -> 40 -> 50 -> 75 -> 100" } });
   });
 
   it("reads 0600 secrets and writes a manifest without credentials", async () => {

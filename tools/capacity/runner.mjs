@@ -41,6 +41,7 @@ export const STATEFUL_PATHS = Object.freeze([
 const SECRET_TEXT = /service[_-]?role|supabase_service_role|private\s+key|database\s+password|secret_key/i;
 const RUN_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$/;
 const AUTH_IDENTITIES = Object.freeze(["A", "B", "C"]);
+export const STATEFUL_MAX_USERS = 100;
 
 export const DEFAULT_OPTIONS = Object.freeze({
   mode: "dry-run",
@@ -293,8 +294,8 @@ export async function readCredentialsFile(file) {
 
 export function normalizeStatefulCredentials(value) {
   const records = Array.isArray(value) ? value : value?.identities;
-  if (!Array.isArray(records) || records.length < 5 || records.length > 20) {
-    throw new Error("CAPACITY_AUTH: stateful rehearsal requires 5 to 20 identities");
+  if (!Array.isArray(records) || records.length < 5 || records.length > STATEFUL_MAX_USERS) {
+    throw new Error(`CAPACITY_AUTH: stateful rehearsal requires 5 to ${STATEFUL_MAX_USERS} identities`);
   }
   const seen = new Set();
   return records.map((record, index) => {
@@ -851,7 +852,7 @@ export function dryRunPlan({ options, manifest = { actors: [] } }) {
     durationSec: options.durationSec,
     readOnlyPaths: READ_ONLY_PATHS.map((pattern) => pattern.toString()),
     actorSlots: manifest.actors.length,
-    statefulExecution: "use --stateful --scenario dry-run for the fixed 5 -> 10 -> 20 adapter plan",
+    statefulExecution: "use --stateful --scenario dry-run for the progressive 5 -> 10 -> 20 -> 30 -> 40 -> 50 -> 75 -> 100 adapter plan",
   };
 }
 
@@ -873,7 +874,7 @@ export async function writeEvidence({ directory, manifest, plan, result }) {
 }
 
 export function helpText() {
-  return `Usage:\n  pnpm capacity:run -- --dry-run --run-id <id>\n  pnpm capacity:run -- --prepare-auth --base-url <url> --run-id <id> --auth-secret-file <0600-file> --manifest-out <safe-file> --allow-production --production-ack <id>\n  pnpm capacity:run -- --execute-read-only --base-url <url> --run-id <id> --manifest <file> --auth-secret-file <0600-file> --max-users <n> --max-rps <n> --max-requests <n> --allow-production --production-ack <id>\n\nSafety:\n  dry-run is the default and performs no network request. Auth preparation accepts credentials only through hidden TTY stdin or a 0600 JSON file; credentials and access tokens never enter manifests, evidence, logs, or command arguments. Auth preparation uses the normal /api/auth/login plus Supabase password sign-in path and only performs authenticated GET smoke reads. Read-only execution only permits GET/HEAD on the fixed allowlist. Production execution requires --allow-production and --production-ack=<run-id>. Stateful mode additionally requires --stateful-approval=<run-id> and currently stops before mutation because the lifecycle/Realtime adapter is not implemented.\n`;
+  return `Usage:\n  pnpm capacity:run -- --dry-run --run-id <id>\n  pnpm capacity:run -- --prepare-auth --base-url <url> --run-id <id> --auth-secret-file <0600-file> --manifest-out <safe-file> --allow-production --production-ack <id>\n  pnpm capacity:run -- --execute-read-only --base-url <url> --run-id <id> --manifest <file> --auth-secret-file <0600-file> --max-users <n> --max-rps <n> --max-requests <n> --allow-production --production-ack <id>\n\nSafety:\n  dry-run is the default and performs no network request. Auth preparation accepts credentials only through hidden TTY stdin or a 0600 JSON file; credentials and access tokens never enter manifests, evidence, logs, or command arguments. Auth preparation uses the normal /api/auth/login plus Supabase password sign-in path and only performs authenticated GET smoke reads. Read-only execution only permits GET/HEAD on the fixed allowlist. Production execution requires --allow-production and --production-ack=<run-id>. Stateful mode requires --stateful-approval=<run-id> and supports the progressive 5 -> 10 -> 20 -> 30 -> 40 -> 50 -> 75 -> 100 plan.\n`;
 }
 
 async function main() {

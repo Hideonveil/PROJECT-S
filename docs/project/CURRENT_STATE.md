@@ -12,6 +12,7 @@
 - 已确认关闭的 P0：`LEGACY_ROOM_DUAL_RENDER_PATH`、`ROOM_SESSION_TERMINAL_LIFECYCLE_GHOST`、`REFRESH_PAGEHIDE_FALSE_EXIT`。
 - 当前唯一任务：由 03 审核并补齐 Final Private Pilot Gate 剩余 evidence；不得把已关闭 P0 误写成 Final Gate PASS，也不得自动替代 03 给出最终 Gate 结论。
 - 本阶段不扩大产品、测试或审计范围；P0 Active Room regression 已完成并通过，后续仅执行 03 明确要求的剩余 Gate 证据。
+- 容量验证策略已改为渐进式容量探顶：`5 → 10 → 20 → 30 → 40 → 50 → 75 → 100`；当前工具支持至 `100`，容量结果仍为 `NOT ASSESSED`，不把人数档位本身解释为 FAIL 或 PASS。
 
 ## 2. Git 与源码基线
 
@@ -90,6 +91,7 @@
 - 三个已登记的 P0 均保持 `CLOSED`；当前不存在新的 P0。后续只按 `Final Private Pilot Gate` 剩余范围补证据。
 - 历史 5 个 ghost Room 仍存在，属于已知历史基线，不是本轮新增问题。
 - 旧兼容代码和旧 API 仍可能存在；不能仅因为某个字段或 API 存在，就推断其为当前主产品路径。
+- Stateful capacity rehearsal 尚未取得有效容量结论：此前 20 人尝试分别因 runner 环境兼容错误、Production preflight `playing=2` 和认证阶段 HTTP `429` 停止；未进入完整 5→10→20 业务阶段。当前不把这些结果写成 Capacity FAIL，也不把它们写成 Capacity PASS。
 
 ## 6. 当前不重复执行的工作
 
