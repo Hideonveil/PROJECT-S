@@ -83,6 +83,13 @@ let presenceHeartbeatHandle = 0;
 let chatSendPending = false;
 let goodbyeRequestPending = false;
 let exitRequestPending = false;
+const roomLikePendingTargets = new Set();
+let roomRatingPending = false;
+let routeFocusPending = false;
+let lastGoodbyeAnnouncementKey = "";
+let lastSessionAnnouncementKey = "";
+let chatAnnouncementRoomId = "";
+const announcedChatMessages = new Set();
 let wizardAdvanceTimer = null;
 let roomExitReadyAt = 0;
 let matchStartObserver = null;
@@ -622,6 +629,13 @@ function destroyField() {
   }
 }
 
+function focusCurrentRouteHeading() {
+  const heading = document.querySelector(".home-main h1, .home-main [role='heading']");
+  if (!heading) return;
+  heading.setAttribute("tabindex", "-1");
+  heading.focus({ preventScroll: true });
+}
+
 function navigate(path) {
   if (location.hash === path) {
     render();
@@ -633,6 +647,7 @@ function navigate(path) {
 function replaceCanonicalRoute(path) {
   const nextUrl = `${location.pathname}${location.search}${path}`;
   if (location.hash !== path) history.replaceState(history.state, "", nextUrl);
+  routeFocusPending = true;
   render();
   trackCurrentPage();
 }
@@ -1060,6 +1075,12 @@ function render() {
 
   document.body.dataset.immersive = immersive ? "true" : "";
   app.replaceChildren(persistentProductShell(html));
+  if (route.name === "gameover") restorePendingFeedbackState();
+  lastGoodbyeAnnouncementKey = route.name === "room" ? goodbyeAnnouncementKey(state.room) : "";
+  if (routeFocusPending) {
+    routeFocusPending = false;
+    window.requestAnimationFrame(() => focusCurrentRouteHeading());
+  }
   paintAvatars(app);
   activeField = initNodeField(app);
   initProductTicker();
@@ -1474,6 +1495,20 @@ function roomShapeChanged(next, prev) {
   return members !== oldMembers;
 }
 
+function goodbyeAnnouncementKey(room) {
+  if (!room?.id || !state.user?.id) return "";
+  const memberModel = sessionMembers(room, state.user.id);
+  const mine = memberModel.requestIds.has(state.user.id);
+  return `${room.id}:${memberModel.goodbyeCount}/${memberModel.goodbyeDenominator}:${mine}`;
+}
+
+function announceSessionLive(message, key = message) {
+  const announcer = document.querySelector("[data-session-live-announcer]");
+  if (!announcer || !message || key === lastSessionAnnouncementKey) return;
+  lastSessionAnnouncementKey = key;
+  announcer.textContent = message;
+}
+
 function updateSessionView(nextRoom) {
   const root = document.querySelector("[data-session-preview]");
   if (!root || !nextRoom) return false;
@@ -1501,7 +1536,17 @@ function updateSessionView(nextRoom) {
         : count > 0
           ? `${count}/${denominator}，已有成员拜拜，点击后回应。`
           : `0/${denominator} 已确认，所有成员都确认后进入赛后反馈。`;
-    statusEl.innerHTML = `<i></i>${copy}`;
+    const nextAnnouncementKey = goodbyeAnnouncementKey(nextRoom);
+    if (!lastGoodbyeAnnouncementKey || nextAnnouncementKey !== lastGoodbyeAnnouncementKey) {
+      const dot = statusEl.querySelector("i");
+      statusEl.textContent = "";
+      if (dot) {
+        dot.setAttribute("aria-hidden", "true");
+        statusEl.append(dot);
+      }
+      statusEl.append(document.createTextNode(copy));
+      lastGoodbyeAnnouncementKey = nextAnnouncementKey;
+    }
   }
   return true;
 }
@@ -1528,6 +1573,17 @@ function updateGameoverView() {
     choice.setAttribute("aria-pressed", String(selected));
   });
   return true;
+}
+
+function restorePendingFeedbackState() {
+  roomLikePendingTargets.forEach((targetUserId) => {
+    const button = [...document.querySelectorAll("[data-gameover-like]")]
+      .find((candidate) => candidate.dataset.targetUserId === targetUserId);
+    if (!button) return;
+    button.disabled = true;
+    button.setAttribute("aria-busy", "true");
+  });
+  if (roomRatingPending) setRoomRatingBusy(true);
 }
 
 function matchmakingShape(match) {
@@ -2111,6 +2167,13 @@ function setChatLoading(loading) {
 function renderChatMessages(messages) {
   const el = document.getElementById("room-chat");
   if (!el) return;
+  const roomId = state.room?.id || "";
+  if (roomId !== chatAnnouncementRoomId) {
+    chatAnnouncementRoomId = roomId;
+    announcedChatMessages.clear();
+    lastSessionAnnouncementKey = "";
+  }
+  messages.forEach((message) => announcedChatMessages.add(chatMessageKey(message)));
   if (!messages.length) {
     el.innerHTML = '<div class="chat-empty">还没有消息，打个招呼吧</div>';
     return;
@@ -2127,13 +2190,28 @@ function chatMessageHtml(m) {
   return `<div class="chat-msg ${mine ? "chat-msg--mine" : ""}"><div class="chat-bubble">${esc(m.content || "")}</div><div class="chat-time">${time}</div></div>`;
 }
 
+function chatMessageKey(message) {
+  return String(message?.id || `${message?.sender_id || ""}:${message?.created_at || ""}:${message?.content || ""}`);
+}
+
 function appendChatMessage(m) {
   const el = document.getElementById("room-chat");
   if (!el) return;
+  const roomId = state.room?.id || "";
+  if (roomId !== chatAnnouncementRoomId) {
+    chatAnnouncementRoomId = roomId;
+    announcedChatMessages.clear();
+    lastSessionAnnouncementKey = "";
+  }
+  const messageKey = chatMessageKey(m);
+  if (announcedChatMessages.has(messageKey)) return;
   const empty = el.querySelector(".chat-empty");
   if (empty) empty.remove();
   el.insertAdjacentHTML("beforeend", chatMessageHtml(m));
   el.scrollTop = el.scrollHeight;
+  announcedChatMessages.add(messageKey);
+  const sender = m.sender_id === state.user.id ? "你" : "队友";
+  announceSessionLive(`新消息：${sender}：${String(m.content || "")}`, `chat:${messageKey}`);
 }
 
 async function sendRoomChat(message = null) {
@@ -2424,8 +2502,9 @@ async function setRoomLiked(targetUserId, liked) {
   const code = state.session?.roomCode || state.lastRoomCode;
   const members = Array.isArray(state.session?.members) ? state.session.members : [];
   const target = members.find((member) => member.id === targetUserId);
-  if (!targetUserId || !target || targetUserId === state.user.id || !code || !ONLINE) return;
+  if (!targetUserId || !target || targetUserId === state.user.id || !code || !ONLINE || roomLikePendingTargets.has(targetUserId)) return;
   const previousLiked = Boolean(target.likedByMe);
+  roomLikePendingTargets.add(targetUserId);
   const updateTarget = (value) => {
     const nextMembers = members.map((member) => member.id === targetUserId ? { ...member, likedByMe: value } : member);
     const activeMembers = nextMembers.filter((member) => (member.memberStatus || "active") === "active");
@@ -2438,6 +2517,12 @@ async function setRoomLiked(targetUserId, liked) {
   };
   updateTarget(liked);
   updateGameoverView();
+  const likeButton = [...document.querySelectorAll("[data-gameover-like]")]
+    .find((button) => button.dataset.targetUserId === targetUserId);
+  if (likeButton) {
+    likeButton.disabled = true;
+    likeButton.setAttribute("aria-busy", "true");
+  }
   try {
     await api.roomFeedback(code, { targetUserId, liked });
     toast(liked ? "已点赞" : "已取消点赞");
@@ -2446,6 +2531,15 @@ async function setRoomLiked(targetUserId, liked) {
     if (currentTarget?.likedByMe === liked) updateTarget(previousLiked);
     updateGameoverView();
     toast(err.message);
+  } finally {
+    roomLikePendingTargets.delete(targetUserId);
+    updateGameoverView();
+    const currentButton = [...document.querySelectorAll("[data-gameover-like]")]
+      .find((button) => button.dataset.targetUserId === targetUserId);
+    if (currentButton) {
+      currentButton.disabled = false;
+      currentButton.setAttribute("aria-busy", "false");
+    }
   }
 }
 
@@ -2536,12 +2630,21 @@ async function confirmExitRoom() {
   }
 }
 
+function setRoomRatingBusy(busy) {
+  document.querySelectorAll('[data-action="set-room-rating"]').forEach((choice) => {
+    choice.disabled = busy;
+    choice.setAttribute("aria-busy", String(busy));
+  });
+}
+
 async function setRoomRating(rating) {
   const code = state.session?.roomCode || state.lastRoomCode;
-  if (!code || !ONLINE) return;
+  if (!code || !ONLINE || roomRatingPending) return;
   const previousRating = state.session?.rating;
+  roomRatingPending = true;
   update({ session: { ...state.session, rating } });
   updateGameoverView();
+  setRoomRatingBusy(true);
   try {
     await api.roomFeedback(code, { rating });
   } catch (err) {
@@ -2550,6 +2653,9 @@ async function setRoomRating(rating) {
       updateGameoverView();
     }
     toast(err.message);
+  } finally {
+    roomRatingPending = false;
+    setRoomRatingBusy(false);
   }
 }
 
@@ -3499,6 +3605,7 @@ document.addEventListener("input", (event) => {
 });
 
 window.addEventListener("hashchange", () => {
+  routeFocusPending = true;
   render();
   trackCurrentPage();
 });

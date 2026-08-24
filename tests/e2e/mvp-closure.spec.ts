@@ -1083,8 +1083,13 @@ test("three-member fit table aligns names and restores match links", async ({ pa
   await page.goto("/index.html#/matching");
   await expect(page.locator("[data-session-preview]")).toBeVisible();
   await expect(page.locator(".session-fit-row--head .session-fit-conditions--group > b")).toHaveCount(3);
+  await expect(page.locator(".session-fit-row--head .session-fit-link--empty")).toHaveCount(2);
+  await expect(page.locator(".session-fit-row--head .session-fit-line")).toHaveCount(0);
+  await expect(page.locator(".session-fit-row--head .icon")).toHaveCount(0);
   await expect(page.locator(".session-fit-row--group:not(.session-fit-row--head)")).toHaveCount(5);
   await expect(page.locator(".session-fit-row--group:not(.session-fit-row--head) .session-fit-link.is-match")).toHaveCount(10);
+  await page.evaluate(() => document.fonts?.ready);
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
 
   const geometry = await page.locator(".session-fit-row--group:not(.session-fit-row--head)").first().evaluate((row) => {
     const members = [...row.querySelectorAll(".session-fit-member")];
@@ -1098,6 +1103,7 @@ test("three-member fit table aligns names and restores match links", async ({ pa
     return {
       members: members.length,
       links: links.map((link, index) => {
+        const linkRect = link.getBoundingClientRect();
         const lineRect = link.querySelector(".session-fit-line")?.getBoundingClientRect();
         const previousText = textRect(members[index]);
         const nextText = textRect(members[index + 1]);
@@ -1112,6 +1118,8 @@ test("three-member fit table aligns names and restores match links", async ({ pa
           rightTextLeft: nextText.left,
           gapWidth,
           lineWidth: lineRect?.width || 0,
+          linkLeft: linkRect.left,
+          linkWidth: linkRect.width,
         };
       }),
     };
@@ -1125,9 +1133,15 @@ test("three-member fit table aligns names and restores match links", async ({ pa
     expect(link.lineWidth).toBeGreaterThanOrEqual(link.gapWidth * 0.8);
   });
 
-  const headerLefts = await page.locator(".session-fit-row--head b").evaluateAll((nodes) => nodes.map((node) => Math.round(node.getBoundingClientRect().left)));
-  const firstRowLefts = await page.locator(".session-fit-row--group:not(.session-fit-row--head)").first().locator("strong").evaluateAll((nodes) => nodes.map((node) => Math.round(node.getBoundingClientRect().left)));
-  expect(firstRowLefts).toEqual(headerLefts);
+  const alignment = await page.locator(".session-fit-table").evaluate((table) => {
+    const lefts = (root: Element, selector: string) => [...root.querySelectorAll(selector)].map((node) => Math.round(node.getBoundingClientRect().left));
+    const firstRow = table.querySelector(".session-fit-row--group:not(.session-fit-row--head)");
+    return {
+      header: lefts(table, ".session-fit-row--head b"),
+      firstRow: firstRow ? lefts(firstRow, "strong") : [],
+    };
+  });
+  expect(alignment.firstRow).toEqual(alignment.header);
 });
 
 test("two-member fit links keep real geometry at all required desktop viewports", async ({ page }) => {
@@ -1135,6 +1149,13 @@ test("two-member fit links keep real geometry at all required desktop viewports"
     await page.setViewportSize(viewport);
     await page.goto("/index.html#/session-preview");
     await expect(page.locator("[data-session-preview]")).toBeVisible();
+    await expect(page.locator(".session-fit-row--head .session-fit-link--empty")).toHaveCount(1);
+    await expect(page.locator(".session-fit-row--head .session-fit-line")).toHaveCount(0);
+    await expect(page.locator(".session-fit-row--head .icon")).toHaveCount(0);
+    await expect(page.locator("#room-chat")).toHaveAttribute("role", "log");
+    await expect(page.locator("#chat-input")).toHaveAttribute("name", "message");
+    await expect(page.locator("[data-session-live-announcer]")).toHaveAttribute("aria-live", "polite");
+    await page.evaluate(() => document.fonts?.ready);
     const geometry = await page.locator(".session-fit-row:not(.session-fit-row--head)").first().evaluate((row) => {
       const members = [...row.querySelectorAll(".session-fit-member")];
       const line = row.querySelector(".session-fit-line");
@@ -1399,6 +1420,7 @@ test("completed casual Sessions keep each teammate like independent across refre
       if (payload.liked) likedTargets.add(payload.targetUserId);
       else likedTargets.delete(payload.targetUserId);
     }
+    await new Promise((resolve) => setTimeout(resolve, 1000));
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true }) });
   });
 
@@ -1413,11 +1435,18 @@ test("completed casual Sessions keep each teammate like independent across refre
   await expect(second).toHaveText("点赞");
 
   await first.click();
+  await expect(first).toBeDisabled();
+  await first.dispatchEvent("click");
+  await expect.poll(() => feedbackRequests.filter((request) => request.targetUserId === mockPartner.id && request.liked === true).length).toBe(1);
   await expect(first).toHaveText("已点赞");
   await expect(second).toHaveText("点赞");
   await second.click();
+  await expect.poll(() => feedbackRequests.filter((request) => request.targetUserId === memberC.id && request.liked === true).length).toBe(1);
   await expect(second).toHaveText("已点赞");
+  await expect(first).toBeEnabled();
+  await expect(first).toHaveAttribute("data-value", "no");
   await first.click();
+  await expect.poll(() => feedbackRequests.filter((request) => request.targetUserId === mockPartner.id && request.liked === false).length).toBe(1);
   await expect(first).toHaveText("点赞");
   await expect(second).toHaveText("已点赞");
 
@@ -1426,6 +1455,8 @@ test("completed casual Sessions keep each teammate like independent across refre
   await expect(page.locator("[data-gameover-like]").nth(0)).toHaveText("点赞");
   await expect(page.locator("[data-gameover-like]").nth(1)).toHaveText("已点赞");
   await page.getByRole("button", { name: /01 很开心/ }).click();
+  await expect(page.getByRole("button", { name: /01 很开心/ })).toBeDisabled();
+  await page.getByRole("button", { name: /01 很开心/ }).dispatchEvent("click");
   await expect(page.getByRole("button", { name: /01 很开心/ })).toHaveAttribute("aria-pressed", "true");
   expect(feedbackRequests).toEqual(expect.arrayContaining([
     expect.objectContaining({ targetUserId: mockPartner.id, liked: true }),

@@ -3,6 +3,7 @@ import { avatarWrap } from "./avatar.js";
 import { GAME_BY_ID } from "./data.js";
 
 let productRailHeldOpen = false;
+let toastTimer = 0;
 
 export function setProductRailHeldOpen(held) {
   productRailHeldOpen = Boolean(held);
@@ -175,11 +176,13 @@ export function homeShell(state, content, active = "home") {
 }
 
 export function toast(message) {
-  const old = document.querySelector(".toast");
-  if (old) old.remove();
-  const el = document.createElement("div");
+  const el = document.querySelector(".toast") || document.createElement("div");
   el.className = "toast";
+  el.setAttribute("role", "status");
+  el.setAttribute("aria-live", "polite");
+  el.setAttribute("aria-atomic", "true");
   el.textContent = message;
-  document.body.appendChild(el);
-  window.setTimeout(() => el.remove(), 2400);
+  if (!el.isConnected) document.body.appendChild(el);
+  window.clearTimeout(toastTimer);
+  toastTimer = window.setTimeout(() => el.remove(), 2400);
 }

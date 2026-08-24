@@ -14,7 +14,7 @@ describe("Session fit connector contract", () => {
     expect(styles).toContain(".session-fit-line");
     expect(styles).toContain("text-align: center");
     expect(styles).toContain("justify-self: stretch");
-    expect(styles).toContain("inset-inline: 13px");
+    expect(styles).toContain("inset-inline: 12px");
     expect(styles).not.toContain(".session-fit-row--group .session-fit-conditions .session-fit-member { text-align: left; }");
     expect(styles).not.toMatch(/\.session-fit-link(?:\.is-match)?::(?:before|after)/);
     expect(styles).not.toContain(".session-fit-link.is-match::before");

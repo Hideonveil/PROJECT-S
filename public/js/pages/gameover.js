@@ -28,7 +28,8 @@ export function gameoverPage(state) {
   const memberLikeButton = (member) => {
     const liked = Boolean(member.likedByMe);
     const name = memberDisplayName(member, "这位队友");
-    return `<button type="button" class="connection-like connection-member-like ${liked ? "is-liked" : ""}" data-action="set-room-like" data-target-user-id="${esc(member.id)}" data-value="${liked ? "no" : "yes"}" data-gameover-like aria-label="${liked ? `取消${name}的点赞` : `给${name}点赞`}" aria-pressed="${liked}">${icon("heart", 20)}<span>${liked ? "已点赞" : "点赞"}</span></button>`;
+    const label = liked ? `取消${name}的点赞` : `给${name}点赞`;
+    return `<button type="button" class="connection-like connection-member-like ${liked ? "is-liked" : ""}" data-action="set-room-like" data-target-user-id="${esc(member.id)}" data-value="${liked ? "no" : "yes"}" data-gameover-like aria-label="${esc(label)}" aria-pressed="${liked}">${icon("heart", 20)}<span>${liked ? "已点赞" : "点赞"}</span></button>`;
   };
   const memberCards = teammates.length
     ? teammates.map((member, index) => `<article class="connection-gameover-member"><span class="connection-player__index">PLAYER ${String(index + 2).padStart(2, "0")} / MEMBER</span><div class="connection-gameover__identity">${avatarWrap(member.avatarKey, 70, member.online)}<div><h2>${esc(memberDisplayName(member, "玩家"))}</h2><p>${esc(member.device || "PC")} · ${esc(session.title || "刚刚一起玩过")}</p></div></div>${memberLikeButton(member)}</article>`).join("")
@@ -38,7 +39,7 @@ export function gameoverPage(state) {
     state,
     `<main class="connection-gameover" data-gameover-root>
       <header class="connection-gameover__header">
-        <span class="connection-room__eyebrow"><i></i>CONNECTION CLOSED / FEEDBACK</span>
+        <span class="connection-room__eyebrow"><i aria-hidden="true"></i>CONNECTION CLOSED / FEEDBACK</span>
         <p>本次连接已归档</p>
         <h1>玩完了，这次怎么样？</h1>
         <span>本次 Session 共 ${model.currentMemberCount || 0} 位成员，留下最简单的反馈，帮助下一次更合适。</span>
