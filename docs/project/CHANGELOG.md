@@ -2,6 +2,14 @@
 
 > 只记录已经影响 Production、或已完成 Production 验收的事件。测试中的本地改动、未部署方案和未授权修复不写入本表。
 
+## 2026-08-25 — Reservation conflict structured-result release
+
+- 应用 commit：`8972b1e134328bded364523a7ffab862316c93ea`，已 fast-forward 推送至 `origin/main`，并按腾讯云中国香港 Docker Compose 正式流程同步和部署；Production health version 返回同一完整 SHA。
+- 新增 forward-only migration：`20260825130000_return_reservation_conflicts.sql`；已在 Production Supabase SQL Editor 执行一次。Pair/Group reservation 的预期业务冲突改为结构化 JSON 返回，保留真实数据库 serialization failure 的异常语义；routine 执行权限只保留 `postgres` / `service_role`。
+- 未 replay 历史 migration、未 repair `schema_migrations`、未修改历史业务数据；未改变 Matching、Presence、Room/Session lifecycle 或 Realtime 产品规则。
+- 部署后只读 smoke：`/api/health/live` `5/5=200`；`/api/health` `3/3=200 ready`；`/api/config=200`；根路径既有 `307`；health presence/database checks 成功。Production 当前 `matching=3`、`playing=2`，未触碰这些既有活动。
+- Supabase Dashboard 仍显示 high CPU usage banner；本次未取得部署后 DB CPU/rollback delta，因此 `MATCHMAKING_RESERVATION_ROLLBACK_STORM` 保持 `FIX_IN_PROGRESS`，5-user rerun 保持 `NOT READY`。本次未执行 stateful capacity 或 Final Gate。
+
 ## 2026-08-25 — RLS auth initplan 优化已执行并部署
 
 - 新增 forward-only migration：`20260825110000_optimize_rls_initplan.sql`；Production 已执行，未修改 schema、业务数据或历史 migration history。

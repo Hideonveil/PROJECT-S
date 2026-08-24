@@ -74,12 +74,12 @@ Gate Evidence 额外允许：`PENDING` · `PASS` · `FAIL`。
 - **Affected area:** Production matchmaking reservation；`src/lib/matchmaking/service.ts`、`matchmaking_reserve_pair`、`matchmaking_reserve_group_member`
 - **Impact:** 同窗口出现 DB CPU 约 `91%`、PostgREST transaction setup `528,970 / 5min`、rollback `528,989 / 5min`（约 `1,690/sec`），并伴随 Pair/Group reservation conflict；阻塞 Stateful 5-user rerun。
 - **Pilot impact:** BLOCKING；在 rollback/CPU 根因未收敛、Production active matching/playing 未清空前，不得启动 5-user rehearsal。
-- **Evidence:** 既有 Production 日志/统计窗口；部署前 runtime 为 `40c138c`。本次部署后 `pg_stat_statements` 约 60 秒前后 Pair reserve `612,505 → 612,505`、Group reserve `643,304 → 643,304`；`pg_stat_database.xact_rollback` `314,779,825 → 314,890,889`（约 `1,775/sec`）。Supabase Dashboard CPU/connection/IO 图表返回 `Unable to load data`。
-- **Root cause:** Reservation conflict storm 的应用放大机制已确认；全库 rollback/CPU 的最终来源仍 `UNKNOWN`。当前 SQL 中业务函数主动以 SQLSTATE `40001` 表达 `MATCH_RESERVATION_CONFLICT` / `GROUP_*_CONFLICT`；裸 `40001` 与业务标记已在代码侧区分。
-- **Fix / Decision:** 已部署 `8631311`：per-user matchmaking single-flight、active-ticket reused guard、每次流程最多 4 个业务 conflict reserve attempts、候选切换短 backoff+jitter、分钟级 stdout counters。未修改 RPC、schema、migration、Matching/Presence/Room/Session 规则。
-- **Verification:** 本地 45 files / 233 tests PASS；TypeScript PASS；Next build PASS（38/38 static pages）；`git diff --check` PASS。Production 低频观察约 10 分钟 10/10 readiness PASS，无 5xx/timeout/restart/OOM；reserve calls 观察窗口不增长，但全库 rollback 仍高，P0 尚未关闭。
-- **Production status:** `FIX_IN_PROGRESS`；runtime `8631311` 已部署。Migration executed `NO`；Production data/schema modified `NO`。
-- **Next action:** 02/03 继续取得可归因的当前 rollback/CPU/transaction 来源，确认是否存在非 reserve 工作负载；只有 Production rollback/CPU 收敛、active matching/playing 基线为 0 且健康证据完整后，才由 03 决定是否重新执行 5-user。
+- **Evidence:** 既有 Production 日志/统计窗口；原始部署前 runtime 为 `40c138c`。此前 `pg_stat_statements` 约 60 秒窗口 Pair reserve `612,505 → 612,505`、Group reserve `643,304 → 643,304`，但 `pg_stat_database.xact_rollback` `314,779,825 → 314,890,889`（约 `1,775/sec`）；Supabase Dashboard CPU/connection/IO 图表曾返回 `Unable to load data`。本次 `8972b1e` 部署后 health smoke 为 live `5/5=200`、readiness `3/3=200 ready`，但尚未取得新的 DB CPU/rollback delta。
+- **Root cause:** Reservation conflict storm 的应用放大机制已确认；全库 rollback/CPU 的最终来源仍 `UNKNOWN`。Production 函数曾以 SQLSTATE `40001` 表达预期 `MATCH_RESERVATION_CONFLICT` / `GROUP_RESERVATION_CONFLICT`；当前发布已将预期冲突改为结构化 JSON 返回，并保留真实数据库 serialization failure 的异常语义。
+- **Fix / Decision:** `8972b1e` 延续并收紧应用侧 single-flight、active-ticket guard、conflict budget（最多 2 次）及 `100–250ms` backoff+jitter；Production 已执行 forward-only migration `20260825130000_return_reservation_conflicts.sql`，Pair/Group RPC 预期冲突不再主动抛出业务 `40001`。未修改 Matching/Presence/Room/Session 规则或历史数据。
+- **Verification:** 本地定向 `5 files / 34 tests PASS`；完整 `47 files / 242 tests PASS`；TypeScript PASS；Next build PASS（38/38 static pages）；`git diff --check` PASS。Production 函数定义与权限只读核对通过，routine 执行权限仅 `postgres` / `service_role`。部署后只读 smoke 通过，但 Supabase high CPU banner 仍在，P0 尚未关闭。
+- **Production status:** `FIX_IN_PROGRESS`；runtime `8972b1e` 已部署。Migration executed `YES`（仅本次新 forward-only migration）；Production business data modified `NO`；历史 migration history modified `NO`。
+- **Next action:** 取得部署后可归因的 reservation conflict、rollback 与 DB CPU 时间窗口；在 P0 closure evidence 完整前，不执行 5-user 或更高 Stateful capacity rehearsal，由 03 决定是否关闭。
 - **Closed date:** UNKNOWN
 
 ### JIY-P0-001 — `LEGACY_ROOM_DUAL_RENDER_PATH`
