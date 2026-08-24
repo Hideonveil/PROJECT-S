@@ -2,6 +2,13 @@
 
 > 只记录已经影响 Production、或已完成 Production 验收的事件。测试中的本地改动、未部署方案和未授权修复不写入本表。
 
+## 2026-08-24 — Stateful Capacity 专用账号 provisioning（前置准备）
+
+- `run_id=capstate500-0824`；Production 已按授权准备 500 个专用普通测试身份，manifest 中 `actors=500`、唯一 `userId=500`；角色分配为 `ranked=296`、`casual=153`、`fragmented=51`。
+- service role 仅用于受控 Auth/profile provisioning；未作为普通 Actor 执行任何业务动作。未执行 Matching、Presence、Room、Realtime、Chat、Goodbye、Leave、Feedback 或 stateful workload。
+- provisioning 前置与收尾健康检查均保持 `status=ready`、`matching=0`、`playing=0`；收尾检查时间 `2026-08-24T10:17:41.166Z`，Production runtime version `875bb9786b5c4c5684de87358cb0289236adc869`，`users=531`。
+- 未修改 schema、未执行 migration、未部署应用、未执行业务数据清理；authenticated identity isolation smoke 为 `NOT RUN`，因此容量结果仍为 `NOT ASSESSED`。
+
 ## 2026-08-24 — 可访问性与反馈交互修复发布
 
 - Git application release baseline：`875bb9786b5c4c5684de87358cb0289236adc869`，`fix: improve session accessibility and feedback interactions`；`origin/main` 已同步到该 commit。

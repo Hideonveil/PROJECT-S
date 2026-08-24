@@ -19,7 +19,8 @@
 - 仓库：`output/jiyuan-computer-handoff-2026-08-22/project-s-source`
 - Canonical engineering branch：`main`。
 - Git 当前可信应用源码基线：`875bb9786b5c4c5684de87358cb0289236adc869`（`fix: improve session accessibility and feedback interactions`）。`main` 已将 `agent/ui-shell-production` fast-forward 收敛；此前 `892d61e` 逐成员点赞与两人/三人连接线修复已由本次可访问性与反馈交互修复继续发布。后续事实文档提交属于 docs-only，不改变该应用发布基线。
-- Project source working tree：clean。
+- 当前 `main` HEAD：`7d0341cd840200fd535e23aa7d39121c28b180db`；该 HEAD 仅包含容量验证 runner/tooling 与项目事实文档变更，未部署到 Production。应用发布基线仍为 `875bb9786b5c4c5684de87358cb0289236adc869`。
+- Project source tracked files：clean；仓库根下既有未跟踪 `output/` 证据目录保留，不能将其误写为不存在。
 - `agent/ui-shell-production` 已完成 fast-forward 收敛并保留，不删除该 branch。
 - Runtime source baseline、tests/tooling、project docs 与 migration provenance 均已进入 Git。
 - `0009_realtime_matchmaking.sql` 已恢复为历史原始版本；当前 migration provenance 规则保持有效：`NOT_RECORDED` 不得解释为未执行，不得 replay 或 repair production migration history，后续数据库变化必须使用 forward-only migration。
@@ -32,8 +33,8 @@
 - 部署方式：腾讯云中国香港节点上的 Docker Compose，Caddy 对外提供 HTTPS 和代理。
 - 最近 Production runtime version / deployed candidate：`875bb9786b5c4c5684de87358cb0289236adc869`；`/api/health.version` 返回同一完整 SHA；此前 `892d61e`、`cd51a83` 与 `7bee0a2-dirty-presence-2c0143f4` 作为历史部署版本/标签保留。
 - Git 应用源码基线与 Production runtime version / deployment label 仍是两个不同概念；本次具备源码同步、容器 build、health、HTTP 与容器状态证据，但不把单独的 health 字段解释为任意容器文件的字节级证明。
-- 本次生产健康检查已确认：`HTTP 200`、`ok=true`、`status=ready`、`version=875bb9786b5c4c5684de87358cb0289236adc869`、`online=2`、`matching=0`、`playing=0`、`users=29`；`/api/config` HTTP `200`；根路径 HTTP `307` 为既有重定向；旧 `/js/pages/room.js` HTTP `404`。
-- 健康检查时间：`2026-08-24T05:10:45.191Z`。
+- 发布后健康检查已确认：`HTTP 200`、`ok=true`、`status=ready`、`version=875bb9786b5c4c5684de87358cb0289236adc869`、`online=0`、`matching=0`、`playing=0`、`users=531`；检查时间 `2026-08-24T10:17:41.166Z`。这次检查用于容量账号 provisioning 后的安全收尾，不是容量测试结果。
+- 先前 `2026-08-24T05:10:45.191Z` 的健康检查仍作为历史快照保留；不同时间点的 `online/users` 数字不得混写。
 - Production 应用容器 `china-hk-app-1` 为 `healthy`，Caddy gateway 正常运行；部署构建仅出现 Docker Buildx 未安装警告，未导致失败。
 - `20260824100000_session_member_likes.sql` 已按授权在 Production 执行；表、3 个索引、3 个 RLS policy 与 RLS enabled 已只读确认，表内点赞行数为 `0`；未修改历史点赞、旧 `session_responses`、旧 tags 或 migration history。
 - 生产前端静态 bundle 已确认包含 Presence heartbeat 客户端标记，说明 Presence 客户端代码已随网站发布。
@@ -92,6 +93,7 @@
 - 历史 5 个 ghost Room 仍存在，属于已知历史基线，不是本轮新增问题。
 - 旧兼容代码和旧 API 仍可能存在；不能仅因为某个字段或 API 存在，就推断其为当前主产品路径。
 - Stateful capacity rehearsal 尚未取得有效容量结论：此前 20 人尝试分别因 runner 环境兼容错误、Production preflight `playing=2` 和认证阶段 HTTP `429` 停止；未进入完整 5→10→20 业务阶段。当前不把这些结果写成 Capacity FAIL，也不把它们写成 Capacity PASS。
+- 为后续容量验证已在 Production 完成 `run_id=capstate500-0824` 的 500 个专用普通测试账号/身份 provisioning；manifest 中 `actors=500`、唯一 `userId=500`，角色分配为 `ranked=296`、`casual=153`、`fragmented=51`。service role 仅用于受控账号 provisioning，不用于业务动作；本次未执行 Matching、Presence、Room、Realtime、Chat、Goodbye、Leave、Feedback 或任何 stateful workload。普通账号 authenticated identity isolation smoke 尚未执行（`NOT RUN`），因此容量结论仍为 `NOT ASSESSED`。
 
 ## 6. 当前不重复执行的工作
 
