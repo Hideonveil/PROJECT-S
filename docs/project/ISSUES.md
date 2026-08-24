@@ -58,6 +58,7 @@ Gate Evidence 额外允许：`PENDING` · `PASS` · `FAIL`。
 | JIY-P2-001 | `MIGRATION_DOCUMENTATION_CONSTRAINT_DRIFT` | P2 | CONFIRMED |
 | JIY-HIST-001 | `HISTORICAL_GHOST_ROOMS_BASELINE` | HIST / P1 baseline | DEFERRED |
 | JIY-GATE-001 | `FINAL_PRIVATE_PILOT_GATE_EVIDENCE` | GATE | PENDING |
+| JIY-GATE-002 | `PROGRESSIVE_STATEFUL_CAPACITY_VALIDATION` | GATE | PENDING |
 
 ---
 
@@ -270,6 +271,23 @@ Gate Evidence 额外允许：`PENDING` · `PASS` · `FAIL`。
 - **Verification:** 部分 PASS，整体 Gate `PENDING`。
 - **Production status:** PRODUCTION QA PENDING；本次建立台账未执行测试、部署或 Production 操作。
 - **Next action:** 由 03 继续安排剩余 Gate evidence；ENG-00 不自行宣布 Gate PASS。
+- **Closed date:** UNKNOWN
+
+### JIY-GATE-002 — `PROGRESSIVE_STATEFUL_CAPACITY_VALIDATION`
+
+- **Severity:** GATE
+- **Status:** PENDING
+- **Owner:** 03｜QA 与上线负责人
+- **Found date:** 2026-08-24
+- **Affected area:** Production Stateful capacity rehearsal；5→500 渐进式容量探顶
+- **Impact:** 当前只有专用账号 provisioning、认证 smoke 与 runner dry-run 证据；5 人 stateful 阶段在完成前超时，尚未形成可复核的容量曲线或安全容量结论。
+- **Pilot impact:** 当前不自动阻塞为 P0；40-person capacity confidence 仍 `NOT ASSESSED / BLOCKED PENDING EVIDENCE`。
+- **Evidence:** `run_id=capstate500-stage5-0824`；runner 输出 `The operation was aborted due to timeout`；阶段 evidence 目录未生成结构化文件；超时后 health 为 `status=ready`、`matching=0`、`playing=0`；app/gateway restart `0`、OOM `false`。
+- **Root cause:** UNKNOWN；失败请求 endpoint、底层 `error.cause`、请求 ledger 与完整 DB integrity 查询未捕获，不得推测为 Runner、Network 或 App。
+- **Fix / Decision:** 本次不修改代码、不重跑同一失败阶段、不继续升级人数；由 02/03 先决定 runner 超时证据链与安全收敛方案，再授权新的容量运行。
+- **Verification:** 5 人阶段 `INCONCLUSIVE / STOPPED BEFORE COMPLETION`；10 人及以上未执行；Login/read-only burst 与 500 账号 provisioning 不能替代 stateful capacity evidence。
+- **Production status:** PRODUCTION QA PENDING；本次未执行 migration、部署、SQL 清理或手工 Production 数据修改。
+- **Next action:** 保留现有日志与健康快照，补齐可归因的失败证据后再由 03 决定是否重新运行；不得把该 Gate 标为 PASS。
 - **Closed date:** UNKNOWN
 
 ## FACT SOURCE CONFLICT

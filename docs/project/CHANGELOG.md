@@ -2,12 +2,20 @@
 
 > 只记录已经影响 Production、或已完成 Production 验收的事件。测试中的本地改动、未部署方案和未授权修复不写入本表。
 
+## 2026-08-24 — Stateful Capacity 5 人阶段停止（证据未形成容量结论）
+
+- `run_id=capstate500-stage5-0824` 已按授权启动 5 人 Stateful rehearsal；runner 在阶段完成前报错 `The operation was aborted due to timeout`，因此按停止条件未继续 10/20/30/40/50/75/100/125/150/200/300/400/500 档位。
+- 本次失败阶段未生成结构化 evidence 文件；失败请求的 endpoint、identity、底层 `error.cause`、完整 API metrics 与 mutation ledger 为 `NOT CAPTURED`，不能事后推测根因或把结果分类为 App/Network/Runner。
+- 超时后的只读健康检查（`2026-08-24T10:38:53.169Z`）为 `status=ready`、`online=0`、`matching=0`、`playing=0`、`users=531`、`databaseLatencyMs=123857`。app 与 Caddy 容器均保持运行，restart `0`、OOM `false`；近 15 分钟 Caddy 容器日志无新增输出。该快照只证明未观察到 matching/playing 残留，不等于完整 capacity PASS。
+- 应用日志在同一时间窗出现 `server_error` / `server_error_persist_failed`（`code=INTERNAL_ERROR`、`error_name=UnknownError`，业务上下文字段为 `null`）；由于 runner 阶段起止时间和请求关联未完整保存，不能将这些日志逐请求归因于本次阶段。
+- 未执行 migration、未部署应用、未执行 SQL 清理或手工修改 Production 数据；本次确实尝试了普通测试身份的正常业务请求，部分 mutation 是否在超时前完成缺少完整 ledger。后续容量结论保持 `NOT ASSESSED`，不得把本次尝试写成 PASS 或 Production 容量 FAIL。
+
 ## 2026-08-24 — Stateful Capacity 专用账号 provisioning（前置准备）
 
 - `run_id=capstate500-0824`；Production 已按授权准备 500 个专用普通测试身份，最终测试 manifest 中 `actors=500`、唯一 `userId=500`；角色分配按当前渐进档位校正为 `ranked=294`、`casual=156`、`fragmented=50`，原始 provisioning manifest 保留。
-- service role 仅用于受控 Auth/profile provisioning；未作为普通 Actor 执行任何业务动作。未执行 Matching、Presence、Room、Realtime、Chat、Goodbye、Leave、Feedback 或 stateful workload。
+- service role 仅用于受控 Auth/profile provisioning；在 provisioning 阶段未作为普通 Actor 执行业务动作，也未执行 Matching、Presence、Room、Realtime、Chat、Goodbye、Leave、Feedback 或 stateful workload。后续 5 人 stateful 阶段另见本表顶部记录。
 - provisioning 前置与收尾健康检查均保持 `status=ready`、`matching=0`、`playing=0`；收尾检查时间 `2026-08-24T10:17:41.166Z`，Production runtime version `875bb9786b5c4c5684de87358cb0289236adc869`，`users=531`。
-- 未修改 schema、未执行 migration、未部署应用、未执行业务数据清理；authenticated identity isolation smoke 为 `NOT RUN`，因此容量结果仍为 `NOT ASSESSED`。
+- 未修改 schema、未执行 migration、未部署应用、未执行业务数据清理；随后 5 个账号的 authenticated `/api/state` 与 `/api/session` identity smoke 已通过，但不代表 500 个身份全部验证，因此容量结果仍为 `NOT ASSESSED`。
 
 ## 2026-08-24 — 可访问性与反馈交互修复发布
 
