@@ -450,7 +450,7 @@ export async function loadManifest(file) {
       scenario: actor.scenario || null,
     };
   });
-  if (actors.length > 100) throw new Error("CAPACITY_MANIFEST: maximum 100 identities");
+  if (actors.length > STATEFUL_MAX_USERS) throw new Error(`CAPACITY_MANIFEST: maximum ${STATEFUL_MAX_USERS} identities`);
   const readerAllocation = manifest.reader_allocation || manifest.readerAllocation || null;
   return { ...manifest, actors, readerAllocation };
 }

@@ -10,6 +10,7 @@ import {
   buildReadOnlyPlan,
   normalizeStatefulCredentials,
   dryRunPlan,
+  loadManifest,
   normalizeCredentials,
   parseArgs,
   readCredentialsFile,
@@ -146,6 +147,23 @@ describe("capacity runner safety contract", () => {
     expect(credentials).toHaveLength(500);
     expect(() => normalizeStatefulCredentials({ identities: credentials.slice(0, 4) })).toThrow(/5 to 500/);
     expect(() => normalizeStatefulCredentials({ identities: [...credentials, { identity: "S501", identifier: "x", password: "y" }] })).toThrow(/5 to 500/);
+  });
+
+  it("loads a 500-actor manifest without restoring the old 100-identity cap", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "jiyuan-capacity-manifest-"));
+    const manifestFile = path.join(directory, "manifest.json");
+    try {
+      await writeFile(manifestFile, JSON.stringify({ actors: Array.from({ length: 500 }, (_, index) => ({
+        actorId: `S${String(index + 1).padStart(3, "0")}`,
+        userId: `user-${index + 1}`,
+        role: index < 294 ? "ranked" : index < 450 ? "casual" : "fragmented",
+        mode: "synthetic",
+      })) }));
+      const manifest = await loadManifest(manifestFile);
+      expect(manifest.actors).toHaveLength(500);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
   });
 
   it("builds the progressive 5 -> 500 stateful stages", () => {
