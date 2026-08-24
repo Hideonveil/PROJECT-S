@@ -19,7 +19,7 @@
 - 仓库：`output/jiyuan-computer-handoff-2026-08-22/project-s-source`
 - Canonical engineering branch：`main`。
 - Git 当前可信应用源码基线：`923bf470938cd5ab721a0b37a6e39e56fff97395`（`fix: bound and diagnose health checks`）。`main` 已将 `agent/ui-shell-production` fast-forward 收敛；此前 `892d61e`、`875bb97` 的产品修复继续保留在当前主线。后续事实文档提交属于 docs-only，不改变该应用发布基线。
-- 当前 `main` HEAD：`ec22195`；该 HEAD 包含已部署的应用提交 `923bf470938cd5ab721a0b37a6e39e56fff97395`，并追加本次 Production 变更后的事实源同步。
+- 当前 `main` HEAD：以当前仓库 `git rev-parse HEAD` 为准；已部署的应用提交为 `923bf470938cd5ab721a0b37a6e39e56fff97395`，其后追加本次 Production 变更后的事实源同步。
 - Project source tracked files：clean；仓库根下既有未跟踪 `output/` 证据目录保留，不能将其误写为不存在。
 - `agent/ui-shell-production` 已完成 fast-forward 收敛并保留，不删除该 branch。
 - Runtime source baseline、tests/tooling、project docs 与 migration provenance 均已进入 Git。
