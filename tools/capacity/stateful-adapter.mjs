@@ -3,6 +3,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { performance } from "node:perf_hooks";
 import { createClient } from "@supabase/supabase-js";
+import { buildActionEvent, classifyMutationOutcome, createAppendOnlyLedger, serializeError, snapshotState, timeoutError, withTimeout } from "./evidence.mjs";
 import {
   assertSafeOperation,
   authenticateIdentity,
@@ -106,20 +107,135 @@ function actorById(runtimes, actorId) {
   return runtime;
 }
 
-function recordEvent(runtime, event) {
-  runtime.events.push({
-    timestamp: new Date().toISOString(),
-    actor_id: runtime.actorId,
+async function appendLedgerEvent(ledger, event) {
+  if (ledger.append) return ledger.append(event);
+  ledger.events.push(event);
+  if (ledger.writer) await ledger.writer.append(event);
+  return event;
+}
+
+async function recordEvent(runtime, event, ledger = runtime.ledger) {
+  const now = new Date().toISOString();
+  const actionEvent = buildActionEvent({
+    runId: ledger.runId,
+    actorId: runtime.actorId,
+    action: event.action,
+    endpoint: event.endpoint || "client://stateful",
+    requestId: event.request_id || randomUUID(),
+    startedAt: event.started_at || now,
+    finishedAt: event.finished_at || now,
+    latencyMs: event.latency_ms || 0,
+    httpStatus: event.http_status ?? null,
+    error: event.error || null,
+    identifiers: { ...snapshotIds(runtime), ...event.identifiers },
+    expectedState: event.expected_state || null,
+    actualState: event.actual_state || snapshotState(runtime.state),
+  });
+  const extras = { ...event };
+  for (const key of ["action", "endpoint", "request_id", "started_at", "finished_at", "latency_ms", "http_status", "error", "expected_state", "actual_state"]) delete extras[key];
+  return appendLedgerEvent(ledger, {
+    ...actionEvent,
+    stage: event.stage || null,
     user_id: runtime.userId,
-    ...event,
+    ...extras,
   });
 }
 
-async function statefulRequest({ runtime, options, stage, action, method = "GET", requestPath, body, ledger }) {
+function httpError(action, status) {
+  const error = new Error(`${action} returned HTTP ${status}`);
+  error.name = "HttpError";
+  error.code = `HTTP_${status}`;
+  return error;
+}
+
+function expectedStateLabel(expectedState) {
+  if (expectedState && typeof expectedState === "object" && expectedState.label) return expectedState.label;
+  return typeof expectedState === "function" ? "predicate" : expectedState || null;
+}
+
+function expectedStatePredicate(expectedState) {
+  if (typeof expectedState === "function") return expectedState;
+  return expectedState && typeof expectedState === "object" ? expectedState.predicate : null;
+}
+
+export async function reconcileMutation({ runtime, options, stage, action, ledger, beforeState, expectedState }) {
+  const predicate = expectedStatePredicate(expectedState);
+  try {
+    const stateResult = await statefulRequest({
+      runtime,
+      options,
+      stage,
+      action: `${action}.reconcile.state`,
+      requestPath: "/api/state",
+      ledger,
+      reconciliation: true,
+      skipStageDeadline: true,
+    });
+    runtime.state = stateResult.data;
+    runtime.ids = { ...runtime.ids, ...snapshotIds(runtime) };
+    await statefulRequest({
+      runtime,
+      options,
+      stage,
+      action: `${action}.reconcile.session`,
+      requestPath: "/api/session",
+      ledger,
+      reconciliation: true,
+      skipStageDeadline: true,
+    });
+    const actualState = snapshotState(runtime.state);
+    return {
+      outcome: classifyMutationOutcome({ expectedState: predicate, beforeState: snapshotState(beforeState), afterState: actualState }),
+      actualState,
+    };
+  } catch {
+    return { outcome: "UNKNOWN", actualState: snapshotState(runtime.state) };
+  }
+}
+
+export async function statefulRequest({ runtime, options, stage, action, method = "GET", requestPath, body, ledger, expectedState = null, reconciliation = false, skipStageDeadline = false }) {
   const operation = assertSafeOperation({ mode: "stateful", method, path: requestPath });
-  if (ledger.requestCount >= options.maxRequests) throw new Error("CAPACITY_STATEFUL: request budget exhausted");
-  ledger.requestCount += 1;
   const requestId = randomUUID();
+  const started = performance.now();
+  const startedAt = new Date().toISOString();
+  const identifiers = snapshotIds(runtime);
+  const expected = expectedStateLabel(expectedState);
+  const appendNoSend = async (error, mutationOutcome = operation.mutation ? "NOT_COMMITTED_CONFIRMED" : null) => appendLedgerEvent(ledger, buildActionEvent({
+    runId: options.runId,
+    actorId: runtime.actorId,
+    action,
+    endpoint: operation.path,
+    requestId,
+    startedAt,
+    finishedAt: new Date().toISOString(),
+    latencyMs: performance.now() - started,
+    httpStatus: null,
+    error,
+    identifiers,
+    expectedState: expected,
+    actualState: snapshotState(runtime.state),
+    mutationOutcome,
+  }));
+
+  if (!skipStageDeadline && ledger.stageDeadline && Date.now() >= ledger.stageDeadline) {
+    const error = timeoutError("stage", `stage ${stage} deadline exceeded before ${action}`);
+    await appendNoSend(error);
+    throw error;
+  }
+  if (operation.mutation && ledger.mutationBlocked && !reconciliation) {
+    const error = new Error(`mutation blocked after unresolved timeout; refusing ${action}`);
+    error.name = "MutationHaltedError";
+    error.code = "CAPACITY_MUTATION_HALTED";
+    await appendNoSend(error, "UNKNOWN");
+    throw error;
+  }
+  if (ledger.requestCount >= options.maxRequests) {
+    const error = new Error("CAPACITY_STATEFUL: request budget exhausted");
+    error.name = "RequestBudgetError";
+    await appendNoSend(error);
+    throw error;
+  }
+  ledger.requestCount += 1;
   const headers = {
     Accept: "application/json",
     Authorization: `Bearer ${runtime.accessToken}`,
@@ -131,46 +247,75 @@ async function statefulRequest({ runtime, options, stage, action, method = "GET"
     headers["Content-Type"] = "application/json";
     headers["Idempotency-Key"] = requestId;
   }
-  const started = performance.now();
+  const controller = new AbortController();
+  let timedOut = false;
+  const timeout = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, options.requestTimeoutMs);
   let status = null;
+  let eventRecorded = false;
+  let data = {};
   try {
     const response = await fetch(new URL(operation.path, options.baseUrl), {
       method: operation.method,
       headers,
       body: body === undefined ? undefined : JSON.stringify(body),
-      signal: AbortSignal.timeout(options.requestTimeoutMs),
+      signal: controller.signal,
     });
     status = response.status;
-    let data = {};
     try { data = await response.json(); } catch { /* body intentionally omitted */ }
-    const event = {
-      stage,
+    const error = response.ok ? null : httpError(action, status);
+    await appendLedgerEvent(ledger, buildActionEvent({
+      runId: options.runId,
+      actorId: runtime.actorId,
       action,
-      method: operation.method,
-      path: operation.path,
-      request_id: requestId,
-      status,
-      duration_ms: Number((performance.now() - started).toFixed(2)),
-      mutation: operation.mutation,
-      error: status >= 400 ? `HTTP_${status}` : null,
-    };
-    recordEvent(runtime, event);
-    if (!response.ok) throw new Error(`${action} returned HTTP ${status}`);
+      endpoint: operation.path,
+      requestId,
+      startedAt,
+      finishedAt: new Date().toISOString(),
+      latencyMs: performance.now() - started,
+      httpStatus: status,
+      error,
+      identifiers: { ...identifiers, ...snapshotState(data) },
+      expectedState: expected,
+      actualState: snapshotState(data.user || data.matchmaking || data.room || data.session ? data : runtime.state),
+      mutationOutcome: operation.mutation ? (error ? "NOT_COMMITTED_CONFIRMED" : "COMMITTED_RESPONSE_RECEIVED") : null,
+    }));
+    eventRecorded = true;
+    if (!response.ok) throw error;
     return { data, status, requestId };
-  } catch (error) {
-    if (error?.message?.includes(`returned HTTP ${status}`)) throw error;
-    recordEvent(runtime, {
-      stage,
-      action,
-      method: operation.method,
-      path: operation.path,
-      request_id: requestId,
-      status,
-      duration_ms: Number((performance.now() - started).toFixed(2)),
-      mutation: operation.mutation,
-      error: safeError(error),
-    });
+  } catch (rawError) {
+    const error = timedOut ? timeoutError("request", `${action} request timed out`, rawError) : rawError;
+    let mutationOutcome = null;
+    let actualState = snapshotState(runtime.state);
+    if (timedOut && operation.mutation && !reconciliation) {
+      ledger.mutationBlocked = true;
+      const reconciliationResult = await reconcileMutation({ runtime, options, stage, action, ledger, beforeState: runtime.state, expectedState });
+      mutationOutcome = reconciliationResult.outcome;
+      actualState = reconciliationResult.actualState;
+    }
+    if (!eventRecorded) {
+      await appendLedgerEvent(ledger, buildActionEvent({
+        runId: options.runId,
+        actorId: runtime.actorId,
+        action,
+        endpoint: operation.path,
+        requestId,
+        startedAt,
+        finishedAt: new Date().toISOString(),
+        latencyMs: performance.now() - started,
+        httpStatus: status,
+        error,
+        identifiers: { ...identifiers, ...snapshotState(data) },
+        expectedState: expected,
+        actualState,
+        mutationOutcome: operation.mutation ? (mutationOutcome || "UNKNOWN") : null,
+      }));
+    }
     throw error;
+  } finally {
+    clearTimeout(timeout);
   }
 }
 
@@ -201,13 +346,13 @@ function realtimeRecord(runtime, stage, payload) {
   runtime.realtimeLedger?.push(record);
 }
 
-async function subscribeChannel(runtime, stage, name, configure) {
+export async function subscribeChannel(runtime, stage, name, configure) {
   const channel = runtime.client.channel(name);
   configure(channel);
   let subscribed = false;
   let terminalStatus = null;
   const statusPromise = new Promise((resolve) => {
-    const timer = setTimeout(() => resolve(false), 15_000);
+    const timer = setTimeout(() => resolve(false), runtime.realtimeTimeoutMs || 15_000);
     channel.subscribe((status) => {
       realtimeRecord(runtime, stage, { channel: name, status });
       if (status === "SUBSCRIBED") {
@@ -222,19 +367,24 @@ async function subscribeChannel(runtime, stage, name, configure) {
     });
   });
   const ok = await statusPromise;
-  if (!ok) throw new Error(`Realtime ${name} ${terminalStatus || "subscribe timeout"}`);
+  if (!ok) throw timeoutError("realtime_wait", `Realtime ${name} ${terminalStatus || "subscribe timeout"}`);
   return subscribed;
 }
 
 async function subscribeActor(runtime, stage) {
-  runtime.client = await createRealtimeClient(runtime);
-  await subscribeChannel(runtime, stage, "node-events", (channel) => {
-    for (const table of ["matchmaking_tickets", "matchmaking_pairs", "matchmaking_confirmations", "matchmaking_groups", "matchmaking_group_members", "rooms", "sessions", "session_goodbye_requests", "friendships", "room_members"]) {
-      channel.on("postgres_changes", { event: "*", schema: "public", table }, (payload) => {
-        realtimeRecord(runtime, stage, { table, event: payload.event, roomId: payload.new?.room_id || payload.old?.room_id, messageId: payload.new?.id || payload.old?.id });
-      });
-    }
-  });
+  try {
+    runtime.client = await createRealtimeClient(runtime);
+    await subscribeChannel(runtime, stage, "node-events", (channel) => {
+      for (const table of ["matchmaking_tickets", "matchmaking_pairs", "matchmaking_confirmations", "matchmaking_groups", "matchmaking_group_members", "rooms", "sessions", "session_goodbye_requests", "friendships", "room_members"]) {
+        channel.on("postgres_changes", { event: "*", schema: "public", table }, (payload) => {
+          realtimeRecord(runtime, stage, { table, event: payload.event, roomId: payload.new?.room_id || payload.old?.room_id, messageId: payload.new?.id || payload.old?.id });
+        });
+      }
+    });
+  } catch (error) {
+    await recordEvent(runtime, { stage, action: "realtime.subscribe", endpoint: "supabase://realtime", error }, runtime.ledger).catch(() => {});
+    throw error;
+  }
 }
 
 async function subscribeRoom(runtime, stage, roomId) {
@@ -273,10 +423,10 @@ function stopHeartbeat(runtime) {
   runtime.heartbeat = null;
 }
 
-async function closeClient(runtime) {
+export async function closeClient(runtime) {
   stopHeartbeat(runtime);
   if (runtime.client) {
-    await runtime.client.removeAllChannels();
+    await withTimeout(runtime.client.removeAllChannels(), runtime.cleanupTimeoutMs || 30_000, "cleanup", `Realtime cleanup timed out for ${runtime.actorId}`);
     runtime.client = null;
   }
   runtime.roomChannels.clear();
@@ -330,7 +480,7 @@ async function controlGroups(runtimes, options, stage, ledger, controls) {
   }
 }
 
-async function waitForRooms(runtimes, expectedCount, options, stage, ledger) {
+export async function waitForRooms(runtimes, expectedCount, options, stage, ledger) {
   const controls = { started: new Set(), confirmed: new Set() };
   const deadline = Date.now() + Math.min(120_000, options.durationSec * 1000);
   while (Date.now() < deadline) {
@@ -344,7 +494,7 @@ async function waitForRooms(runtimes, expectedCount, options, stage, ledger) {
     }
     await sleep(1000);
   }
-  throw new Error(`CAPACITY_STATEFUL: stage ${stage} did not form ${expectedCount} active sessions`);
+  throw timeoutError("matching_wait", `stage ${stage} did not form ${expectedCount} active sessions`);
 }
 
 function roomGroups(runtimes) {
@@ -375,6 +525,26 @@ async function verifyRoomShape(groups, expectedRooms, stage) {
 async function sendRoomMessages(group, runtime, options, stage, ledger, messageLedger) {
   const roomId = runtime.state?.room?.id;
   if (!roomId || !runtime.client) throw new Error("CAPACITY_STATEFUL: cannot send chat without a room client");
+  if (ledger.mutationBlocked) {
+    const error = new Error("mutation blocked after unresolved timeout; refusing chat message");
+    error.name = "MutationHaltedError";
+    error.code = "CAPACITY_MUTATION_HALTED";
+    await appendLedgerEvent(ledger, buildActionEvent({
+      runId: options.runId,
+      actorId: runtime.actorId,
+      action: "chat.send",
+      endpoint: "supabase://messages",
+      requestId: randomUUID(),
+      startedAt: new Date().toISOString(),
+      finishedAt: new Date().toISOString(),
+      latencyMs: 0,
+      error,
+      identifiers: snapshotIds(runtime),
+      actualState: snapshotState(runtime.state),
+      mutationOutcome: "UNKNOWN",
+    }));
+    throw error;
+  }
   await subscribeRoom(runtime, stage, roomId);
   const markers = [
     `capacity-${options.runId}-${stage}-${runtime.actorId}-${randomUUID()}`,
@@ -382,8 +552,59 @@ async function sendRoomMessages(group, runtime, options, stage, ledger, messageL
   ];
   for (const marker of markers) {
     const sentAt = new Date().toISOString();
-    const { data, error } = await runtime.client.from("messages").insert({ room_id: roomId, sender_id: runtime.userId, content: marker }).select("id,room_id,sender_id,created_at").single();
-    if (error) throw error;
+    const requestId = randomUUID();
+    const startedAt = new Date().toISOString();
+    const started = performance.now();
+    let result;
+    let mutationOutcome = "COMMITTED_RESPONSE_RECEIVED";
+    try {
+      result = await withTimeout(
+        runtime.client.from("messages").insert({ room_id: roomId, sender_id: runtime.userId, content: marker }).select("id,room_id,sender_id,created_at").single(),
+        options.requestTimeoutMs,
+        "request",
+        `chat.send timed out for ${runtime.actorId}`,
+      );
+      if (result.error) throw result.error;
+    } catch (rawError) {
+      const error = rawError?.name === "TimeoutError" ? rawError : rawError;
+      if (error?.name === "TimeoutError") {
+        ledger.mutationBlocked = true;
+        const reconciliation = await reconcileMutation({ runtime, options, stage, action: "chat.send", ledger, beforeState: runtime.state, expectedState: null });
+        mutationOutcome = reconciliation.outcome;
+      } else {
+        mutationOutcome = "UNKNOWN";
+      }
+      await appendLedgerEvent(ledger, buildActionEvent({
+        runId: options.runId,
+        actorId: runtime.actorId,
+        action: "chat.send",
+        endpoint: "supabase://messages",
+        requestId,
+        startedAt,
+        finishedAt: new Date().toISOString(),
+        latencyMs: performance.now() - started,
+        error,
+        identifiers: snapshotIds(runtime),
+        actualState: snapshotState(runtime.state),
+        mutationOutcome,
+      }));
+      throw error;
+    }
+    const data = result.data;
+    await appendLedgerEvent(ledger, buildActionEvent({
+      runId: options.runId,
+      actorId: runtime.actorId,
+      action: "chat.send",
+      endpoint: "supabase://messages",
+      requestId,
+      startedAt,
+      finishedAt: new Date().toISOString(),
+      latencyMs: performance.now() - started,
+      httpStatus: 200,
+      identifiers: { ...snapshotIds(runtime), room_id: roomId },
+      actualState: { ...snapshotState(runtime.state), message_id: data.id },
+      mutationOutcome,
+    }));
     messageLedger.push({ stage, message_id: data.id, room_id: roomId, session_id: runtime.state?.session?.id || null, sender_user_id: runtime.userId, marker, sent_at: sentAt, persisted_at: data.created_at || new Date().toISOString(), expected_recipients: group.map((member) => member.userId), received_by: [] });
   }
   await sleep(1500);
@@ -444,7 +665,7 @@ async function submitFeedback(runtime, options, stage, ledger) {
   }
 }
 
-async function waitForTerminal(runtimes, options, stage, ledger, timeoutMs = 30_000) {
+export async function waitForTerminal(runtimes, options, stage, ledger, timeoutMs = 30_000) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     await Promise.all([...runtimes.values()].map((runtime) => refreshState(runtime, options, stage, ledger, "state.reconcile")));
@@ -452,7 +673,7 @@ async function waitForTerminal(runtimes, options, stage, ledger, timeoutMs = 30_
     if (!active.length) return;
     await sleep(1000);
   }
-  throw new Error(`CAPACITY_STATEFUL: stage ${stage} lifecycle did not converge`);
+  throw timeoutError("stage", `stage ${stage} lifecycle did not converge`);
 }
 
 async function cancelRemaining(runtimes, options, stage, ledger) {
@@ -513,10 +734,19 @@ async function runStage({ stage, runtimes, options, ledger, messageLedger }) {
 
 export async function runStatefulRehearsal({ options, manifest, credentials }) {
   const plan = buildStatefulPlan({ actors: manifest.actors, runId: options.runId, maxUsers: options.maxUsers });
-  const config = await loadAuthConfig(options.baseUrl);
+  const evidenceDirectory = options.evidenceDir || path.join(process.cwd(), "output", "capacity-validation", options.runId);
+  const writer = await createAppendOnlyLedger({ directory: evidenceDirectory });
+  const ledger = { runId: options.runId, requestCount: 0, events: [], writer, mutationBlocked: false, stageDeadline: 0 };
+  ledger.append = async (event) => {
+    ledger.events.push(event);
+    return writer.append(event);
+  };
+  const config = await loadAuthConfig(options.baseUrl, {
+    requestContext: { runId: options.runId, actorId: "__system__", action: "auth.config" },
+    ledger,
+  });
   const credentialsById = new Map(credentials.map((credential) => [credential.identity, credential]));
   const runtimes = new Map();
-  const ledger = { requestCount: 0, events: [] };
   const messageLedger = [];
   const presenceLedger = [];
   const realtimeLedger = [];
@@ -525,7 +755,7 @@ export async function runStatefulRehearsal({ options, manifest, credentials }) {
     for (const actor of manifest.actors.slice(0, plan.maxUsers)) {
       const credential = credentialsById.get(actor.actorId);
       if (!credential) throw new Error(`CAPACITY_AUTH: no stateful credential for ${actor.actorId}`);
-      const session = await authenticateIdentity({ baseUrl: options.baseUrl, credential, config });
+      const session = await authenticateIdentity({ baseUrl: options.baseUrl, credential, config, ledger, runId: options.runId, actorId: actor.actorId });
       const runtime = {
         actor,
         actorId: actor.actorId,
@@ -544,6 +774,8 @@ export async function runStatefulRehearsal({ options, manifest, credentials }) {
         realtime: [],
         realtimeLedger,
         presence: presenceLedger,
+        ledger,
+        cleanupTimeoutMs: options.cleanupTimeoutMs || 30_000,
       };
       const state = await statefulRequest({ runtime, options, stage: "preflight", action: "state.smoke", requestPath: "/api/state", ledger });
       runtime.state = state.data;
@@ -557,12 +789,37 @@ export async function runStatefulRehearsal({ options, manifest, credentials }) {
     const stages = [];
     for (const stage of plan.stages) {
       const selected = new Map([...runtimes.entries()].filter(([actorId]) => stage.actorIds.includes(actorId)));
+      ledger.stage = stage.name;
+      ledger.stageDeadline = Date.now() + (options.stageTimeoutMs || Math.max(300_000, (options.durationSec || 60) * 4_000));
       const result = await runStage({ stage, runtimes: selected, options, ledger, messageLedger });
       stages.push(result);
     }
-    return { runId: options.runId, mode: "stateful", startedAt, endedAt: new Date().toISOString(), stages, requests: ledger.events, messages: messageLedger, presence: presenceLedger, realtime: realtimeLedger, identityIsolation: true, productionMutation: true, plan };
+    await writer.flush();
+    return { runId: options.runId, mode: "stateful", startedAt, endedAt: new Date().toISOString(), stages, requests: ledger.events, messages: messageLedger, presence: presenceLedger, realtime: realtimeLedger, identityIsolation: true, productionMutation: true, plan, ledgerFile: writer.file };
+  } catch (error) {
+    await appendLedgerEvent(ledger, buildActionEvent({
+      runId: options.runId,
+      actorId: "__stage__",
+      action: "stage.failure",
+      endpoint: "runner://stage",
+      requestId: randomUUID(),
+      startedAt: new Date().toISOString(),
+      finishedAt: new Date().toISOString(),
+      latencyMs: 0,
+      error,
+      identifiers: {},
+      expectedState: "stage must complete without unclassified timeout",
+      actualState: { stage: ledger.stage || "preflight", mutation_blocked: ledger.mutationBlocked },
+      mutationOutcome: error?.timeoutSource === "request" && ledger.mutationBlocked ? "UNKNOWN" : null,
+    }));
+    await writer.flush();
+    error.capacityEvidence = { runId: options.runId, ledgerFile: writer.file, stage: ledger.stage || "preflight", eventCount: ledger.events.length };
+    throw error;
   } finally {
-    await Promise.all([...runtimes.values()].map((runtime) => closeClient(runtime).catch(() => {})));
+    await Promise.all([...runtimes.values()].map((runtime) => closeClient(runtime).catch(async (error) => {
+      await recordEvent(runtime, { action: "cleanup", endpoint: "client://realtime", error, stage: ledger.stage }, ledger).catch(() => {});
+    })));
+    await writer.flush();
     clearActorTokens([...runtimes.values()]);
   }
 }
@@ -577,9 +834,27 @@ export async function writeStatefulEvidence({ directory, manifest, result }) {
   if (/password|access_token|refresh_token|service_role/i.test(safe)) throw new Error("CAPACITY_STATEFUL: unsafe evidence manifest");
   await writeFile(path.join(directory, "run-manifest.json"), `${JSON.stringify(safeManifest, null, 2)}\n`);
   await writeFile(path.join(directory, "summary.json"), `${JSON.stringify({ runId: result?.runId, mode: result?.mode, startedAt: result?.startedAt, endedAt: result?.endedAt, stages: result?.stages, identityIsolation: result?.identityIsolation, productionMutation: result?.productionMutation }, null, 2)}\n`);
-  await writeFile(path.join(directory, "lifecycle-ledger.ndjson"), `${(result?.requests || []).map((event) => JSON.stringify(event)).join("\n")}\n`);
+  if (!result?.ledgerFile) {
+    await writeFile(path.join(directory, "lifecycle-ledger.ndjson"), `${(result?.requests || []).map((event) => JSON.stringify(event)).join("\n")}\n`);
+  }
   await writeFile(path.join(directory, "message-ledger.json"), `${JSON.stringify(result?.messages || [], null, 2)}\n`);
   await writeFile(path.join(directory, "presence-ledger.json"), `${JSON.stringify(result?.presence || [], null, 2)}\n`);
   await writeFile(path.join(directory, "realtime-ledger.json"), `${JSON.stringify(result?.realtime || [], null, 2)}\n`);
   await writeFile(path.join(directory, "plan.json"), `${JSON.stringify(result?.plan || {}, null, 2)}\n`);
+}
+
+export async function writeStatefulFailureEvidence({ directory, manifest, runId, error }) {
+  await mkdir(directory, { recursive: true });
+  const safeManifest = {
+    run_id: runId,
+    actors: manifest.actors.map(({ actorId, userId, mode, profile, role, match, scenario }) => ({ actor_id: actorId, user_id: userId, mode, profile, role, match, scenario })),
+  };
+  await writeFile(path.join(directory, "run-manifest.json"), `${JSON.stringify(safeManifest, null, 2)}\n`);
+  await writeFile(path.join(directory, "summary.json"), `${JSON.stringify({
+    runId,
+    mode: "stateful",
+    status: "INCONCLUSIVE",
+    failure: serializeError(error),
+    evidence: error?.capacityEvidence || null,
+  }, null, 2)}\n`);
 }

@@ -8,6 +8,8 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { performance } from "node:perf_hooks";
 import { createInterface } from "node:readline/promises";
 import { createClient } from "@supabase/supabase-js";
+import { randomUUID } from "node:crypto";
+import { buildActionEvent, CapacityTimeoutError, timeoutError, withTimeout } from "./evidence.mjs";
 
 export const PRODUCTION_HOSTS = new Set(["www.jiyuan.online", "jiyuan.online"]);
 
@@ -525,13 +527,38 @@ export function buildReadOnlyPlan({ actors, maxUsers, maxRequests, runId, reader
   };
 }
 
-export async function fetchJson({ url, method = "GET", headers = {}, body, timeoutMs = 10_000 }) {
+export async function fetchJson({ url, method = "GET", headers = {}, body, timeoutMs = 10_000, timeoutSource = "request", requestContext = null, ledger = null }) {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  const requestId = headers["X-Request-ID"] || randomUUID();
+  const started = performance.now();
+  const startedAt = new Date().toISOString();
+  let timedOut = false;
+  const timeout = setTimeout(() => {
+    timedOut = true;
+    controller.abort(timeoutError(timeoutSource, `${method} ${new URL(url).pathname} timed out`));
+  }, timeoutMs);
+  const append = async (error = null, response = null, data = null) => {
+    if (!requestContext || !ledger) return;
+    await ledger.append(buildActionEvent({
+      runId: requestContext.runId,
+      actorId: requestContext.actorId || "__system__",
+      action: requestContext.action,
+      endpoint: new URL(url).pathname,
+      requestId,
+      startedAt,
+      finishedAt: new Date().toISOString(),
+      latencyMs: performance.now() - started,
+      httpStatus: response?.status ?? null,
+      error,
+      identifiers: requestContext.identifiers,
+      expectedState: requestContext.expectedState,
+      actualState: data,
+    }));
+  };
   try {
     const response = await fetch(url, {
       method,
-      headers: { Accept: "application/json", ...headers },
+      headers: { Accept: "application/json", "X-Request-ID": requestId, ...headers },
       body,
       signal: controller.signal,
     });
@@ -541,29 +568,38 @@ export async function fetchJson({ url, method = "GET", headers = {}, body, timeo
     } catch {
       // Keep response bodies out of errors and evidence.
     }
+    const responseError = response.status >= 400 ? Object.assign(new Error(`HTTP_${response.status}`), { name: "HttpError", code: `HTTP_${response.status}` }) : null;
+    await append(responseError, response, null);
     return { response, data };
   } catch (error) {
-    throw new Error(`CAPACITY_AUTH: ${method} ${new URL(url).pathname} failed: ${safeError(error)}`);
+    const typedError = timedOut
+      ? (error instanceof CapacityTimeoutError ? error : timeoutError(timeoutSource, `${method} ${new URL(url).pathname} timed out`, error))
+      : error;
+    await append(typedError);
+    throw typedError;
   } finally {
     clearTimeout(timeout);
   }
 }
 
-export async function loadAuthConfig(baseUrl) {
-  const { response, data } = await fetchJson({ url: new URL("/api/config", baseUrl).toString() });
+export async function loadAuthConfig(baseUrl, requestOptions = {}) {
+  const { response, data } = await fetchJson({ url: new URL("/api/config", baseUrl).toString(), timeoutSource: "auth", ...requestOptions });
   if (response.status !== 200 || !data?.supabaseUrl || !data?.supabaseAnonKey) {
     throw new Error(`CAPACITY_AUTH: /api/config returned HTTP ${response.status}`);
   }
   return { supabaseUrl: data.supabaseUrl, supabaseAnonKey: data.supabaseAnonKey };
 }
 
-export async function authenticateIdentity({ baseUrl, credential, config }) {
+export async function authenticateIdentity({ baseUrl, credential, config, ledger = null, runId = "", actorId = credential?.identity || "__system__" }) {
   const loginBody = JSON.stringify({ identifier: credential.identifier, password: credential.password });
   const login = await fetchJson({
     url: new URL("/api/auth/login", baseUrl).toString(),
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: loginBody,
+    timeoutSource: "auth",
+    requestContext: { runId, actorId, action: "auth.login" },
+    ledger,
   });
   if (login.response.status !== 200 || !login.data?.email) {
     throw new Error(`CAPACITY_AUTH: identity ${credential.identity} login returned HTTP ${login.response.status}`);
@@ -572,9 +608,41 @@ export async function authenticateIdentity({ baseUrl, credential, config }) {
   const client = createClient(config.supabaseUrl, config.supabaseAnonKey, {
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
   });
-  const { data, error } = await client.auth.signInWithPassword({ email: login.data.email, password: credential.password });
+  const signInStarted = performance.now();
+  const signInStartedAt = new Date().toISOString();
+  let signInError = null;
+  let data;
+  try {
+    ({ data, error: signInError } = await withTimeout(
+      client.auth.signInWithPassword({ email: login.data.email, password: credential.password }),
+      10_000,
+      "auth",
+      `identity ${credential.identity} Supabase sign-in timed out`,
+    ));
+  } catch (error) {
+    signInError = error;
+  }
+  if (ledger) {
+    await ledger.append(buildActionEvent({
+      runId,
+      actorId,
+      action: "auth.supabase_sign_in",
+      endpoint: "supabase.auth.signInWithPassword",
+      requestId: randomUUID(),
+      startedAt: signInStartedAt,
+      finishedAt: new Date().toISOString(),
+      latencyMs: performance.now() - signInStarted,
+      httpStatus: signInError ? null : 200,
+      error: signInError,
+      actualState: null,
+    }));
+  }
+  const error = signInError;
   if (error || !data.session?.access_token || !data.user?.id) {
-    throw new Error(`CAPACITY_AUTH: identity ${credential.identity} Supabase sign-in failed`);
+    if (error?.name === "TimeoutError") throw error;
+    const authError = new Error(`CAPACITY_AUTH: identity ${credential.identity} Supabase sign-in failed`, { cause: error || undefined });
+    authError.name = "AuthError";
+    throw authError;
   }
   return {
     identity: credential.identity,
@@ -889,7 +957,7 @@ async function main() {
     return;
   }
   if (options.mode === "stateful") {
-    const { buildStatefulPlan, runStatefulRehearsal, statefulDryRunPlan, writeStatefulEvidence } = await import("./stateful-adapter.mjs");
+    const { buildStatefulPlan, runStatefulRehearsal, statefulDryRunPlan, writeStatefulEvidence, writeStatefulFailureEvidence } = await import("./stateful-adapter.mjs");
     const manifest = await loadManifest(options.manifest);
     if (options.scenario === "dry-run") {
       console.log(JSON.stringify(statefulDryRunPlan({ actors: manifest.actors, runId: options.runId, maxUsers: options.maxUsers }), null, 2));
@@ -898,10 +966,15 @@ async function main() {
     const statefulAuth = await readStatefulCredentials(options);
     try {
       buildStatefulPlan({ actors: manifest.actors, runId: options.runId, maxUsers: options.maxUsers });
-      const result = await runStatefulRehearsal({ options, manifest, credentials: statefulAuth.credentials });
       const directory = options.evidenceDir || path.join(process.cwd(), "output", "capacity-validation", options.runId);
-      await writeStatefulEvidence({ directory, manifest, result });
-      console.log(JSON.stringify({ runId: result.runId, mode: result.mode, startedAt: result.startedAt, endedAt: result.endedAt, stages: result.stages, identityIsolation: result.identityIsolation, evidenceDir: directory }, null, 2));
+      try {
+        const result = await runStatefulRehearsal({ options, manifest, credentials: statefulAuth.credentials });
+        await writeStatefulEvidence({ directory, manifest, result });
+        console.log(JSON.stringify({ runId: result.runId, mode: result.mode, startedAt: result.startedAt, endedAt: result.endedAt, stages: result.stages, identityIsolation: result.identityIsolation, evidenceDir: directory }, null, 2));
+      } catch (error) {
+        await writeStatefulFailureEvidence({ directory, manifest, runId: options.runId, error }).catch(() => {});
+        throw error;
+      }
     } finally {
       clearCredentials(statefulAuth.credentials);
       await statefulAuth.cleanup();
