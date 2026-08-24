@@ -2,6 +2,14 @@
 
 > 只记录已经影响 Production、或已完成 Production 验收的事件。测试中的本地改动、未部署方案和未授权修复不写入本表。
 
+## 2026-08-25 — RLS auth initplan 优化已执行（应用部署待完成）
+
+- 新增 forward-only migration：`20260825110000_optimize_rls_initplan.sql`；Production 已执行，未修改 schema、业务数据或历史 migration history。
+- 仅重建 `profiles_insert_own`、`profiles_update_own`、`profiles_select_own`、`sessions_select_participant` 四条 policy，将 `auth.uid()` 包装为 `(select auth.uid())`；roles、commands、USING/WITH CHECK 与 participant predicate 保持不变，未使用 `auth.jwt()`。
+- Production 只读 identity isolation：本人 profile 可见 `1`、他人 profile 可见 `0`；participant session 目标行 `1`；non-participant session 目标行 `0`。测试均在 `authenticated` role 的回滚事务中执行，无业务写入。
+- Supabase Performance Advisor 重跑：`0 errors / 0 warnings / 38 suggestions`；当前 `auth_rls_initplan` 未再显示。该结果不等于数据库 CPU incident 已解决。
+- Git commit：`d3b5766`；应用尚未重新部署，Production runtime 仍为 `8631311`。正式部署因腾讯云终端账户级 MFA 尚未完成而待执行。
+
 ## 2026-08-25 — Reservation conflict guard 发布（Production 归因未闭合）
 
 - 应用 commit：`8631311`，`fix: bound matchmaking reservation conflicts`；已通过腾讯云中国香港 Docker Compose 流程同步并部署，Production `/api/health/live` 与 `/api/health` runtime label 均为 `8631311`，`china-hk-app-1` 为 `Healthy`、gateway 为 `Running`。

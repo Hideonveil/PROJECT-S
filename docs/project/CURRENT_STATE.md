@@ -18,14 +18,14 @@
 
 - 仓库：`output/jiyuan-computer-handoff-2026-08-22/project-s-source`
 - Canonical engineering branch：`main`。
-- Git 当前可信应用源码基线：`8631311`（`fix: bound matchmaking reservation conflicts`）。`main` 已将 `agent/ui-shell-production` fast-forward 收敛；此前 `892d61e`、`875bb97` 与 `923bf47` 的产品修复继续保留在当前主线。后续事实文档提交属于 docs-only，不改变该应用发布基线。
-- 当前 `main` HEAD：以当前仓库 `git rev-parse HEAD` 为准；本次已部署的应用提交为 `8631311`，其后追加本次 Production 变更后的事实源同步。
+- Git 当前可信工程基线：`d3b5766`（`perf: optimize RLS auth initplans`）；当前已部署应用提交仍为 `8631311`。`main` 已将 `agent/ui-shell-production` fast-forward 收敛；此前 `892d61e`、`875bb97` 与 `923bf47` 的产品修复继续保留在当前主线。
+- 当前 `main` HEAD：以当前仓库 `git rev-parse HEAD` 为准；`d3b5766` 已包含 RLS forward-only migration 与测试，但应用部署尚未完成，Production runtime 仍为 `8631311`。
 - Project source tracked files：clean；仓库根下既有未跟踪 `output/` 证据目录保留，不能将其误写为不存在。
 - `agent/ui-shell-production` 已完成 fast-forward 收敛并保留，不删除该 branch。
 - Runtime source baseline、tests/tooling、project docs 与 migration provenance 均已进入 Git。
 - `0009_realtime_matchmaking.sql` 已恢复为历史原始版本；当前 migration provenance 规则保持有效：`NOT_RECORDED` 不得解释为未执行，不得 replay 或 repair production migration history，后续数据库变化必须使用 forward-only migration。
 - `v0.1` / `v1` / `v2` 仅作为 historical archive，不承担当前项目事实源职责。
-- 当前源码 migration 文件数：30。新增 `20260824100000_session_member_likes.sql` 为 forward-only migration；此前审计中使用的“27 个 migration”属于更早时间点，不能继续作为当前仓库总数。
+- 当前源码 migration 文件数：31。新增 `20260824100000_session_member_likes.sql` 与 `20260825110000_optimize_rls_initplan.sql` 均为 forward-only migration；此前审计中使用的“27 个 migration”属于更早时间点，不能继续作为当前仓库总数。
 
 ## 3. Production 当前事实
 
@@ -42,6 +42,7 @@
 - 本次发布后已完成 13 个低频公开观察样本（约 `2026-08-24T14:22:18Z`–`14:36:43Z`，观察按用户要求中止，未完成完整 15–30 分钟窗口）：`/api/health/live` 全部 HTTP `200`；`/api/health` 全部有界返回 HTTP `503`，约 `4.04–4.21s`，presence/database 均明确记录 `HEALTH_CHECK_TIMEOUT`；`/api/config` HTTP `200`；`/api/pool-summary` 全部 HTTP `200` 但约 `6.27–7.23s`。Caddy error/upstream/504 日志行 `0`（当前 Caddy 配置无 access-log 总量，因此仅记录可观察错误）；app/gateway restart `0`、`OOMKilled=false`，Docker 应用资源未显示瓶颈。
 - 本次未取得 A/B/C authenticated browser session；最终低频未认证读取为 `/api/state=401`、`/api/session=200`，不能替代 3/3 authenticated `/api/state`、`/api/session` smoke，后者保持 `NOT VERIFIED`。Production Supabase/DB CPU after 未从 Dashboard 取得；健康依赖持续超时，因此 `SUPABASE RESOURCE PRESSURE=NOT RESOLVED`，5-user rerun 继续 `NOT READY`。
 - `20260824100000_session_member_likes.sql` 已按授权在 Production 执行；表、3 个索引、3 个 RLS policy 与 RLS enabled 已只读确认，表内点赞行数为 `0`；未修改历史点赞、旧 `session_responses`、旧 tags 或 migration history。
+- `20260825110000_optimize_rls_initplan.sql` 已按授权在 Production 执行；四条 RLS policy 已只读确认改为 `(select auth.uid())`，roles/commands/USING/WITH CHECK 与 participant visibility 保持不变。Production identity isolation read-only verification：own profile `1`、other profile `0`、participant session `1`、non-participant session `0`。Performance Advisor 重跑为 `0 errors / 0 warnings / 38 suggestions`，但 DB CPU after 尚未取得，不能据此宣称 CPU incident 已解决。应用尚未重新部署，因腾讯云终端 MFA 阻塞；runtime 仍为 `8631311`。
 - 生产前端静态 bundle 已确认包含 Presence heartbeat 客户端标记，说明 Presence 客户端代码已随网站发布。
 - 生产数据库 project ref：`chqxaqibegpdjtedrxwx`。
 - 历史生产数据库快照曾确认：`pg_cron` 可用；Presence migration 所需字段、函数、trigger、cron job 已存在；当时 active ticket `0`、active Session `0`，原始 active Room `1` 与 terminal Session + playing Room `1` 均对应已登记历史 baseline `F1A64`，排除历史 5 个 ghost Room 后 New Active Room `0`、New Ghost `0`、New Active Ticket Residue `0`、New Active Session Residue `0`。本次新部署观察时 health 显示 `matching=3`、`playing=2`，不能沿用该历史零值作为当前 preflight。
