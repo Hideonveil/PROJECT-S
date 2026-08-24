@@ -1,6 +1,6 @@
 # 机缘当前状态
 
-> 状态快照日期：2026-08-23（Asia/Shanghai）
+> 状态快照日期：2026-08-24（Asia/Shanghai）
 > 
 > 本文件记录当前事实，不是下一轮开发计划。若与旧交接文档冲突，以本文件中的已验证生产证据和当前源码为准。
 
@@ -17,26 +17,27 @@
 
 - 仓库：`output/jiyuan-computer-handoff-2026-08-22/project-s-source`
 - Canonical engineering branch：`main`。
-- Git 当前可信源码基线：`cd51a831cf4435ceb03c10740cf5c0e2b80aeef0`（`fix: unify active room session renderer`）。`main` 已将 `agent/ui-shell-production` fast-forward 收敛到此前基线；本次前端 P0 修复已在 `main` 提交并部署。
+- Git 当前可信应用源码基线：`892d61e6eea1e3d3a1802d341b1ec4cd1013eb23`（`fix: bridge session fit lines between names`）。`main` 已将 `agent/ui-shell-production` fast-forward 收敛；本次逐成员点赞与两人/三人连接线修复已推送并部署。后续事实文档提交属于 docs-only，不改变该应用发布基线。
 - Project source working tree：clean。
 - `agent/ui-shell-production` 已完成 fast-forward 收敛并保留，不删除该 branch。
 - Runtime source baseline、tests/tooling、project docs 与 migration provenance 均已进入 Git。
 - `0009_realtime_matchmaking.sql` 已恢复为历史原始版本；当前 migration provenance 规则保持有效：`NOT_RECORDED` 不得解释为未执行，不得 replay 或 repair production migration history，后续数据库变化必须使用 forward-only migration。
 - `v0.1` / `v1` / `v2` 仅作为 historical archive，不承担当前项目事实源职责。
-- 当前源码 migration 文件数：29。此前审计中使用的“27 个 migration”属于更早时间点，不能继续作为当前仓库总数。
+- 当前源码 migration 文件数：30。新增 `20260824100000_session_member_likes.sql` 为 forward-only migration；此前审计中使用的“27 个 migration”属于更早时间点，不能继续作为当前仓库总数。
 
 ## 3. Production 当前事实
 
 - 公网入口：`https://www.jiyuan.online`
 - 部署方式：腾讯云中国香港节点上的 Docker Compose，Caddy 对外提供 HTTPS 和代理。
-- 最近 Production runtime version / deployed candidate：`cd51a831cf4435ceb03c10740cf5c0e2b80aeef0`；runtime deployment label / `/api/health.version` 为 `cd51a83`；此前 `7bee0a2-dirty-presence-2c0143f4` 作为历史部署标签保留。
-- Git 当前可信源码基线与 Production deployment label 仍是两个不同概念；本次有源码同步、容器 build、health 与静态 bundle 证据，但不把 `/api/health.version` 单独解释为容器字节级证明。
-- 最近生产 `/api/health` 已确认：`ok=true`、`status=ready`、`version=cd51a83`、`online=2`、`matching=0`、`playing=0`、`users=29`。
-- 该次健康检查时间：`2026-08-23T14:06:06.683Z`。
-- 本次发布后的 `version` 已由部署时 `APP_VERSION` 标记为 `cd51a83`；release metadata 的自动化追踪仍保留在 backlog，不扩大为本轮产品改动。
+- 最近 Production runtime version / deployed candidate：`892d61e6eea1e3d3a1802d341b1ec4cd1013eb23`；`/api/health.version` 返回同一完整 SHA；此前 `cd51a83` 与 `7bee0a2-dirty-presence-2c0143f4` 作为历史部署标签保留。
+- Git 应用源码基线与 Production runtime version / deployment label 仍是两个不同概念；本次具备源码同步、容器 build、health、HTTP 与容器状态证据，但不把单独的 health 字段解释为任意容器文件的字节级证明。
+- 本次生产健康检查已确认：`HTTP 200`、`ok=true`、`status=ready`、`version=892d61e6eea1e3d3a1802d341b1ec4cd1013eb23`、`online=1`、`matching=0`、`users=29`；根路径 HTTP `307` 为既有重定向。
+- 健康检查时间：`2026-08-24T03:01:44.867Z`。
+- Production 应用容器 `china-hk-app-1` 为 `healthy`，Caddy gateway 正常运行；部署构建仅出现 Docker Buildx 未安装警告，未导致失败。
+- `20260824100000_session_member_likes.sql` 已按授权在 Production 执行；表、3 个索引、3 个 RLS policy 与 RLS enabled 已只读确认，表内点赞行数为 `0`；未修改历史点赞、旧 `session_responses`、旧 tags 或 migration history。
 - 生产前端静态 bundle 已确认包含 Presence heartbeat 客户端标记，说明 Presence 客户端代码已随网站发布。
 - 生产数据库 project ref：`chqxaqibegpdjtedrxwx`。
-- 生产数据库最近已确认：`pg_cron` 可用；Presence migration 所需字段、函数、trigger、cron job 已存在；执行前 active / playing / connecting / ready Session 均为 0。
+- 生产数据库最近已确认：`pg_cron` 可用；Presence migration 所需字段、函数、trigger、cron job 已存在。发布后只读查询：active ticket `0`、active Session `0`；原始 active Room `1` 与 terminal Session + playing Room `1` 均对应已登记历史 baseline `F1A64`，排除历史 5 个 ghost Room 后 New Active Room `0`、New Ghost `0`、New Active Ticket Residue `0`、New Active Session Residue `0`。
 
 ## 4. 已确认的 Production / staging 证据
 
@@ -61,6 +62,7 @@
 - Explicit Leave：PASS。
 - 已有数据收敛检查：matching / playing active residue 为 0，且未产生新的 ghost。
 - Presence Production migration：已执行；生产 `pg_cron`、Presence heartbeat/offline/reconcile/timeout 相关对象已确认存在。
+- 逐成员点赞与连接线 Production 发布：代码 baseline `892d61e` 已部署；两人/三人视觉与逐成员点赞的 Production smoke 尚未完成，不能写成 Production QA PASS。
 
 ### 不应混淆的证据边界
 
@@ -82,7 +84,8 @@
 
 ### 非阻断但必须保留的事实
 
-- Production health 当前返回 `version=cd51a83`，但该值来自部署环境标记；仍不能单独作为容器字节级一致性证明。
+- Production health 当前返回目标完整 SHA；该值来自部署环境 release metadata，仍与 Git 应用源码基线分开记录。
+- 本次无法取得 A/B/C 三个同时受控的已登录 Production 身份，因此“两人/三人 Production 视觉 smoke、逐成员点赞刷新恢复、self/non-member 拒绝”保持 `NOT VERIFIED`；不以单一登录身份或本地 build 证据替代 Production smoke。
 - Project source working tree 当前 clean；Production deployment label 与 Git 基线分开记录，Production release provenance 仍需结合源码同步、容器 build、health 和静态 bundle 证据理解。
 - 三个已登记的 P0 均保持 `CLOSED`；当前不存在新的 P0。后续只按 `Final Private Pilot Gate` 剩余范围补证据。
 - 历史 5 个 ghost Room 仍存在，属于已知历史基线，不是本轮新增问题。

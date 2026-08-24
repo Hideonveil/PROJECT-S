@@ -19,6 +19,7 @@
 
 | Migration | Production execution status | Production history status | Current SHA-256 | Production fact |
 |---|---|---|---|---|
+| `20260824100000_session_member_likes.sql` | `CONFIRMED_EXECUTED` | `NOT_RECORDED` | `be1d769a470f98062063a7ac7c38b39b57a185516e6621e65415344cd8fa95af` | 已按明确授权在 Production 直接执行的 additive forward-only migration。`session_member_likes`、约束、3 个索引、RLS enabled 与 3 个 policy 已只读确认；表内行数为 0；未修改历史点赞、旧 tags、历史 ghost 或 `schema_migrations`。不得 replay，不得 repair history。 |
 | `20260822210000_sync_room_with_terminal_session.sql` | `CONFIRMED_EXECUTED` | `NOT_RECORDED` | `747ddcdbd7a08a4d751acecf1c2b38f5be915914913f3355e33b2509c6c0b141` | 已按既定部署流程直接执行于 Production，用于统一 terminal Session 与 Room 终态；未清理历史 ghost Room，未做历史数据 backfill。 |
 | `20260823100000_presence_reconnect_grace.sql` | `CONFIRMED_EXECUTED` | `NOT_RECORDED` | `2c0143f49e048816ea91543c131c3c90322e63d7efcf0a448edb0c42951c01a9` | 已按既定部署流程直接执行于 Production，包含 Presence heartbeat、effective-online TTL、Room reconnect grace 及 stale reconciliation；未 replay 缺失 migration history。 |
 

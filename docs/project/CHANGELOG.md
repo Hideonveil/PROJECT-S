@@ -2,6 +2,16 @@
 
 > 只记录已经影响 Production、或已完成 Production 验收的事件。测试中的本地改动、未部署方案和未授权修复不写入本表。
 
+## 2026-08-24 — 逐成员点赞与连接线修复发布
+
+- Git application release baseline：`892d61e6eea1e3d3a1802d341b1ec4cd1013eb23`，`fix: bridge session fit lines between names`；`origin/main` 已同步到该 baseline，随后只追加本次事实文档提交。
+- 已按中国香港 Docker Compose 正式流程部署；`china-hk-app-1` 为 `healthy`，Caddy gateway 正常运行。
+- Production health：HTTP `200`、`ok=true`、`status=ready`、`version=892d61e6eea1e3d3a1802d341b1ec4cd1013eb23`、`online=1`、`matching=0`、`users=29`；检查时间 `2026-08-24T03:01:44.867Z`；根路径 HTTP `307` 为既有重定向。
+- Production migration：`20260824100000_session_member_likes.sql` 已执行；表、约束、3 个索引、RLS enabled、3 个 policy 已只读确认；表内点赞行数 `0`；未修改历史数据、旧点赞字段/tags 或 `schema_migrations`。
+- 发布后只读数据检查：active ticket `0`、active Session `0`；原始 active Room `1` 与 terminal Session + playing Room `1` 对应已登记历史 baseline `F1A64`；排除历史 5 个 ghost Room 后 New Ghost `0`、New Active Ticket Residue `0`、New Active Session Residue `0`、New Active Room `0`。
+- 本轮未完成 A/B/C 受控身份的 Production smoke：两人/三人视觉、逐成员点赞刷新恢复、取消隔离、self/non-member 拒绝均为 `NOT VERIFIED`。因此 Final Private Pilot Gate 继续保持 `PENDING / NO-GO`，不写成 Production QA PASS。
+- 未执行：旧 migration replay、migration history repair、历史 ghost 清理、历史业务数据修改；Production data rows modified = `NO`。
+
 ## 2026-08-23 — Active Session 双渲染路径 P0 发布与关闭
 
 - Git baseline：`cd51a831cf4435ceb03c10740cf5c0e2b80aeef0`，`fix: unify active room session renderer`。
