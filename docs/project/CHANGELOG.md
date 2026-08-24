@@ -2,6 +2,13 @@
 
 > 只记录已经影响 Production、或已完成 Production 验收的事件。测试中的本地改动、未部署方案和未授权修复不写入本表。
 
+## 2026-08-24 — `/api/health` 可诊断性与超时边界修复发布
+
+- Git application release baseline：`923bf470938cd5ab721a0b37a6e39e56fff97395`，`fix: bound and diagnose health checks`；已按腾讯云中国香港 Docker Compose 流程部署，`china-hk-app-1` 与 `china-hk-gateway-1` 均保持运行，restart `0`、OOM `false`。
+- `/api/health` 连续 5 次公开烟测均在 `4.046–4.466s` 内返回 HTTP `503`、`ok=false`、`status=degraded`，响应包含总 `requestId`、每个 `presence` / `database` check 的 request ID、开始时间、耗时、超时状态与 sanitized error cause；`/api/health.version` 返回 `923bf470938cd5ab721a0b37a6e39e56fff97395`。
+- 两个外部依赖检查均在各自 `2000ms` 边界超时；该发布将历史约 20 秒无响应收敛为有界、可诊断的 degraded 响应，但未宣称 Supabase/DB 依赖已经恢复。`/api/config` HTTP `200`；根路径跟随既有 `307` 后 HTTP `200`。
+- 本次未执行 migration、未修改数据库 schema、未修改 Production 业务数据；5-user Stateful rerun 仍为 `NOT READY`，Final Private Pilot Gate 继续保持 `PENDING / NO-GO`。
+
 ## 2026-08-24 — Stateful Capacity 5 人阶段停止（证据未形成容量结论）
 
 - `run_id=capstate500-stage5-0824` 已按授权启动 5 人 Stateful rehearsal；runner 在阶段完成前报错 `The operation was aborted due to timeout`，因此按停止条件未继续 10/20/30/40/50/75/100/125/150/200/300/400/500 档位。

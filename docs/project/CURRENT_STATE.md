@@ -18,8 +18,8 @@
 
 - 仓库：`output/jiyuan-computer-handoff-2026-08-22/project-s-source`
 - Canonical engineering branch：`main`。
-- Git 当前可信应用源码基线：`875bb9786b5c4c5684de87358cb0289236adc869`（`fix: improve session accessibility and feedback interactions`）。`main` 已将 `agent/ui-shell-production` fast-forward 收敛；此前 `892d61e` 逐成员点赞与两人/三人连接线修复已由本次可访问性与反馈交互修复继续发布。后续事实文档提交属于 docs-only，不改变该应用发布基线。
-- 当前 `main` HEAD：`3117650fe5ea15185c13d08aec20e4c8a9ac316a`；该 HEAD 仅包含容量验证 runner/tooling 与项目事实文档变更，未部署到 Production。应用发布基线仍为 `875bb9786b5c4c5684de87358cb0289236adc869`。
+- Git 当前可信应用源码基线：`923bf470938cd5ab721a0b37a6e39e56fff97395`（`fix: bound and diagnose health checks`）。`main` 已将 `agent/ui-shell-production` fast-forward 收敛；此前 `892d61e`、`875bb97` 的产品修复继续保留在当前主线。后续事实文档提交属于 docs-only，不改变该应用发布基线。
+- 当前 `main` HEAD：`923bf470938cd5ab721a0b37a6e39e56fff97395`；该 HEAD 已部署 Production，新增内容仅为 `/api/health` 的 bounded diagnostics 与 timeout handling。
 - Project source tracked files：clean；仓库根下既有未跟踪 `output/` 证据目录保留，不能将其误写为不存在。
 - `agent/ui-shell-production` 已完成 fast-forward 收敛并保留，不删除该 branch。
 - Runtime source baseline、tests/tooling、project docs 与 migration provenance 均已进入 Git。
@@ -31,9 +31,10 @@
 
 - 公网入口：`https://www.jiyuan.online`
 - 部署方式：腾讯云中国香港节点上的 Docker Compose，Caddy 对外提供 HTTPS 和代理。
-- 最近 Production runtime version / deployed candidate：`875bb9786b5c4c5684de87358cb0289236adc869`；`/api/health.version` 返回同一完整 SHA；此前 `892d61e`、`cd51a83` 与 `7bee0a2-dirty-presence-2c0143f4` 作为历史部署版本/标签保留。
+- 最近 Production runtime version / deployed candidate：`923bf470938cd5ab721a0b37a6e39e56fff97395`；`/api/health.version` 返回同一完整 SHA；此前 `875bb97`、`892d61e`、`cd51a83` 与 `7bee0a2-dirty-presence-2c0143f4` 作为历史部署版本/标签保留。
 - Git 应用源码基线与 Production runtime version / deployment label 仍是两个不同概念；本次具备源码同步、容器 build、health、HTTP 与容器状态证据，但不把单独的 health 字段解释为任意容器文件的字节级证明。
-- 发布后健康检查已确认：`HTTP 200`、`ok=true`、`status=ready`、`version=875bb9786b5c4c5684de87358cb0289236adc869`、`online=0`、`matching=0`、`playing=0`、`users=531`；检查时间 `2026-08-24T10:17:41.166Z`。这次检查用于容量账号 provisioning 后的安全收尾，不是容量测试结果。
+- 此前 `875bb97` 发布后的健康检查曾确认：`HTTP 200`、`ok=true`、`status=ready`、`version=875bb9786b5c4c5684de87358cb0289236adc869`、`online=0`、`matching=0`、`playing=0`、`users=531`；检查时间 `2026-08-24T10:17:41.166Z`。这是历史安全收尾快照，不覆盖当前 `923bf47` 发布后的 degraded 诊断证据。
+- Health diagnostics 修复发布后的连续 5 次公开烟测均在 `4.046–4.466s` 内返回结构化 `HTTP 503`、`ok=false`、`status=degraded`、`version=923bf470938cd5ab721a0b37a6e39e56fff97395`；`presence` 与 `database` 各自明确记录 `HEALTH_CHECK_TIMEOUT`（单项边界 `2000ms`），不再出现 20 秒无响应。`/api/config` 为 HTTP `200`，根路径跟随既有 `307` 后为 HTTP `200`。该结果证明 response bound 与 diagnostics 已生效，但底层依赖异常仍未恢复，5-user rerun 保持 `NOT READY`。
 - `capstate500-stage5-0824` 超时后的只读健康检查：`status=ready`、`online=0`、`matching=0`、`playing=0`、`users=531`、`databaseLatencyMs=123857`；检查时间 `2026-08-24T10:38:53.169Z`。该阶段后 app/gateway 容器均无 restart，`OOMKilled=false`；这只是失败后的安全收尾快照，不是 Stateful capacity PASS。
 - 先前 `2026-08-24T05:10:45.191Z` 的健康检查仍作为历史快照保留；不同时间点的 `online/users` 数字不得混写。
 - Production 应用容器 `china-hk-app-1` 为 `healthy`，Caddy gateway 正常运行；部署构建仅出现 Docker Buildx 未安装警告，未导致失败。
