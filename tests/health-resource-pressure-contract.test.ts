@@ -14,6 +14,19 @@ describe("resource-pressure minimum safe fix", () => {
     expect(monitor).not.toContain('"${PUBLIC_URL}/api/health"');
   });
 
+  it("keeps public activity counts and directory reads off readiness health", () => {
+    const api = read("public/js/api.js");
+    const app = read("public/js/app.js");
+    const summary = read("src/app/api/pool-summary/route.ts");
+    const directory = read("src/app/api/public-directory/route.ts");
+    expect(api).toContain('request("/api/pool-summary")');
+    expect(api).toContain('request("/api/public-directory")');
+    expect(app).not.toContain("snapshot = await api.health()");
+    expect(app).not.toContain('fetch("/api/health"');
+    expect(summary).toContain("poolSummary()");
+    expect(directory).toContain("publicDirectory()");
+  });
+
   it("keeps health checks read-only and abortable", () => {
     const health = read("src/lib/health.ts");
     const presence = read("src/lib/presence.ts");
@@ -34,5 +47,24 @@ describe("resource-pressure minimum safe fix", () => {
     expect(state).not.toContain("poolCounts()");
     const loader = api.slice(api.indexOf("async function loadPoolSummary"), api.indexOf("export async function poolSummary"));
     expect(loader).not.toContain("publicMatchDirectory");
+  });
+
+  it("shares active room discovery and public profile reads within one state snapshot", () => {
+    const api = read("src/lib/api.ts");
+    const state = read("src/app/api/state/route.ts");
+    const data = read("src/lib/data.ts");
+    expect(api).toContain("createStateReadContext");
+    expect(api).toContain("activeRoomCandidate");
+    expect(state).toContain("const readContext = createStateReadContext()");
+    expect(data).toContain("createReadContext");
+    expect(data).toContain("context?.publicProfiles");
+  });
+
+  it("deduplicates overlapping authenticated state requests in the browser", () => {
+    const api = read("public/js/api.js");
+    const realtime = read("public/js/realtime.js");
+    expect(api).toContain("let stateRequest = null");
+    expect(api).toContain('authedRequest("/api/state")');
+    expect(realtime).toContain("getState()");
   });
 });

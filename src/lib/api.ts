@@ -1,5 +1,5 @@
 import { supabaseAdmin } from "./supabase";
-import { gamesForProfile, publicProfile, publicProfilesFor } from "./data";
+import { createReadContext, gamesForProfile, publicProfile, publicProfilesFor, type ReadContext } from "./data";
 import { mapGoodbyeRequests } from "./session-goodbye";
 import { mapSession } from "./session";
 import { presenceCutoffIso } from "./presence";
@@ -85,6 +85,16 @@ type PoolSummaryOptions = {
   cache?: boolean;
 };
 
+export type StateReadContext = ReadContext & {
+  activeRoomCandidate?: Promise<ActiveRoomCandidate>;
+};
+
+export function createStateReadContext(): StateReadContext {
+  return {
+    ...createReadContext(),
+  };
+}
+
 const POOL_SUMMARY_CACHE_MS = 7_500;
 let poolSummaryCache: { value: PoolSummary; expiresAt: number } | null = null;
 let poolSummaryInflight: Promise<PoolSummary> | null = null;
@@ -159,7 +169,30 @@ export async function poolCounts(options: { strict?: boolean } = {}): Promise<Po
   return { ...summary, directory };
 }
 
-export async function enrichRoom(room: Record<string, unknown>): Promise<Room> {
+const PUBLIC_DIRECTORY_CACHE_MS = 7_500;
+let publicDirectoryCache: { value: PublicMatchDirectoryEntry[]; expiresAt: number } | null = null;
+let publicDirectoryInflight: Promise<PublicMatchDirectoryEntry[]> | null = null;
+
+export function clearPublicDirectoryCache() {
+  publicDirectoryCache = null;
+  publicDirectoryInflight = null;
+}
+
+export async function publicDirectory(): Promise<PublicMatchDirectoryEntry[]> {
+  if (publicDirectoryCache && publicDirectoryCache.expiresAt > Date.now()) return publicDirectoryCache.value;
+  if (publicDirectoryInflight) return publicDirectoryInflight;
+  publicDirectoryInflight = publicMatchDirectory(18)
+    .then((value) => {
+      publicDirectoryCache = { value, expiresAt: Date.now() + PUBLIC_DIRECTORY_CACHE_MS };
+      return value;
+    })
+    .finally(() => {
+      publicDirectoryInflight = null;
+    });
+  return publicDirectoryInflight;
+}
+
+export async function enrichRoom(room: Record<string, unknown>, options: { context?: ReadContext; session?: Record<string, any> | null } = {}): Promise<Room> {
   const roomNeed = (room.need as Record<string, any>) || {};
   const { data: members } = await supabaseAdmin()
     .from("room_members")
@@ -259,7 +292,7 @@ export async function enrichRoom(room: Record<string, unknown>): Promise<Room> {
   // enrichRoom is only called after server-side room membership checks, so
   // members may see each other's in-room game account exchange fields.
   const memberIds = rows.map((m) => m.user_id);
-  const profiles = await publicProfilesFor(memberIds, { includeGameAccountsFor: memberIds });
+  const profiles = await publicProfilesFor(memberIds, { includeGameAccountsFor: memberIds }, options.context);
   const byId = new Map(profiles.map((p) => [p.id, p]));
   const memberViews = rows
     .filter((m) => byId.has(m.user_id))
@@ -269,13 +302,15 @@ export async function enrichRoom(room: Record<string, unknown>): Promise<Room> {
       exitedAt: m.exited_at || null,
       need: needForTicket(ticketByUser.get(m.user_id)),
     }));
-  const { data: session } = await supabaseAdmin()
-    .from("sessions")
-    .select("id,status")
-    .eq("room_id", room.id as string)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+  const session = options.session === undefined
+    ? (await supabaseAdmin()
+        .from("sessions")
+        .select("id,status")
+        .eq("room_id", room.id as string)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle()).data
+    : options.session;
   const { data: goodbyeRows } = session?.id
     ? await supabaseAdmin()
         .from("session_goodbye_requests")
@@ -301,14 +336,19 @@ export async function enrichRoom(room: Record<string, unknown>): Promise<Room> {
   };
 }
 
-export async function activeRoomFor(profileId: string): Promise<Room | null> {
+type ActiveRoomCandidate = {
+  room: Record<string, unknown> | null;
+  session: Record<string, any> | null;
+};
+
+async function loadActiveRoomCandidate(profileId: string): Promise<ActiveRoomCandidate> {
   const { data: members } = await supabaseAdmin()
     .from("room_members")
     .select("room_id")
     .eq("user_id", profileId)
     .eq("status", "active");
   const roomIds = (members || []).map((m) => m.room_id);
-  if (!roomIds.length) return null;
+  if (!roomIds.length) return { room: null, session: null };
   const { data: rooms } = await supabaseAdmin()
     .from("rooms")
     .select("*")
@@ -316,31 +356,45 @@ export async function activeRoomFor(profileId: string): Promise<Room | null> {
     .in("status", ["connecting", "ready", "playing"])
     .order("created_at", { ascending: false })
     .limit(Math.max(roomIds.length, 10));
-  if (!rooms?.length) return null;
+  if (!rooms?.length) return { room: null, session: null };
   // A room row can remain `playing` after its Session has completed. Resolve
   // the newest Session per room before restoring it, otherwise a refresh can
   // reopen the previous room instead of returning the player to home.
   const candidateIds = rooms.map((room) => room.id as string);
   const { data: sessions } = await supabaseAdmin()
     .from("sessions")
-    .select("room_id,status,created_at")
+    .select("*")
     .in("room_id", candidateIds)
     .order("created_at", { ascending: false });
-  const latestSessionByRoom = new Map<string, { status: string }>();
+  const latestSessionByRoom = new Map<string, Record<string, any>>();
   for (const row of sessions || []) {
     if (!latestSessionByRoom.has(row.room_id as string)) {
-      latestSessionByRoom.set(row.room_id as string, { status: row.status as string });
+      latestSessionByRoom.set(row.room_id as string, row as Record<string, any>);
     }
   }
   const room = rooms.find((candidate) => {
     const latest = latestSessionByRoom.get(candidate.id as string);
     return !latest || ["ready", "playing"].includes(latest.status);
   });
-  if (!room) return null;
-  return enrichRoom(room);
+  return {
+    room: (room as Record<string, unknown>) || null,
+    session: room ? (latestSessionByRoom.get(room.id as string) || null) : null,
+  };
 }
 
-export async function recentConnectionsFor(profileId: string): Promise<EnrichedRecentConnection[]> {
+function activeRoomCandidate(profileId: string, context?: StateReadContext) {
+  if (!context) return loadActiveRoomCandidate(profileId);
+  if (!context.activeRoomCandidate) context.activeRoomCandidate = loadActiveRoomCandidate(profileId);
+  return context.activeRoomCandidate;
+}
+
+export async function activeRoomFor(profileId: string, context?: StateReadContext): Promise<Room | null> {
+  const candidate = await activeRoomCandidate(profileId, context);
+  if (!candidate.room) return null;
+  return enrichRoom(candidate.room, { context, session: candidate.session });
+}
+
+export async function recentConnectionsFor(profileId: string, context?: ReadContext): Promise<EnrichedRecentConnection[]> {
   const { data } = await supabaseAdmin()
     .from("recent_connections")
     .select("*")
@@ -368,7 +422,7 @@ export async function recentConnectionsFor(profileId: string): Promise<EnrichedR
       current.row = row;
     }
   }
-  const profiles = await publicProfilesFor(Array.from(grouped.keys()));
+  const profiles = await publicProfilesFor(Array.from(grouped.keys()), {}, context);
   const byId = new Map(profiles.map((p) => [p.id, p]));
   return Array.from(grouped.entries())
     .map(([friendId, entry]) => {
@@ -386,36 +440,10 @@ export async function recentConnectionsFor(profileId: string): Promise<EnrichedR
     .filter((entry): entry is EnrichedRecentConnection => entry !== null);
 }
 
-export async function activeSessionFor(profileId: string): Promise<Session | null> {
-  const { data: memberships } = await supabaseAdmin()
-    .from("room_members")
-    .select("room_id")
-    .eq("user_id", profileId)
-    .eq("status", "active")
-    .order("joined_at", { ascending: false });
-  const roomIds = (memberships || []).map((row) => row.room_id);
-  if (!roomIds.length) return null;
-  // Resolve the current live room first. Looking up sessions directly across
-  // every historical membership can resurrect an older room when a completed
-  // Session left its member rows active.
-  const { data: rooms } = await supabaseAdmin()
-    .from("rooms")
-    .select("id")
-    .in("id", roomIds)
-    .in("status", ["connecting", "ready", "playing"])
-    .order("created_at", { ascending: false })
-    .limit(1);
-  const roomId = rooms?.[0]?.id;
-  if (!roomId) return null;
-  const { data } = await supabaseAdmin()
-    .from("sessions")
-    .select("*")
-    .eq("room_id", roomId)
-    .in("status", ["ready", "playing"])
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  return (data as Session) || null;
+export async function activeSessionFor(profileId: string, context?: StateReadContext): Promise<Session | null> {
+  const candidate = await activeRoomCandidate(profileId, context);
+  if (!candidate.session || !["ready", "playing"].includes(String(candidate.session.status))) return null;
+  return candidate.session as Session;
 }
 
 /**
@@ -423,7 +451,7 @@ export async function activeSessionFor(profileId: string): Promise<Session | nul
  * Per-member likes are intentionally hydrated from the new directed table so
  * each teammate card can render its own state after refresh or re-entry.
  */
-export async function completedSessionViewFor(profileId: string): Promise<Record<string, unknown> | null> {
+export async function completedSessionViewFor(profileId: string, context?: ReadContext): Promise<Record<string, unknown> | null> {
   const admin = supabaseAdmin();
   const { data: session } = await admin
     .from("sessions")
@@ -453,9 +481,9 @@ export async function completedSessionViewFor(profileId: string): Promise<Record
       .maybeSingle(),
   ]);
 
-  const enriched = room ? await enrichRoom(room as Record<string, unknown>) : null;
+  const enriched = room ? await enrichRoom(room as Record<string, unknown>, { context }) : null;
   const fallbackProfiles = !enriched
-    ? await publicProfilesFor(Array.isArray(session.players) ? session.players : [])
+    ? await publicProfilesFor(Array.isArray(session.players) ? session.players : [], {}, context)
     : [];
   const sourceMembers = enriched?.members?.length
     ? enriched.members
@@ -481,16 +509,16 @@ export async function completedSessionViewFor(profileId: string): Promise<Record
   };
 }
 
-export async function friendsFor(profileId: string): Promise<PublicProfile[]> {
+export async function friendsFor(profileId: string, context?: ReadContext): Promise<PublicProfile[]> {
   const { data } = await supabaseAdmin()
     .from("friendships")
     .select("friend_id")
     .eq("user_id", profileId)
     .eq("status", "accepted");
-  return publicProfilesFor((data || []).map((f) => f.friend_id));
+  return publicProfilesFor((data || []).map((f) => f.friend_id), {}, context);
 }
 
-export async function profileWithGames(profile: Profile): Promise<PublicProfile> {
-  const games = await gamesForProfile(profile.id);
+export async function profileWithGames(profile: Profile, context?: ReadContext): Promise<PublicProfile> {
+  const games = await gamesForProfile(profile.id, context);
   return publicProfile(profile, games, { includePrivate: true });
 }

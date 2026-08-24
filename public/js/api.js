@@ -1,6 +1,9 @@
 let supabase = null;
 let configCache = null;
 let cachedAccessToken = "";
+let stateRequest = null;
+let poolSummaryRequest = null;
+let publicDirectoryRequest = null;
 
 async function request(path, body, token = null, { timeoutMs = 15000 } = {}) {
   const headers = {};
@@ -53,12 +56,32 @@ async function authedRequest(path, body) {
 }
 
 export const health = () => request("/api/health");
+export const poolSummary = () => {
+  if (poolSummaryRequest) return poolSummaryRequest;
+  poolSummaryRequest = request("/api/pool-summary").finally(() => {
+    poolSummaryRequest = null;
+  });
+  return poolSummaryRequest;
+};
+export const publicDirectory = () => {
+  if (publicDirectoryRequest) return publicDirectoryRequest;
+  publicDirectoryRequest = request("/api/public-directory").finally(() => {
+    publicDirectoryRequest = null;
+  });
+  return publicDirectoryRequest;
+};
 export const getConfig = async () => {
   if (configCache) return configCache;
   configCache = await request("/api/config");
   return configCache;
 };
-export const getState = () => authedRequest("/api/state");
+export const getState = () => {
+  if (stateRequest) return stateRequest;
+  stateRequest = authedRequest("/api/state").finally(() => {
+    stateRequest = null;
+  });
+  return stateRequest;
+};
 
 async function getSupabase() {
   if (supabase) return supabase;

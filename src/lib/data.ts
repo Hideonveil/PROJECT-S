@@ -2,6 +2,18 @@ import { supabaseAdmin } from "./supabase";
 import { isEffectivelyOnline, presenceCutoffIso } from "./presence";
 import type { GameIdentity, Profile, PublicProfile } from "./types";
 
+export type ReadContext = {
+  games: Map<string, Promise<GameIdentity[]>>;
+  publicProfiles: Map<string, Promise<PublicProfile[]>>;
+};
+
+export function createReadContext(): ReadContext {
+  return {
+    games: new Map(),
+    publicProfiles: new Map(),
+  };
+}
+
 export function publicProfile(
   profile: Profile,
   games: GameIdentity[] = [],
@@ -28,7 +40,15 @@ export function publicProfile(
   };
 }
 
-export async function gamesForProfile(profileId: string): Promise<GameIdentity[]> {
+export async function gamesForProfile(profileId: string, context?: ReadContext): Promise<GameIdentity[]> {
+  const cached = context?.games.get(profileId);
+  if (cached) return cached;
+  const request = loadGamesForProfile(profileId);
+  context?.games.set(profileId, request);
+  return request;
+}
+
+async function loadGamesForProfile(profileId: string): Promise<GameIdentity[]> {
   const { data, error } = await supabaseAdmin()
     .from("user_games")
     .select("*")
@@ -47,10 +67,28 @@ export async function gamesForProfile(profileId: string): Promise<GameIdentity[]
 
 export async function publicProfilesFor(
   ids: string[],
-  options: { includePrivateFor?: string[]; includeGameAccountsFor?: string[]; onlineOnly?: boolean } = {}
+  options: { includePrivateFor?: string[]; includeGameAccountsFor?: string[]; onlineOnly?: boolean } = {},
+  context?: ReadContext,
 ): Promise<PublicProfile[]> {
   const unique = Array.from(new Set(ids));
   if (!unique.length) return [];
+  const key = JSON.stringify({
+    ids: [...unique].sort(),
+    includePrivateFor: [...(options.includePrivateFor || [])].sort(),
+    includeGameAccountsFor: [...(options.includeGameAccountsFor || [])].sort(),
+    onlineOnly: Boolean(options.onlineOnly),
+  });
+  const cached = context?.publicProfiles.get(key);
+  if (cached) return cached;
+  const request = loadPublicProfiles(unique, options);
+  context?.publicProfiles.set(key, request);
+  return request;
+}
+
+async function loadPublicProfiles(
+  unique: string[],
+  options: { includePrivateFor?: string[]; includeGameAccountsFor?: string[]; onlineOnly?: boolean },
+): Promise<PublicProfile[]> {
   let profileQuery = supabaseAdmin().from("profiles").select("*").in("id", unique);
   if (options.onlineOnly) {
     profileQuery = profileQuery.eq("online", true).gt("last_seen", presenceCutoffIso());

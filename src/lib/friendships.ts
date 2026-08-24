@@ -1,4 +1,4 @@
-import { publicProfilesFor } from "./data";
+import { publicProfilesFor, type ReadContext } from "./data";
 import { supabaseAdmin } from "./supabase";
 import type { PublicProfile } from "./types";
 
@@ -21,7 +21,7 @@ export function mapFriendshipRequests<T extends { id: string }>(
   return { incoming, outgoing };
 }
 
-export async function friendRequestsFor(profileId: string): Promise<{
+export async function friendRequestsFor(profileId: string, context?: ReadContext): Promise<{
   incoming: FriendRequestView[];
   outgoing: FriendRequestView[];
 }> {
@@ -33,6 +33,6 @@ export async function friendRequestsFor(profileId: string): Promise<{
     .order("created_at", { ascending: false });
   const rows = (data || []) as PendingFriendshipRow[];
   const ids = rows.map((row) => (row.user_id === profileId ? row.friend_id : row.user_id));
-  const profiles = await publicProfilesFor(Array.from(new Set(ids)));
+  const profiles = await publicProfilesFor(Array.from(new Set(ids)), {}, context);
   return mapFriendshipRequests(profileId, rows, new Map(profiles.map((profile) => [profile.id, profile])));
 }

@@ -52,8 +52,9 @@ describe("ghost matchmaking recovery", () => {
 
   it("resolves the active Session from the newest live room", () => {
     expect(api).toContain('.in("status", ["connecting", "ready", "playing"])');
-    expect(api).toContain("const roomId = rooms?.[0]?.id;");
-    expect(api).toContain('.eq("room_id", roomId)');
+    expect(api).toContain("loadActiveRoomCandidate");
+    expect(api).toContain('.select("*")');
+    expect(api).toContain("return candidate.session as Session;");
   });
 
   it("does not restore a room whose latest Session is terminal", () => {

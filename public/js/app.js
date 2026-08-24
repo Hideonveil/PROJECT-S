@@ -107,6 +107,8 @@ let homeDirectoryOffset = 0;
 let homeDirectorySignature = "";
 let heroActivityRequestPending = false;
 let homeActivityRequestPending = false;
+let heroDirectoryRequestPending = false;
+let homeDirectoryRequestPending = false;
 let homeRangePointer = null;
 const trackedCandidatePairs = new Set();
 let authSubmitPending = false;
@@ -896,21 +898,37 @@ async function refreshHomeActivity() {
   if (homeActivityRequestPending) return;
   homeActivityRequestPending = true;
   try {
-    const snapshot = await api.health();
+    const snapshot = await api.poolSummary();
     if (parseRoute().name !== "home") return;
     const nextMatch = {
       ...state.match,
       online: Number(snapshot.online ?? state.match.online ?? 0),
       pool: Number(snapshot.matching ?? snapshot.online ?? state.match.pool ?? 0),
       playing: Number(snapshot.playing ?? state.match.playing ?? 0),
-      directory: Array.isArray(snapshot.directory) ? snapshot.directory : state.match.directory || [],
+      directory: state.match.directory || [],
     };
+    update({ match: nextMatch });
+  } catch {
+    // The matching form remains usable when the light activity snapshot is unavailable.
+  } finally {
+    homeActivityRequestPending = false;
+  }
+}
+
+async function refreshHomeDirectory() {
+  if (parseRoute().name !== "home") return;
+  if (homeDirectoryRequestPending) return;
+  homeDirectoryRequestPending = true;
+  try {
+    const snapshot = await api.publicDirectory();
+    if (parseRoute().name !== "home") return;
+    const nextMatch = { ...state.match, directory: Array.isArray(snapshot.directory) ? snapshot.directory : [] };
     update({ match: nextMatch });
     updateHomeDirectoryView(nextMatch);
   } catch {
-    // The matching form remains usable when the public activity snapshot is unavailable.
+    // Directory cards are optional and never block the matching form.
   } finally {
-    homeActivityRequestPending = false;
+    homeDirectoryRequestPending = false;
   }
 }
 
@@ -919,21 +937,38 @@ async function refreshHeroActivity() {
   if (heroActivityRequestPending) return;
   heroActivityRequestPending = true;
   try {
-    const snapshot = await api.health();
+    const snapshot = await api.poolSummary();
     if (parseRoute().name !== "hero") return;
     const nextMatch = {
       ...state.match,
       online: Number(snapshot.online ?? state.match.online ?? 0),
       pool: Number(snapshot.matching ?? snapshot.online ?? state.match.pool ?? 0),
       playing: Number(snapshot.playing ?? state.match.playing ?? 0),
-      directory: Array.isArray(snapshot.directory) ? snapshot.directory : state.match.directory || [],
+      directory: state.match.directory || [],
     };
     update({ match: nextMatch });
     updateHeroActivityView(nextMatch);
   } catch {
-    // Hero remains usable when the public activity snapshot is temporarily unavailable.
+    // Hero remains usable when the light activity snapshot is temporarily unavailable.
   } finally {
     heroActivityRequestPending = false;
+  }
+}
+
+async function refreshHeroDirectory() {
+  if (parseRoute().name !== "hero") return;
+  if (heroDirectoryRequestPending) return;
+  heroDirectoryRequestPending = true;
+  try {
+    const snapshot = await api.publicDirectory();
+    if (parseRoute().name !== "hero") return;
+    const nextMatch = { ...state.match, directory: Array.isArray(snapshot.directory) ? snapshot.directory : [] };
+    update({ match: nextMatch });
+    updateHeroActivityView(nextMatch);
+  } catch {
+    // The directory is optional and never blocks the landing page.
+  } finally {
+    heroDirectoryRequestPending = false;
   }
 }
 
@@ -1093,11 +1128,11 @@ function render() {
     updateHeroActivityView(route.name === "hero-preview" ? { directory: HERO_PREVIEW_DIRECTORY } : state.match);
     if (route.name === "hero") {
       void refreshHeroActivity();
-      // Public Hero pages are not authenticated, so they cannot rely on the
-      // private Realtime channel. Poll frequently enough that entering or
-      // leaving the pool is visible within a few seconds, with request
-      // de-duplication preventing slow responses from piling up.
-      timers.push(window.setInterval(refreshHeroActivity, 3000));
+      void refreshHeroDirectory();
+      // Public Hero pages use the light summary and a separate, cached
+      // directory feed. Read failures never affect the landing flow.
+      timers.push(window.setInterval(refreshHeroActivity, 10_000));
+      timers.push(window.setInterval(refreshHeroDirectory, 10_000));
     }
     timers.push(window.setInterval(rotateHeroDirectory, 2000));
   }
@@ -1109,7 +1144,9 @@ function render() {
     homeDirectorySignature = "";
     updateHomeDirectoryView(state.match, { force: true });
     void refreshHomeActivity();
-    timers.push(window.setInterval(refreshHomeActivity, 3000));
+    void refreshHomeDirectory();
+    timers.push(window.setInterval(refreshHomeActivity, 10_000));
+    timers.push(window.setInterval(refreshHomeDirectory, 10_000));
     timers.push(window.setInterval(rotateHomeDirectory, 8000));
   }
   if (route.name === "matching") {
@@ -3612,8 +3649,14 @@ window.addEventListener("hashchange", () => {
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState !== "visible") return;
   const routeName = parseRoute().name;
-  if (routeName === "hero") void refreshHeroActivity();
-  if (routeName === "home") void refreshHomeActivity();
+  if (routeName === "hero") {
+    void refreshHeroActivity();
+    void refreshHeroDirectory();
+  }
+  if (routeName === "home") {
+    void refreshHomeActivity();
+    void refreshHomeDirectory();
+  }
   if (["matching", "room", "gameover"].includes(routeName)) {
     void refreshAuthenticatedState({ restoreRoute: true });
   }
@@ -3656,19 +3699,16 @@ window.addEventListener("pagehide", () => {
 
 async function detectOnline() {
   try {
-    const res = await fetch("/api/health", { cache: "no-store" });
-    if (res.ok) {
-      const data = await res.json().catch(() => ({}));
-      update({
-        match: {
-          ...state.match,
-          online: data.online ?? state.match.online ?? 0,
-          pool: data.matching ?? state.match.pool,
-          playing: data.playing ?? state.match.playing,
-        },
-      });
-    }
-    return res.ok;
+    const data = await api.poolSummary();
+    update({
+      match: {
+        ...state.match,
+        online: data.online ?? state.match.online ?? 0,
+        pool: data.matching ?? state.match.pool,
+        playing: data.playing ?? state.match.playing,
+      },
+    });
+    return true;
   } catch {
     return false;
   }
