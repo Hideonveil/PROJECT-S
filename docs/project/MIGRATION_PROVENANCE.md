@@ -23,6 +23,12 @@
 | `20260822210000_sync_room_with_terminal_session.sql` | `CONFIRMED_EXECUTED` | `NOT_RECORDED` | `747ddcdbd7a08a4d751acecf1c2b38f5be915914913f3355e33b2509c6c0b141` | 已按既定部署流程直接执行于 Production，用于统一 terminal Session 与 Room 终态；未清理历史 ghost Room，未做历史数据 backfill。 |
 | `20260823100000_presence_reconnect_grace.sql` | `CONFIRMED_EXECUTED` | `NOT_RECORDED` | `2c0143f49e048816ea91543c131c3c90322e63d7efcf0a448edb0c42951c01a9` | 已按既定部署流程直接执行于 Production，包含 Presence heartbeat、effective-online TTL、Room reconnect grace 及 stale reconciliation；未 replay 缺失 migration history。 |
 
+## Production schema reconciliation artifacts
+
+| Migration | Migration execution status | Production history status | Current SHA-256 | Production fact |
+|---|---|---|---|---|
+| `20260825090000_reconcile_production_matchmaking_indexes.sql` | `NOT_EXECUTED_AS_MIGRATION` | `NOT_RECORDED` | `d3db474d8e9ebace0d617a39babad35d5fa6fc023a72807b2aa20c5c921026d5` | Production 已直接存在并经 catalog 只读确认：`matchmaking_pairs_active_unordered_unique` 与 12 个 matchmaking FK indexes。该文件仅以 forward-only、idempotent DDL 表达当前 Production schema；本次未执行 migration、未修改 `schema_migrations`。不得在当前 Production 自动 replay 或用于 repair history。 |
+
 ## Provenance-review artifacts
 
 以下 10 个 migration 进入 Git 只代表保存未闭合 provenance 的 SQL artifact。它们的 production history 均为 `NOT_RECORDED`，不能据此推断已经在 Production 执行，也不能据此认为可以安全 replay。
