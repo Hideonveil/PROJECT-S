@@ -33,7 +33,7 @@ describe("ghost matchmaking recovery", () => {
     expect(service).toContain("ticket.expires_at");
     expect(service).toContain("waiting_confirmation");
     expect(api).toContain('.in("state", ["searching", "candidate_found", "waiting_confirmation"])');
-    expect(api).toContain(".gt(\"expires_at\", activeTicketCutoff)");
+    expect(api).not.toContain('.gt("expires_at", activeTicketCutoff)');
   });
 
   it("keeps a terminal pair out of the matching UI", () => {

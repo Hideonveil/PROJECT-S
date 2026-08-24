@@ -17,10 +17,20 @@ export function isEffectivelyOnline(
   return Number.isFinite(lastSeen) && lastSeen > now - PRESENCE_TTL_SECONDS * 1000;
 }
 
-export async function reconcileStalePresence() {
-  const { data, error } = await supabaseAdmin().rpc("presence_reconcile_stale", {
+export async function probePresence(signal?: AbortSignal) {
+  let query = supabaseAdmin().from("profiles").select("id", { head: true }).limit(1);
+  if (signal) query = query.abortSignal(signal);
+  const { error } = await query;
+  if (error) throw error;
+  return true;
+}
+
+export async function reconcileStalePresence(signal?: AbortSignal) {
+  let query = supabaseAdmin().rpc("presence_reconcile_stale", {
     p_limit: 200,
   });
+  if (signal) query = query.abortSignal(signal);
+  const { data, error } = await query;
   if (error) throw error;
   return data;
 }

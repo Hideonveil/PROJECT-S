@@ -1,11 +1,10 @@
 import { randomUUID } from "node:crypto";
-import { poolCounts } from "./api";
-import { reconcileStalePresence } from "./presence";
+import { poolSummary, type PoolSummary } from "./api";
+import { probePresence } from "./presence";
 
 export const HEALTH_CHECK_TIMEOUT_MS = 2_000;
 export const HEALTH_DEADLINE_MS = 5_000;
 
-type HealthCounts = Awaited<ReturnType<typeof poolCounts>>;
 type CheckOutcome = "success" | "timeout" | "error";
 
 export type HealthCheckResult = {
@@ -40,12 +39,11 @@ export type HealthDiagnosticsBody = {
   matching?: number;
   users?: number;
   playing?: number;
-  directory?: HealthCounts["directory"];
 };
 
 type HealthDependencies = {
-  reconcile: () => Promise<unknown>;
-  counts: () => Promise<HealthCounts>;
+  presence: (signal: AbortSignal) => Promise<unknown>;
+  counts: (signal: AbortSignal) => Promise<PoolSummary>;
 };
 
 function redact(value: unknown): string {
@@ -85,19 +83,30 @@ function timeoutError(check: string, timeoutMs: number): Error {
 
 async function runCheck<T>(
   check: string,
-  operation: () => Promise<T>,
+  operation: (signal: AbortSignal) => Promise<T>,
   timeoutMs: number,
+  parentSignal: AbortSignal,
 ): Promise<{ result: HealthCheckResult; value?: T }> {
   const startedAt = new Date().toISOString();
   const startedMs = Date.now();
   const requestId = randomUUID();
+  const controller = new AbortController();
   let timer: ReturnType<typeof setTimeout> | undefined;
+  const abortFromParent = () => controller.abort(parentSignal.reason);
+  if (parentSignal.aborted) abortFromParent();
+  else parentSignal.addEventListener("abort", abortFromParent, { once: true });
+
   const timeout = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(timeoutError(check, timeoutMs)), timeoutMs);
+    timer = setTimeout(() => {
+      const error = timeoutError(check, timeoutMs);
+      controller.abort(error);
+      reject(error);
+    }, timeoutMs);
   });
+  const operationPromise = Promise.resolve().then(() => operation(controller.signal));
 
   try {
-    const value = await Promise.race([Promise.resolve().then(operation), timeout]);
+    const value = await Promise.race([operationPromise, timeout]);
     return {
       value,
       result: {
@@ -127,6 +136,7 @@ async function runCheck<T>(
     };
   } finally {
     if (timer) clearTimeout(timer);
+    parentSignal.removeEventListener("abort", abortFromParent);
   }
 }
 
@@ -134,7 +144,10 @@ export async function runHealthDiagnostics({
   requestId,
   checkTimeoutMs = HEALTH_CHECK_TIMEOUT_MS,
   deadlineMs = HEALTH_DEADLINE_MS,
-  dependencies = { reconcile: reconcileStalePresence, counts: () => poolCounts({ strict: true }) },
+  dependencies = {
+    presence: probePresence,
+    counts: (signal) => poolSummary({ strict: true, cache: false, signal }),
+  },
 }: {
   requestId: string;
   checkTimeoutMs?: number;
@@ -143,15 +156,17 @@ export async function runHealthDiagnostics({
 }): Promise<{ httpStatus: 200 | 503; body: HealthDiagnosticsBody }> {
   const startedMs = Date.now();
   const checks: Record<string, HealthCheckResult> = {};
-  let counts: HealthCounts | undefined;
+  let counts: PoolSummary | undefined;
   let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
   let deadlineTriggered = false;
+  const overallController = new AbortController();
 
   const executeChecks = async () => {
-    const presence = await runCheck("presence", dependencies.reconcile, checkTimeoutMs);
+    const presence = await runCheck("presence", dependencies.presence, checkTimeoutMs, overallController.signal);
     checks.presence = presence.result;
+    if (overallController.signal.aborted) return;
 
-    const database = await runCheck("database", dependencies.counts, checkTimeoutMs);
+    const database = await runCheck("database", dependencies.counts, checkTimeoutMs, overallController.signal);
     checks.database = database.result;
     counts = database.value;
   };
@@ -159,7 +174,9 @@ export async function runHealthDiagnostics({
   const deadline = new Promise<never>((_, reject) => {
     deadlineTimer = setTimeout(() => {
       deadlineTriggered = true;
-      reject(timeoutError("health_deadline", deadlineMs));
+      const error = timeoutError("health_deadline", deadlineMs);
+      overallController.abort(error);
+      reject(error);
     }, deadlineMs);
   });
 
@@ -191,6 +208,7 @@ export async function runHealthDiagnostics({
     }
   } finally {
     if (deadlineTimer) clearTimeout(deadlineTimer);
+    if (!overallController.signal.aborted) overallController.abort();
   }
 
   const failed = deadlineTriggered || Object.values(checks).some((check) => !check.success);

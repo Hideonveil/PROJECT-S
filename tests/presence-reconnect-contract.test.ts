@@ -56,7 +56,8 @@ describe("Presence reconnect lifecycle", () => {
     expect(data).toContain("isEffectivelyOnline(profile)");
     expect(data).toContain('.eq("online", true).gt("last_seen", presenceCutoffIso())');
     expect(health).toContain("runHealthDiagnostics");
-    expect(healthDiagnostics).toContain("reconcileStalePresence");
+    expect(healthDiagnostics).toContain("probePresence");
+    expect(healthDiagnostics).not.toContain("reconcileStalePresence");
   });
 
   it("does not turn Logout into immediate Room Leave", () => {

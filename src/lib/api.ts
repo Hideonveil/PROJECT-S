@@ -72,37 +72,91 @@ export async function publicMatchDirectory(limit = 6, options: { strict?: boolea
     }));
 }
 
-export async function poolCounts(options: { strict?: boolean } = {}): Promise<{ online: number; matching: number; users: number; playing: number; directory: PublicMatchDirectoryEntry[] }> {
-  // The old `.gt("expires_at", activeTicketCutoff)` filter was a TTL-based
-  // cleanup boundary; explicit-exit mode intentionally does not use it.
-  const [matchingResult, onlineResult, usersResult, playingResult, directory] = await Promise.all([
-    supabaseAdmin().from("matchmaking_tickets").select("id", { count: "exact", head: true }).in("state", ["searching", "candidate_found", "waiting_confirmation"]),
-    supabaseAdmin().from("profiles").select("id", { count: "exact", head: true })
+export type PoolSummary = {
+  online: number;
+  matching: number;
+  users: number;
+  playing: number;
+};
+
+type PoolSummaryOptions = {
+  strict?: boolean;
+  signal?: AbortSignal;
+  cache?: boolean;
+};
+
+const POOL_SUMMARY_CACHE_MS = 7_500;
+let poolSummaryCache: { value: PoolSummary; expiresAt: number } | null = null;
+let poolSummaryInflight: Promise<PoolSummary> | null = null;
+
+export function clearPoolSummaryCache() {
+  poolSummaryCache = null;
+  poolSummaryInflight = null;
+}
+
+async function loadPoolSummary(options: PoolSummaryOptions): Promise<PoolSummary> {
+  const { strict = false, signal } = options;
+  const [matchingResult, onlineResult, usersResult, playingResult] = await Promise.all([
+    (signal
+      ? supabaseAdmin().from("matchmaking_tickets").select("id", { count: "exact", head: true }).abortSignal(signal)
+      : supabaseAdmin().from("matchmaking_tickets").select("id", { count: "exact", head: true }))
+      .in("state", ["searching", "candidate_found", "waiting_confirmation"]),
+    (signal
+      ? supabaseAdmin().from("profiles").select("id", { count: "exact", head: true }).abortSignal(signal)
+      : supabaseAdmin().from("profiles").select("id", { count: "exact", head: true }))
       .eq("online", true).gt("last_seen", presenceCutoffIso()),
-    supabaseAdmin().from("profiles").select("id", { count: "exact", head: true }),
-    supabaseAdmin().from("sessions").select("room_id").eq("status", "playing"),
-    // The Hero shows six cards at a time and rotates through this larger,
-    // privacy-safe window so the same first few players do not stay pinned.
-     publicMatchDirectory(18 /* privacy-safe directory window */, options),
+    signal
+      ? supabaseAdmin().from("profiles").select("id", { count: "exact", head: true }).abortSignal(signal)
+      : supabaseAdmin().from("profiles").select("id", { count: "exact", head: true }),
+    signal
+      ? supabaseAdmin().from("sessions").select("room_id").eq("status", "playing").abortSignal(signal)
+      : supabaseAdmin().from("sessions").select("room_id").eq("status", "playing"),
   ]);
-  if (options.strict) {
+  if (strict) {
     const failed = [matchingResult, onlineResult, usersResult, playingResult].find((result) => result.error);
     if (failed?.error) throw failed.error;
   }
-  const { count: matching } = matchingResult;
-  const { count: online } = onlineResult;
-  const { count: users } = usersResult;
-  const { data: playingSessions } = playingResult;
-  // A room shell intentionally remains visible after one member exits so the
-  // other member can see what happened. Only a genuinely playing Session is
-  // therefore allowed to contribute to the live playing count.
-  const roomIds = Array.from(new Set((playingSessions || []).map((session) => session.room_id).filter(Boolean)));
+  const roomIds = Array.from(new Set((playingResult.data || []).map((session) => session.room_id).filter(Boolean)));
   const activeMembersResult = roomIds.length
-    ? await supabaseAdmin().from("room_members").select("id", { count: "exact", head: true }).eq("status", "active").in("room_id", roomIds)
-    : { count: 0 };
-  if (options.strict && "error" in activeMembersResult && activeMembersResult.error) throw activeMembersResult.error;
-  const { count: playing } = activeMembersResult;
-  return { online: online ?? 0, matching: matching ?? 0, users: users ?? 0, playing: playing ?? 0, directory };
+    ? (signal
+      ? await supabaseAdmin().from("room_members").select("id", { count: "exact", head: true }).eq("status", "active").in("room_id", roomIds).abortSignal(signal)
+      : await supabaseAdmin().from("room_members").select("id", { count: "exact", head: true }).eq("status", "active").in("room_id", roomIds))
+    : { count: 0, error: null };
+  if (strict && activeMembersResult.error) throw activeMembersResult.error;
+  return {
+    online: onlineResult.count ?? 0,
+    matching: matchingResult.count ?? 0,
+    users: usersResult.count ?? 0,
+    playing: activeMembersResult.count ?? 0,
+  };
+}
+
+export async function poolSummary(options: PoolSummaryOptions = {}): Promise<PoolSummary> {
+  const useCache = options.cache !== false && !options.signal;
+  if (useCache && poolSummaryCache && poolSummaryCache.expiresAt > Date.now()) return poolSummaryCache.value;
+  if (useCache && poolSummaryInflight) return poolSummaryInflight;
+
+  const request = loadPoolSummary(options);
+  if (!useCache) return request;
+  poolSummaryInflight = request
+    .then((value) => {
+      poolSummaryCache = { value, expiresAt: Date.now() + POOL_SUMMARY_CACHE_MS };
+      return value;
+    })
+    .finally(() => {
+      poolSummaryInflight = null;
+    });
+  return poolSummaryInflight;
+}
+
+export async function poolCounts(options: { strict?: boolean } = {}): Promise<PoolSummary & { directory: PublicMatchDirectoryEntry[] }> {
+  const [summary, directory] = await Promise.all([
+    poolSummary(options),
+    // The Hero shows six cards at a time and rotates through this larger,
+    // privacy-safe window so the same first few players do not stay pinned.
+    publicMatchDirectory(18 /* privacy-safe directory window */, options),
+  ]);
+  return { ...summary, directory };
 }
 
 export async function enrichRoom(room: Record<string, unknown>): Promise<Room> {

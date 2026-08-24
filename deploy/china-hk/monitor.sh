@@ -22,7 +22,7 @@ previous=unknown
 if [ -f "$STATE_FILE" ]; then previous=$(cat "$STATE_FILE"); fi
 
 if curl --fail --silent --show-error --connect-timeout 5 --max-time 15 \
-  "${PUBLIC_URL}/api/health" >/dev/null; then
+  "${PUBLIC_URL}/api/health/live" >/dev/null; then
   printf 'up' >"$STATE_FILE"
   if [ "$previous" = "down" ]; then notify "机缘已恢复：${PUBLIC_URL}"; fi
   exit 0
@@ -31,4 +31,3 @@ fi
 printf 'down' >"$STATE_FILE"
 if [ "$previous" != "down" ]; then notify "机缘无法访问：${PUBLIC_URL}"; fi
 exit 1
-

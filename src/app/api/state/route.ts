@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireRequestProfile } from "@/lib/auth";
-import { activeRoomFor, activeSessionFor, completedSessionViewFor, friendsFor, poolCounts, profileWithGames, recentConnectionsFor } from "@/lib/api";
+import { activeRoomFor, activeSessionFor, completedSessionViewFor, friendsFor, poolSummary, profileWithGames, recentConnectionsFor } from "@/lib/api";
 import { errorResponse, requestId } from "@/lib/http";
 import { mapSession } from "@/lib/session";
 import { matchmakingStatus } from "@/lib/matchmaking/service";
@@ -12,7 +12,7 @@ export async function GET(request: Request) {
     const profile = await requireRequestProfile(request);
 
     const [counts, friends, friendRequests, room, session, recentConnections, matchmaking] = await Promise.all([
-      poolCounts(),
+      poolSummary(),
       friendsFor(profile.id),
       friendRequestsFor(profile.id),
       activeRoomFor(profile.id),
