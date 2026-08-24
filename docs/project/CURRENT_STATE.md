@@ -93,7 +93,7 @@
 - 历史 5 个 ghost Room 仍存在，属于已知历史基线，不是本轮新增问题。
 - 旧兼容代码和旧 API 仍可能存在；不能仅因为某个字段或 API 存在，就推断其为当前主产品路径。
 - Stateful capacity rehearsal 尚未取得有效容量结论：此前 20 人尝试分别因 runner 环境兼容错误、Production preflight `playing=2` 和认证阶段 HTTP `429` 停止；未进入完整 5→10→20 业务阶段。当前不把这些结果写成 Capacity FAIL，也不把它们写成 Capacity PASS。
-- 为后续容量验证已在 Production 完成 `run_id=capstate500-0824` 的 500 个专用普通测试账号/身份 provisioning；manifest 中 `actors=500`、唯一 `userId=500`，角色分配为 `ranked=296`、`casual=153`、`fragmented=51`。service role 仅用于受控账号 provisioning，不用于业务动作；本次未执行 Matching、Presence、Room、Realtime、Chat、Goodbye、Leave、Feedback 或任何 stateful workload。普通账号 authenticated identity isolation smoke 尚未执行（`NOT RUN`），因此容量结论仍为 `NOT ASSESSED`。
+- 为后续容量验证已在 Production 完成 `run_id=capstate500-0824` 的 500 个专用普通测试账号/身份 provisioning；最终测试 manifest 中 `actors=500`、唯一 `userId=500`，角色分配按当前渐进档位校正为 `ranked=294`、`casual=156`、`fragmented=50`（原始 provisioning manifest 保留）。service role 仅用于受控账号 provisioning，不用于业务动作；本次未执行 Matching、Presence、Room、Realtime、Chat、Goodbye、Leave、Feedback 或任何 stateful workload。普通账号 authenticated identity isolation smoke 尚未执行（`NOT RUN`），因此容量结论仍为 `NOT ASSESSED`。
 
 ## 6. 当前不重复执行的工作
 
