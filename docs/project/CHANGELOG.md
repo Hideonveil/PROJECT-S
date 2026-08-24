@@ -2,6 +2,15 @@
 
 > 只记录已经影响 Production、或已完成 Production 验收的事件。测试中的本地改动、未部署方案和未授权修复不写入本表。
 
+## 2026-08-25 — Reservation conflict guard 发布（Production 归因未闭合）
+
+- 应用 commit：`8631311`，`fix: bound matchmaking reservation conflicts`；已通过腾讯云中国香港 Docker Compose 流程同步并部署，Production `/api/health/live` 与 `/api/health` runtime label 均为 `8631311`，`china-hk-app-1` 为 `Healthy`、gateway 为 `Running`。
+- 修复范围：同一用户匹配 mutation single-flight；`matchmaking_start_ticket` 返回 `reused` 时不重复进入候选匹配；Pair/Group 业务 reservation conflict 每次流程最多 4 次；不同候选之间使用短 backoff+jitter；新增 stdout 分钟级 reserve attempts / pair conflicts / group conflicts 观测。未修改 Matching 规则、Room/Session lifecycle、Presence 语义、RPC、schema 或 migration。
+- 部署前证据：DB CPU 约 `91%`；PostgREST transaction setup `528,970 / 5min`；rollback `528,989 / 5min`（约 `1,690/sec`）；日志含 `MATCH_RESERVATION_CONFLICT` / `GROUP_RESERVATION_CONFLICT`。
+- 部署后低频观察约 `10` 分钟：10/10 次 liveness/readiness 成功，presence/database checks 均成功；未见 5xx/timeout、container restart 或 OOM；app CPU `0–0.02%`、内存约 `48.8–53.1MiB`，gateway CPU `0%`。观察期间 `matching=3`、`playing=2` 始终存在，未执行 5-user 或清理活动实体。
+- 只读 `pg_stat_statements` 约 60 秒前后显示 Pair reserve `612,505 → 612,505`、Group reserve `643,304 → 643,304`，本窗口未见新的 reserve RPC 增长；但全库 `xact_rollback` 仍约 `1,775/sec` 增长。Supabase CPU 图表无法加载，DB CPU after 未验证；因此本次只能确认 reserve 应用路径已加界，不能宣布 rollback storm 或 Supabase resource pressure 已解决。
+- Migration：`NO`。Production data/schema/migration history：未修改。5-user rerun：`NOT READY`；`10-user readiness：NOT READY`。
+
 ## 2026-08-24 — Database CPU cleanup Phase 1 发布
 
 - 应用发布源 commit：`40c138c105f55f24e31a481a2067202bec9cd0bf`，Production runtime `APP_VERSION` / health label：`40c138c105f55f24e31a481a2067202bec9cd0bf`；已通过腾讯云中国香港 Docker Compose 流程同步并部署，`china-hk-app-1` 为 `healthy`，gateway 为 `running`。

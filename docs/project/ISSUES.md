@@ -50,6 +50,7 @@ Gate Evidence 额外允许：`PENDING` · `PASS` · `FAIL`。
 | JIY-P0-001 | `LEGACY_ROOM_DUAL_RENDER_PATH` | P0 | CLOSED |
 | JIY-P0-002 | `ROOM_SESSION_TERMINAL_LIFECYCLE_GHOST` | P0 | CLOSED |
 | JIY-P0-003 | `REFRESH_PAGEHIDE_FALSE_EXIT` | P0 | CLOSED |
+| JIY-P0-004 | `MATCHMAKING_RESERVATION_ROLLBACK_STORM` | P0 | FIX_IN_PROGRESS |
 | JIY-P1-001 | `DEPLOYMENT_STALE_FILE_RSYNC_HYGIENE` | P1 | CONFIRMED |
 | JIY-P1-002 | `LEGACY_RLS_SURFACE_PROVENANCE_GAP` | P1 | PRODUCTION_QA_PENDING |
 | JIY-P1-003 | `REALTIME_RECONNECT_STALE_STATE_RESILIENCE` | P1 | INVESTIGATING |
@@ -63,6 +64,23 @@ Gate Evidence 额外允许：`PENDING` · `PASS` · `FAIL`。
 ---
 
 ## P0 Issues
+
+### JIY-P0-004 — `MATCHMAKING_RESERVATION_ROLLBACK_STORM`
+
+- **Severity:** P0
+- **Status:** FIX_IN_PROGRESS
+- **Owner:** ENG-00｜机缘主工程；03｜QA 与上线负责人审核 Production closure evidence
+- **Found date:** 2026-08-25
+- **Affected area:** Production matchmaking reservation；`src/lib/matchmaking/service.ts`、`matchmaking_reserve_pair`、`matchmaking_reserve_group_member`
+- **Impact:** 同窗口出现 DB CPU 约 `91%`、PostgREST transaction setup `528,970 / 5min`、rollback `528,989 / 5min`（约 `1,690/sec`），并伴随 Pair/Group reservation conflict；阻塞 Stateful 5-user rerun。
+- **Pilot impact:** BLOCKING；在 rollback/CPU 根因未收敛、Production active matching/playing 未清空前，不得启动 5-user rehearsal。
+- **Evidence:** 既有 Production 日志/统计窗口；部署前 runtime 为 `40c138c`。本次部署后 `pg_stat_statements` 约 60 秒前后 Pair reserve `612,505 → 612,505`、Group reserve `643,304 → 643,304`；`pg_stat_database.xact_rollback` `314,779,825 → 314,890,889`（约 `1,775/sec`）。Supabase Dashboard CPU/connection/IO 图表返回 `Unable to load data`。
+- **Root cause:** Reservation conflict storm 的应用放大机制已确认；全库 rollback/CPU 的最终来源仍 `UNKNOWN`。当前 SQL 中业务函数主动以 SQLSTATE `40001` 表达 `MATCH_RESERVATION_CONFLICT` / `GROUP_*_CONFLICT`；裸 `40001` 与业务标记已在代码侧区分。
+- **Fix / Decision:** 已部署 `8631311`：per-user matchmaking single-flight、active-ticket reused guard、每次流程最多 4 个业务 conflict reserve attempts、候选切换短 backoff+jitter、分钟级 stdout counters。未修改 RPC、schema、migration、Matching/Presence/Room/Session 规则。
+- **Verification:** 本地 45 files / 233 tests PASS；TypeScript PASS；Next build PASS（38/38 static pages）；`git diff --check` PASS。Production 低频观察约 10 分钟 10/10 readiness PASS，无 5xx/timeout/restart/OOM；reserve calls 观察窗口不增长，但全库 rollback 仍高，P0 尚未关闭。
+- **Production status:** `FIX_IN_PROGRESS`；runtime `8631311` 已部署。Migration executed `NO`；Production data/schema modified `NO`。
+- **Next action:** 02/03 继续取得可归因的当前 rollback/CPU/transaction 来源，确认是否存在非 reserve 工作负载；只有 Production rollback/CPU 收敛、active matching/playing 基线为 0 且健康证据完整后，才由 03 决定是否重新执行 5-user。
+- **Closed date:** UNKNOWN
 
 ### JIY-P0-001 — `LEGACY_ROOM_DUAL_RENDER_PATH`
 

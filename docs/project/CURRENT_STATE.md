@@ -1,6 +1,6 @@
 # 机缘当前状态
 
-> 状态快照日期：2026-08-24（Asia/Shanghai）
+> 状态快照日期：2026-08-25（Asia/Shanghai）
 > 
 > 本文件记录当前事实，不是下一轮开发计划。若与旧交接文档冲突，以本文件中的已验证生产证据和当前源码为准。
 
@@ -8,7 +8,7 @@
 
 - 当前阶段：Final Private Pilot Gate（`PENDING / NO-GO`）。
 - 下一阶段目标：5–10 名真实玩家的 Private Pilot。
-- 当前 New P0：`0`。
+- 当前 New P0：`1`（`MATCHMAKING_RESERVATION_ROLLBACK_STORM`，修复后仍待 Production 归因与收敛验证）。
 - 已确认关闭的 P0：`LEGACY_ROOM_DUAL_RENDER_PATH`、`ROOM_SESSION_TERMINAL_LIFECYCLE_GHOST`、`REFRESH_PAGEHIDE_FALSE_EXIT`。
 - 当前唯一任务：由 03 审核并补齐 Final Private Pilot Gate 剩余 evidence；不得把已关闭 P0 误写成 Final Gate PASS，也不得自动替代 03 给出最终 Gate 结论。
 - 本阶段不扩大产品、测试或审计范围；P0 Active Room regression 已完成并通过，后续仅执行 03 明确要求的剩余 Gate 证据。
@@ -18,8 +18,8 @@
 
 - 仓库：`output/jiyuan-computer-handoff-2026-08-22/project-s-source`
 - Canonical engineering branch：`main`。
-- Git 当前可信应用源码基线：`40c138c105f55f24e31a481a2067202bec9cd0bf`（`fix: reduce production database read pressure`）。`main` 已将 `agent/ui-shell-production` fast-forward 收敛；此前 `892d61e`、`875bb97` 与 `923bf47` 的产品修复继续保留在当前主线。后续事实文档提交属于 docs-only，不改变该应用发布基线。
-- 当前 `main` HEAD：以当前仓库 `git rev-parse HEAD` 为准；本次已部署的应用提交为 `40c138c105f55f24e31a481a2067202bec9cd0bf`，其后追加本次 Production 变更后的事实源同步。
+- Git 当前可信应用源码基线：`8631311`（`fix: bound matchmaking reservation conflicts`）。`main` 已将 `agent/ui-shell-production` fast-forward 收敛；此前 `892d61e`、`875bb97` 与 `923bf47` 的产品修复继续保留在当前主线。后续事实文档提交属于 docs-only，不改变该应用发布基线。
+- 当前 `main` HEAD：以当前仓库 `git rev-parse HEAD` 为准；本次已部署的应用提交为 `8631311`，其后追加本次 Production 变更后的事实源同步。
 - Project source tracked files：clean；仓库根下既有未跟踪 `output/` 证据目录保留，不能将其误写为不存在。
 - `agent/ui-shell-production` 已完成 fast-forward 收敛并保留，不删除该 branch。
 - Runtime source baseline、tests/tooling、project docs 与 migration provenance 均已进入 Git。
@@ -31,10 +31,10 @@
 
 - 公网入口：`https://www.jiyuan.online`
 - 部署方式：腾讯云中国香港节点上的 Docker Compose，Caddy 对外提供 HTTPS 和代理。
-- 最近 Production source commit：`40c138c105f55f24e31a481a2067202bec9cd0bf`；Production runtime `APP_VERSION` / health label：`40c138c105f55f24e31a481a2067202bec9cd0bf`。此前 `47f3a11`、`923bf47`、`875bb97`、`892d61e`、`cd51a83` 与 `7bee0a2-dirty-presence-2c0143f4` 作为历史部署版本/标签保留。
+- 最近 Production source commit：`8631311`；Production runtime `APP_VERSION` / health label：`8631311`。此前 `40c138c`、`47f3a11`、`923bf47`、`875bb97`、`892d61e`、`cd51a83` 与 `7bee0a2-dirty-presence-2c0143f4` 作为历史部署版本/标签保留。
 - Git 应用源码基线与 Production runtime version / deployment label 仍是两个不同概念；本次具备源码同步、容器 build、health、HTTP 与容器状态证据，但不把单独的 health 字段解释为任意容器文件的字节级证明。
 - 此前 `875bb97` 发布后的健康检查曾确认：`HTTP 200`、`ok=true`、`status=ready`、`version=875bb9786b5c4c5684de87358cb0289236adc869`、`online=0`、`matching=0`、`playing=0`、`users=531`；检查时间 `2026-08-24T10:17:41.166Z`。这是历史安全收尾快照，不覆盖当前 `40c138c` 发布后的 degraded 诊断证据。
-- `923bf47` Health diagnostics 修复发布后的连续 5 次公开烟测均在 `4.046–4.466s` 内返回结构化 `HTTP 503`、`ok=false`、`status=degraded`、`version=923bf470938cd5ab721a0b37a6e39e56fff97395`；`presence` 与 `database` 各自明确记录 `HEALTH_CHECK_TIMEOUT`（单项边界 `2000ms`），不再出现 20 秒无响应。该历史结果只证明 response bound 与 diagnostics 的设计已生效；当前 `40c138c` 的低频观察仍显示底层依赖异常未恢复，5-user rerun 保持 `NOT READY`。
+- `923bf47` Health diagnostics 修复发布后的连续 5 次公开烟测均在 `4.046–4.466s` 内返回结构化 `HTTP 503`、`ok=false`、`status=degraded`、`version=923bf470938cd5ab721a0b37a6e39e56fff97395`；`presence` 与 `database` 各自明确记录 `HEALTH_CHECK_TIMEOUT`（单项边界 `2000ms`），不再出现 20 秒无响应。该历史结果只证明 response bound 与 diagnostics 的设计已生效；此前 `40c138c` 观察到的底层依赖异常和本次 `8631311` 的 rollback 证据分别按各自时间窗口记录，5-user rerun 保持 `NOT READY`。
 - `capstate500-stage5-0824` 超时后的只读健康检查：`status=ready`、`online=0`、`matching=0`、`playing=0`、`users=531`、`databaseLatencyMs=123857`；检查时间 `2026-08-24T10:38:53.169Z`。该阶段后 app/gateway 容器均无 restart，`OOMKilled=false`；这只是失败后的安全收尾快照，不是 Stateful capacity PASS。
 - 先前 `2026-08-24T05:10:45.191Z` 的健康检查仍作为历史快照保留；不同时间点的 `online/users` 数字不得混写。
 - Production 应用容器 `china-hk-app-1` 为 `healthy`，Caddy gateway 正常运行；部署构建仅出现 Docker Buildx 未安装警告，未导致失败。
@@ -44,7 +44,11 @@
 - `20260824100000_session_member_likes.sql` 已按授权在 Production 执行；表、3 个索引、3 个 RLS policy 与 RLS enabled 已只读确认，表内点赞行数为 `0`；未修改历史点赞、旧 `session_responses`、旧 tags 或 migration history。
 - 生产前端静态 bundle 已确认包含 Presence heartbeat 客户端标记，说明 Presence 客户端代码已随网站发布。
 - 生产数据库 project ref：`chqxaqibegpdjtedrxwx`。
-- 生产数据库最近已确认：`pg_cron` 可用；Presence migration 所需字段、函数、trigger、cron job 已存在。发布后只读查询：active ticket `0`、active Session `0`；原始 active Room `1` 与 terminal Session + playing Room `1` 均对应已登记历史 baseline `F1A64`，排除历史 5 个 ghost Room 后 New Active Room `0`、New Ghost `0`、New Active Ticket Residue `0`、New Active Session Residue `0`。
+- 历史生产数据库快照曾确认：`pg_cron` 可用；Presence migration 所需字段、函数、trigger、cron job 已存在；当时 active ticket `0`、active Session `0`，原始 active Room `1` 与 terminal Session + playing Room `1` 均对应已登记历史 baseline `F1A64`，排除历史 5 个 ghost Room 后 New Active Room `0`、New Ghost `0`、New Active Ticket Residue `0`、New Active Session Residue `0`。本次新部署观察时 health 显示 `matching=3`、`playing=2`，不能沿用该历史零值作为当前 preflight。
+- `8631311` 已按腾讯云中国香港 Docker Compose 流程部署；`/api/health/live` 与 `/api/health` runtime label 均为 `8631311`，`china-hk-app-1` 为 `Healthy`、gateway 为 `Running`。未执行 migration、未修改 Production 数据或 schema。
+- Reservation storm 修复：原始窗口 DB CPU 约 `91%`、PostgREST transaction setup `528,970 / 5min`、rollback `528,989 / 5min`（约 `1,690/sec`），并伴随 `MATCH_RESERVATION_CONFLICT` / `GROUP_RESERVATION_CONFLICT`。代码新增 per-user matchmaking single-flight、active-ticket reused guard、每次流程最多 `4` 个业务冲突 reserve 尝试、25ms 基线加 jitter 的候选切换退避，以及 stdout 分钟级 `reserve_attempts` / pair/group conflict 计数；未修改 RPC、schema 或 migration。
+- 发布后低频观察约 `10` 分钟（`2026-08-24T17:27:01Z`–`17:36:30Z`，另有 `17:37:49Z` 最终 health）：10/10 次 `health/live` 与 readiness 成功，presence/database checks 均成功，未见 5xx/timeout；app CPU `0–0.02%`、内存约 `48.8–53.1MiB`，gateway CPU `0%`、内存约 `18.9–19.5MiB`，无 restart/OOM。观察期间 `matching=3`、`playing=2` 始终存在，未执行 5-user，也未清理这些活动状态。
+- 只读 `pg_stat_statements` 约 60 秒前后：Pair reserve calls `612,505 → 612,505`，Group reserve calls `643,304 → 643,304`，本观察窗口未见新的 reserve RPC 增长；但 `pg_stat_database.xact_rollback` `314,779,825 → 314,890,889`（约 62.6 秒，约 `1,775/sec`）仍增长。Supabase Dashboard CPU/connection/IO 图表返回 `Unable to load data`，DB CPU after 未取得，不能宣称全库 rollback/CPU incident 已解决。
 
 ## 4. 已确认的 Production / staging 证据
 
@@ -91,10 +95,10 @@
 
 ### 非阻断但必须保留的事实
 
-- Production health 当前返回 runtime label `40c138c105f55f24e31a481a2067202bec9cd0bf`；该值来自部署环境 release metadata，仍与 Git 应用源码基线的完整 SHA 分开记录。
+- Production health 当前返回 runtime label `8631311`；该值来自部署环境 release metadata，仍与 Git 应用源码基线的完整 SHA 分开记录。
 - 本次无法取得 A/B/C 三个同时受控的已登录 Production 身份，因此“两人/三人 Production 视觉 smoke、逐成员点赞刷新恢复、self/non-member 拒绝”保持 `NOT VERIFIED`；不以单一登录身份或本地 build 证据替代 Production smoke。
 - Project source tracked files 当前 clean；仓库根下既有未跟踪 `output/` 证据目录保留。Production deployment label 与 Git 基线分开记录，Production release provenance 仍需结合源码同步、容器 build、health 和静态 bundle 证据理解。
-- 三个已登记的 P0 均保持 `CLOSED`；当前不存在新的 P0。后续只按 `Final Private Pilot Gate` 剩余范围补证据。
+- 三个历史 P0 均保持 `CLOSED`；新增 `MATCHMAKING_RESERVATION_ROLLBACK_STORM` 尚未关闭。后续先完成该 P0 的 Production 归因/收敛证据，再考虑 5-user rerun；不得把本次部署或低频 readiness 观察写成容量 PASS。
 - 历史 5 个 ghost Room 仍存在，属于已知历史基线，不是本轮新增问题。
 - 旧兼容代码和旧 API 仍可能存在；不能仅因为某个字段或 API 存在，就推断其为当前主产品路径。
 - Stateful capacity rehearsal 尚未取得有效容量结论：历史 20 人尝试曾分别因 runner 环境兼容错误、Production preflight `playing=2` 和认证阶段 HTTP `429` 停止；本次 `run_id=capstate500-stage5-0824` 在 5 人阶段因 `The operation was aborted due to timeout` 停止，未进入 10 人及以上档位。该阶段未生成结构化 evidence 文件，失败请求的 endpoint、底层 `error.cause` 与完整 mutation ledger 均 `NOT CAPTURED`；不能据此区分 Runner、网络或 App 根因，也不能把本次结果写成容量 FAIL 或 PASS。失败后的健康检查显示 `matching=0`、`playing=0`，但完整 DB integrity 查询与同批账号事后 state 复核未完成，Capacity 结论继续保持 `NOT ASSESSED`。
