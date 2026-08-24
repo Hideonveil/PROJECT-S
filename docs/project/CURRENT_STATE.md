@@ -17,7 +17,7 @@
 
 - 仓库：`output/jiyuan-computer-handoff-2026-08-22/project-s-source`
 - Canonical engineering branch：`main`。
-- Git 当前可信应用源码基线：`892d61e6eea1e3d3a1802d341b1ec4cd1013eb23`（`fix: bridge session fit lines between names`）。`main` 已将 `agent/ui-shell-production` fast-forward 收敛；本次逐成员点赞与两人/三人连接线修复已推送并部署。后续事实文档提交属于 docs-only，不改变该应用发布基线。
+- Git 当前可信应用源码基线：`875bb9786b5c4c5684de87358cb0289236adc869`（`fix: improve session accessibility and feedback interactions`）。`main` 已将 `agent/ui-shell-production` fast-forward 收敛；此前 `892d61e` 逐成员点赞与两人/三人连接线修复已由本次可访问性与反馈交互修复继续发布。后续事实文档提交属于 docs-only，不改变该应用发布基线。
 - Project source working tree：clean。
 - `agent/ui-shell-production` 已完成 fast-forward 收敛并保留，不删除该 branch。
 - Runtime source baseline、tests/tooling、project docs 与 migration provenance 均已进入 Git。
@@ -29,10 +29,10 @@
 
 - 公网入口：`https://www.jiyuan.online`
 - 部署方式：腾讯云中国香港节点上的 Docker Compose，Caddy 对外提供 HTTPS 和代理。
-- 最近 Production runtime version / deployed candidate：`892d61e6eea1e3d3a1802d341b1ec4cd1013eb23`；`/api/health.version` 返回同一完整 SHA；此前 `cd51a83` 与 `7bee0a2-dirty-presence-2c0143f4` 作为历史部署标签保留。
+- 最近 Production runtime version / deployed candidate：`875bb9786b5c4c5684de87358cb0289236adc869`；`/api/health.version` 返回同一完整 SHA；此前 `892d61e`、`cd51a83` 与 `7bee0a2-dirty-presence-2c0143f4` 作为历史部署版本/标签保留。
 - Git 应用源码基线与 Production runtime version / deployment label 仍是两个不同概念；本次具备源码同步、容器 build、health、HTTP 与容器状态证据，但不把单独的 health 字段解释为任意容器文件的字节级证明。
-- 本次生产健康检查已确认：`HTTP 200`、`ok=true`、`status=ready`、`version=892d61e6eea1e3d3a1802d341b1ec4cd1013eb23`、`online=1`、`matching=0`、`users=29`；根路径 HTTP `307` 为既有重定向。
-- 健康检查时间：`2026-08-24T03:01:44.867Z`。
+- 本次生产健康检查已确认：`HTTP 200`、`ok=true`、`status=ready`、`version=875bb9786b5c4c5684de87358cb0289236adc869`、`online=2`、`matching=0`、`playing=0`、`users=29`；`/api/config` HTTP `200`；根路径 HTTP `307` 为既有重定向；旧 `/js/pages/room.js` HTTP `404`。
+- 健康检查时间：`2026-08-24T05:10:45.191Z`。
 - Production 应用容器 `china-hk-app-1` 为 `healthy`，Caddy gateway 正常运行；部署构建仅出现 Docker Buildx 未安装警告，未导致失败。
 - `20260824100000_session_member_likes.sql` 已按授权在 Production 执行；表、3 个索引、3 个 RLS policy 与 RLS enabled 已只读确认，表内点赞行数为 `0`；未修改历史点赞、旧 `session_responses`、旧 tags 或 migration history。
 - 生产前端静态 bundle 已确认包含 Presence heartbeat 客户端标记，说明 Presence 客户端代码已随网站发布。
@@ -62,7 +62,7 @@
 - Explicit Leave：PASS。
 - 已有数据收敛检查：matching / playing active residue 为 0，且未产生新的 ghost。
 - Presence Production migration：已执行；生产 `pg_cron`、Presence heartbeat/offline/reconcile/timeout 相关对象已确认存在。
-- 逐成员点赞与连接线 Production 发布：代码 baseline `892d61e` 已部署；两人/三人视觉与逐成员点赞的 Production smoke 尚未完成，不能写成 Production QA PASS。
+- 逐成员点赞与连接线修复及本次可访问性/反馈交互修复：代码 baseline `875bb97` 已部署；两人/三人视觉与逐成员点赞的 A/B/C 受控 Production smoke 尚未完成，不能写成 Production QA PASS。
 
 ### 不应混淆的证据边界
 

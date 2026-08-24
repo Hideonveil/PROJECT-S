@@ -2,6 +2,14 @@
 
 > 只记录已经影响 Production、或已完成 Production 验收的事件。测试中的本地改动、未部署方案和未授权修复不写入本表。
 
+## 2026-08-24 — 可访问性与反馈交互修复发布
+
+- Git application release baseline：`875bb9786b5c4c5684de87358cb0289236adc869`，`fix: improve session accessibility and feedback interactions`；`origin/main` 已同步到该 commit。
+- 已按中国香港 Docker Compose 正式流程部署；`china-hk-app-1` 为 `healthy`，Caddy gateway 正常运行；Docker build 完成并生成 35/35 static pages。
+- Production health：HTTP `200`、`ok=true`、`status=ready`、`version=875bb9786b5c4c5684de87358cb0289236adc869`、`online=2`、`matching=0`、`playing=0`、`users=29`；`/api/config` HTTP `200`；根路径 HTTP `307`；旧 `/js/pages/room.js` HTTP `404`；检查时间 `2026-08-24T05:10:45.191Z`。
+- 本次未执行 migration，未修改 Production 数据、历史数据或 migration history；本次 commit 相对 `892d61e` 无 migration 文件变化。
+- 两人/三人视觉与逐成员点赞的 A/B/C 受控 Production smoke 尚未完成，保持 `NOT VERIFIED`。Final Private Pilot Gate 继续保持 `PENDING / NO-GO`，不写成 Production QA PASS。
+
 ## 2026-08-24 — 逐成员点赞与连接线修复发布
 
 - Git application release baseline：`892d61e6eea1e3d3a1802d341b1ec4cd1013eb23`，`fix: bridge session fit lines between names`；`origin/main` 已同步到该 baseline，随后只追加本次事实文档提交。
