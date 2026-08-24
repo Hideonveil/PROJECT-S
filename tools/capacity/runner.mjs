@@ -1,11 +1,13 @@
 #!/usr/bin/env node
 
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, stat, unlink, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { performance } from "node:perf_hooks";
+import { createInterface } from "node:readline/promises";
+import { createClient } from "@supabase/supabase-js";
 
 export const PRODUCTION_HOSTS = new Set(["www.jiyuan.online", "jiyuan.online"]);
 
@@ -37,7 +39,7 @@ const STATEFUL_PATHS = Object.freeze([
 
 const SECRET_TEXT = /service[_-]?role|supabase_service_role|private\s+key|database\s+password|secret_key/i;
 const RUN_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$/;
-const TOKEN_ENV = /^CAPACITY_[A-Z0-9_]+_TOKEN$/;
+const AUTH_IDENTITIES = Object.freeze(["A", "B", "C"]);
 
 export const DEFAULT_OPTIONS = Object.freeze({
   mode: "dry-run",
@@ -56,6 +58,9 @@ export const DEFAULT_OPTIONS = Object.freeze({
   productionAck: "",
   statefulApproval: "",
   manifest: "",
+  manifestOut: "",
+  authSecretFile: "",
+  authStdin: false,
   scenario: "",
   evidenceDir: "",
   killSwitchFile: "",
@@ -93,6 +98,8 @@ export function parseArgs(argv = []) {
       options.mode = "read-only";
     } else if (flag === "--stateful") {
       options.mode = "stateful";
+    } else if (flag === "--prepare-auth") {
+      options.mode = "auth-prepare";
     } else if (flag === "--allow-production") {
       options.allowProduction = true;
     } else if (flag === "--run-id") {
@@ -126,6 +133,14 @@ export function parseArgs(argv = []) {
     } else if (flag === "--manifest") {
       options.manifest = takeValue(argv, index, flag);
       index += 1;
+    } else if (flag === "--manifest-out") {
+      options.manifestOut = takeValue(argv, index, flag);
+      index += 1;
+    } else if (flag === "--auth-secret-file") {
+      options.authSecretFile = takeValue(argv, index, flag);
+      index += 1;
+    } else if (flag === "--auth-stdin") {
+      options.authStdin = true;
     } else if (flag === "--scenario") {
       options.scenario = takeValue(argv, index, flag);
       index += 1;
@@ -151,9 +166,10 @@ export function parseArgs(argv = []) {
   if (dryRunExplicit && options.mode !== "dry-run") usageError("--dry-run cannot be combined with an execution mode");
   if (options.mode !== "dry-run" && !options.baseUrlExplicit) usageError("--base-url is required for execution");
   if (options.mode === "dry-run") return options;
-  if (options.maxUsers < 1) usageError("--max-users must be greater than zero for execution");
-  if (options.maxRequests < 1) usageError("--max-requests must be greater than zero for execution");
-  if (!options.manifest) usageError("--manifest is required for execution");
+  if (options.authSecretFile && options.authStdin) usageError("--auth-secret-file and --auth-stdin cannot be combined");
+  if (options.mode !== "auth-prepare" && options.maxUsers < 1) usageError("--max-users must be greater than zero for execution");
+  if (options.mode !== "auth-prepare" && options.maxRequests < 1) usageError("--max-requests must be greater than zero for execution");
+  if (options.mode !== "auth-prepare" && !options.manifest) usageError("--manifest is required for execution");
 
   const target = new URL(options.baseUrl);
   if (PRODUCTION_HOSTS.has(target.hostname)) {
@@ -165,6 +181,10 @@ export function parseArgs(argv = []) {
 
   if (options.mode === "read-only" && options.maxRequests > 600) {
     usageError("read-only burst is capped at 600 requests");
+  }
+  if (options.mode === "auth-prepare") {
+    if (!options.manifestOut) usageError("--manifest-out is required for --prepare-auth");
+    if (!options.authSecretFile && !options.authStdin) usageError("--prepare-auth requires --auth-secret-file or --auth-stdin");
   }
   if (options.mode === "stateful" && options.statefulApproval !== options.runId) {
     usageError("stateful mode requires --stateful-approval equal to --run-id");
@@ -224,60 +244,214 @@ function assertNoSecretText(value, source = "input") {
   }
 }
 
+function assertNoCredentialFields(value, source = "input") {
+  const text = typeof value === "string" ? value : JSON.stringify(value);
+  if (/(?:\"|')?(?:password|access_token|accessToken|refresh_token|refreshToken|service_role)(?:\"|')?\s*:/i.test(text)) {
+    throw new Error(`CAPACITY_RUNNER_SAFETY: credentials are not allowed in ${source}`);
+  }
+}
+
+function normalizeCredentialRecord(record, index) {
+  if (!record || typeof record !== "object") throw new Error(`CAPACITY_AUTH: identity ${index + 1} is invalid`);
+  const identity = String(record.identity || record.id || AUTH_IDENTITIES[index] || "").trim().toUpperCase();
+  const identifier = String(record.identifier || record.username || record.email || "").trim();
+  const password = String(record.password || "");
+  if (!AUTH_IDENTITIES.includes(identity)) throw new Error(`CAPACITY_AUTH: identity ${index + 1} must be A, B, or C`);
+  if (!identifier) throw new Error(`CAPACITY_AUTH: identity ${identity} is missing an identifier`);
+  if (!password) throw new Error(`CAPACITY_AUTH: identity ${identity} is missing a password`);
+  return { identity, identifier, password };
+}
+
+export function normalizeCredentials(value) {
+  const records = Array.isArray(value) ? value : value?.identities;
+  if (!Array.isArray(records) || records.length !== AUTH_IDENTITIES.length) {
+    throw new Error("CAPACITY_AUTH: exactly three identities A/B/C are required");
+  }
+  const credentials = records.map(normalizeCredentialRecord);
+  const identities = new Set(credentials.map((record) => record.identity));
+  if (identities.size !== AUTH_IDENTITIES.length || AUTH_IDENTITIES.some((identity) => !identities.has(identity))) {
+    throw new Error("CAPACITY_AUTH: identities must be distinct A, B, and C");
+  }
+  return credentials.sort((left, right) => AUTH_IDENTITIES.indexOf(left.identity) - AUTH_IDENTITIES.indexOf(right.identity));
+}
+
+export async function readCredentialsFile(file) {
+  const fileStat = await stat(file);
+  if (!fileStat.isFile()) throw new Error("CAPACITY_AUTH: secret path is not a file");
+  if ((fileStat.mode & 0o777) !== 0o600) throw new Error("CAPACITY_AUTH: secret file must have mode 0600");
+  const buffer = await readFile(file);
+  try {
+    return normalizeCredentials(JSON.parse(buffer.toString("utf8")));
+  } catch (error) {
+    if (error?.message?.startsWith("CAPACITY_AUTH:")) throw error;
+    throw new Error("CAPACITY_AUTH: secret file must contain valid JSON credentials");
+  } finally {
+    buffer.fill(0);
+  }
+}
+
+async function promptVisible(question, input, output) {
+  const readline = createInterface({ input, output });
+  try {
+    return (await readline.question(question)).trim();
+  } finally {
+    readline.close();
+  }
+}
+
+async function promptHidden(question, input, output) {
+  if (!input.isTTY || typeof input.setRawMode !== "function") {
+    throw new Error("CAPACITY_AUTH: hidden password input requires a TTY; use --auth-secret-file");
+  }
+  output.write(question);
+  return new Promise((resolve, reject) => {
+    let value = "";
+    const cleanup = () => {
+      input.removeListener("data", onData);
+      input.setRawMode(false);
+      input.pause();
+      output.write("\n");
+    };
+    const onData = (chunk) => {
+      const text = String(chunk);
+      for (const character of text) {
+        if (character === "\u0003") {
+          cleanup();
+          reject(new Error("CAPACITY_AUTH: interactive input cancelled"));
+          return;
+        }
+        if (character === "\r" || character === "\n") {
+          cleanup();
+          resolve(value);
+          return;
+        }
+        if (character === "\u007f" || character === "\b") {
+          value = value.slice(0, -1);
+          continue;
+        }
+        value += character;
+      }
+    };
+    input.setRawMode(true);
+    input.resume();
+    input.on("data", onData);
+  });
+}
+
+export async function readInteractiveCredentials({ input = process.stdin, output = process.stderr } = {}) {
+  const records = [];
+  for (const identity of AUTH_IDENTITIES) {
+    const identifier = await promptVisible(`${identity} account: `, input, output);
+    const password = await promptHidden(`${identity} password: `, input, output);
+    records.push({ identity, identifier, password });
+  }
+  return normalizeCredentials(records);
+}
+
+export async function readAuthCredentials(options, io = {}) {
+  if (options.authSecretFile) {
+    const credentials = await readCredentialsFile(options.authSecretFile);
+    return {
+      credentials,
+      cleanup: async () => {
+        await unlink(options.authSecretFile).catch(() => {});
+      },
+    };
+  }
+  if (options.authStdin) {
+    return { credentials: await readInteractiveCredentials(io), cleanup: async () => {} };
+  }
+  throw new Error("CAPACITY_AUTH: provide --auth-secret-file or --auth-stdin");
+}
+
+export function clearCredentials(credentials = []) {
+  for (const credential of credentials) {
+    credential.identifier = "";
+    credential.password = "";
+  }
+}
+
 export async function loadManifest(file) {
   const raw = await readFile(file, "utf8");
   assertNoSecretText(raw, "manifest");
+  assertNoCredentialFields(raw, "manifest");
   const manifest = JSON.parse(raw);
-  if (!manifest || !Array.isArray(manifest.actors)) {
-    throw new Error("CAPACITY_MANIFEST: actors[] is required");
+  const sourceActors = Array.isArray(manifest?.actors) ? manifest.actors : manifest?.identities;
+  if (!manifest || !Array.isArray(sourceActors)) {
+    throw new Error("CAPACITY_MANIFEST: actors[] or identities[] is required");
   }
   const seen = new Set();
-  const actors = manifest.actors.map((actor, index) => {
+  const actors = sourceActors.map((actor, index) => {
     if (!actor || typeof actor !== "object") throw new Error(`CAPACITY_MANIFEST: actor ${index} is invalid`);
-    const actorId = String(actor.actor_id || actor.actorId || "");
-    if (!RUN_ID.test(actorId)) throw new Error(`CAPACITY_MANIFEST: actor ${index} has an invalid actor_id`);
+    const actorId = String(actor.actor_id || actor.actorId || actor.identity || "");
+    if (!RUN_ID.test(actorId) && !AUTH_IDENTITIES.includes(actorId.toUpperCase())) throw new Error(`CAPACITY_MANIFEST: actor ${index} has an invalid actor_id`);
     if (seen.has(actorId)) throw new Error(`CAPACITY_MANIFEST: duplicate actor_id ${actorId}`);
     seen.add(actorId);
-    if (actor.access_token || actor.accessToken || actor.password) {
-      throw new Error("CAPACITY_MANIFEST: credentials must be supplied through token_env, never stored in manifest");
-    }
-    const tokenEnv = actor.token_env || actor.tokenEnv || "";
-    if (tokenEnv && !TOKEN_ENV.test(tokenEnv)) {
-      throw new Error(`CAPACITY_MANIFEST: unsafe token_env for ${actorId}`);
+    if (actor.access_token || actor.accessToken || actor.refresh_token || actor.refreshToken || actor.password) {
+      throw new Error("CAPACITY_MANIFEST: credentials must never be stored in manifest");
     }
     return {
       actorId,
       userId: actor.user_id || actor.userId || "UNKNOWN",
       mode: actor.mode || "UNKNOWN",
-      tokenEnv,
       profile: actor.profile || "UNKNOWN",
+      tokenExpiry: actor.token_expiry || actor.tokenExpiry || "UNKNOWN",
     };
   });
-  if (actors.length > 100) throw new Error("CAPACITY_MANIFEST: maximum 100 actors");
-  return { ...manifest, actors };
+  if (actors.length > 100) throw new Error("CAPACITY_MANIFEST: maximum 100 identities");
+  const readerAllocation = manifest.reader_allocation || manifest.readerAllocation || null;
+  return { ...manifest, actors, readerAllocation };
 }
 
-export function buildReadOnlyPlan({ actors, maxUsers, maxRequests, runId }) {
-  const selected = actors.slice(0, maxUsers);
-  if (selected.length === 0) throw new Error("CAPACITY_PLAN: no actors selected");
+export function buildReaderAllocation({ actors, maxUsers, readerAllocation = null }) {
+  const selected = actors.slice(0, Math.min(actors.length, maxUsers));
+  if (selected.length === 0) throw new Error("CAPACITY_PLAN: no identities selected");
+  if (readerAllocation && typeof readerAllocation === "object") {
+    const weights = selected.map((actor) => Math.max(0, Number(readerAllocation[actor.actorId] || 0)));
+    const weightTotal = weights.reduce((sum, value) => sum + value, 0);
+    if (weightTotal > 0) {
+      const scaled = weights.map((weight) => (maxUsers * weight) / weightTotal);
+      const counts = scaled.map(Math.floor);
+      let remainder = maxUsers - counts.reduce((sum, value) => sum + value, 0);
+      [...scaled.keys()].sort((left, right) => (scaled[right] - counts[right]) - (scaled[left] - counts[left])).forEach((index) => {
+        if (remainder > 0) {
+          counts[index] += 1;
+          remainder -= 1;
+        }
+      });
+      return selected.map((actor, index) => ({ actorId: actor.actorId, count: counts[index] }));
+    }
+  }
+  return selected.map((actor, index) => ({ actorId: actor.actorId, count: index < maxUsers ? 1 : 0 }));
+}
+
+export function buildReadOnlyPlan({ actors, maxUsers, maxRequests, runId, readerAllocation = null }) {
+  const allocation = buildReaderAllocation({ actors, maxUsers, readerAllocation });
+  const readers = [];
+  for (const { actorId, count } of allocation) {
+    for (let index = 0; index < count; index += 1) {
+      readers.push({ actorId, readerId: `${actorId}-reader-${String(index + 1).padStart(3, "0")}` });
+    }
+  }
+  if (readers.length === 0) throw new Error("CAPACITY_PLAN: no virtual readers selected");
   const requests = [];
-  for (const actor of selected) {
-    requests.push({ actorId: actor.actorId, path: "/", authenticated: false });
-    requests.push({ actorId: actor.actorId, path: "/api/config", authenticated: false });
-    requests.push({ actorId: actor.actorId, path: "/api/state", authenticated: true });
-    requests.push({ actorId: actor.actorId, path: "/api/session", authenticated: true });
-    requests.push({ actorId: actor.actorId, path: "/js/app.js", authenticated: false });
+  for (const reader of readers) {
+    requests.push({ ...reader, path: "/", authenticated: false });
+    requests.push({ ...reader, path: "/api/config", authenticated: false });
+    requests.push({ ...reader, path: "/api/state", authenticated: true });
+    requests.push({ ...reader, path: "/api/session", authenticated: true });
+    requests.push({ ...reader, path: "/js/app.js", authenticated: false });
   }
   // Static CSS and health checks are shared samples, not extra requests
   // assigned to a synthetic reader. This keeps every reader at five
   // requests (and below the six-request safety limit).
-  const staticSamples = Math.max(1, Math.floor(selected.length / 10));
+  const staticSamples = Math.max(1, Math.floor(readers.length / 10));
   for (let index = 0; index < staticSamples; index += 1) {
-    requests.push({ actorId: "__shared__", path: "/styles/product-shell.css", authenticated: false });
+    requests.push({ actorId: "__shared__", readerId: "__shared__", path: "/styles/product-shell.css", authenticated: false });
   }
-  const healthCount = Math.max(1, Math.floor(selected.length / 10));
+  const healthCount = Math.max(1, Math.floor(readers.length / 10));
   for (let index = 0; index < healthCount; index += 1) {
-    requests.push({ actorId: "__shared__", path: "/api/health", authenticated: false });
+    requests.push({ actorId: "__shared__", readerId: "__shared__", path: "/api/health", authenticated: false });
   }
   if (requests.length > maxRequests) {
     throw new Error(`CAPACITY_PLAN: ${requests.length} planned requests exceed --max-requests=${maxRequests}`);
@@ -289,13 +463,142 @@ export function buildReadOnlyPlan({ actors, maxUsers, maxRequests, runId }) {
   return {
     runId,
     mode: "read-only",
-    maxUsers: selected.length,
+    maxUsers: readers.length,
     maxRequests,
     requests,
+    readerAllocation: Object.fromEntries(allocation.map(({ actorId, count }) => [actorId, count])),
     healthRequests,
     healthRatio: healthRequests / requests.length,
-    perActorMaximum: Math.max(...selected.map((actor) => requests.filter((request) => request.actorId === actor.actorId).length)),
+    perReaderMaximum: Math.max(...readers.map((reader) => requests.filter((request) => request.readerId === reader.readerId).length)),
   };
+}
+
+async function fetchJson({ url, method = "GET", headers = {}, body, timeoutMs = 10_000 }) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, {
+      method,
+      headers: { Accept: "application/json", ...headers },
+      body,
+      signal: controller.signal,
+    });
+    let data = {};
+    try {
+      data = await response.json();
+    } catch {
+      // Keep response bodies out of errors and evidence.
+    }
+    return { response, data };
+  } catch (error) {
+    throw new Error(`CAPACITY_AUTH: ${method} ${new URL(url).pathname} failed: ${safeError(error)}`);
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function loadAuthConfig(baseUrl) {
+  const { response, data } = await fetchJson({ url: new URL("/api/config", baseUrl).toString() });
+  if (response.status !== 200 || !data?.supabaseUrl || !data?.supabaseAnonKey) {
+    throw new Error(`CAPACITY_AUTH: /api/config returned HTTP ${response.status}`);
+  }
+  return { supabaseUrl: data.supabaseUrl, supabaseAnonKey: data.supabaseAnonKey };
+}
+
+async function authenticateIdentity({ baseUrl, credential, config }) {
+  const loginBody = JSON.stringify({ identifier: credential.identifier, password: credential.password });
+  const login = await fetchJson({
+    url: new URL("/api/auth/login", baseUrl).toString(),
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: loginBody,
+  });
+  if (login.response.status !== 200 || !login.data?.email) {
+    throw new Error(`CAPACITY_AUTH: identity ${credential.identity} login returned HTTP ${login.response.status}`);
+  }
+
+  const client = createClient(config.supabaseUrl, config.supabaseAnonKey, {
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+  });
+  const { data, error } = await client.auth.signInWithPassword({ email: login.data.email, password: credential.password });
+  if (error || !data.session?.access_token || !data.user?.id) {
+    throw new Error(`CAPACITY_AUTH: identity ${credential.identity} Supabase sign-in failed`);
+  }
+  return {
+    identity: credential.identity,
+    authUserId: data.user.id,
+    accessToken: data.session.access_token,
+    tokenExpiry: data.session.expires_at ? new Date(data.session.expires_at * 1000).toISOString() : "UNKNOWN",
+  };
+}
+
+async function authenticatedGet({ baseUrl, path: requestPath, token }) {
+  const { response, data } = await fetchJson({
+    url: new URL(requestPath, baseUrl).toString(),
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return { status: response.status, data };
+}
+
+export async function authenticateActors({ baseUrl, actors, credentials, runId }) {
+  const credentialsByIdentity = new Map(credentials.map((credential) => [credential.identity, credential]));
+  const config = await loadAuthConfig(baseUrl);
+  const smoke = [];
+  for (const actor of actors) {
+    const credential = credentialsByIdentity.get(actor.actorId.toUpperCase());
+    if (!credential) throw new Error(`CAPACITY_AUTH: no credential for identity ${actor.actorId}`);
+    const session = await authenticateIdentity({ baseUrl, credential, config });
+    Object.defineProperty(actor, "accessToken", { configurable: true, enumerable: false, writable: true, value: session.accessToken });
+    const state = await authenticatedGet({ baseUrl, path: "/api/state", token: session.accessToken });
+    if (state.status !== 200 || !state.data?.user?.id) {
+      throw new Error(`CAPACITY_AUTH: identity ${actor.actorId} /api/state returned HTTP ${state.status}`);
+    }
+    const sessionState = await authenticatedGet({ baseUrl, path: "/api/session", token: session.accessToken });
+    if (sessionState.status !== 200 || sessionState.data?.authenticated !== true || sessionState.data?.profile?.id !== state.data.user.id) {
+      throw new Error(`CAPACITY_AUTH: identity ${actor.actorId} state scope check failed`);
+    }
+    smoke.push({
+      identity: actor.actorId,
+      userId: state.data.user.id,
+      tokenExpiry: session.tokenExpiry,
+      stateStatus: state.status,
+      sessionStatus: sessionState.status,
+      mutationExecuted: false,
+      runId,
+    });
+  }
+  const userIds = new Set(smoke.map((record) => record.userId));
+  if (userIds.size !== smoke.length) throw new Error("CAPACITY_AUTH: identity isolation failed; user IDs are not distinct");
+  return { smoke, identityIsolation: true };
+}
+
+export function clearActorTokens(actors = []) {
+  for (const actor of actors) {
+    if (Object.prototype.hasOwnProperty.call(actor, "accessToken")) actor.accessToken = "";
+  }
+}
+
+export function buildAuthManifest({ runId, endpoint = "/api/state", smoke }) {
+  const identities = smoke.map(({ identity, userId, tokenExpiry }) => ({
+    identity,
+    user_id: userId,
+    token_expiry: tokenExpiry,
+  }));
+  const manifest = {
+    run_id: runId,
+    endpoint,
+    reader_allocation: { A: 34, B: 33, C: 33 },
+    identities,
+  };
+  assertNoCredentialFields(manifest, "auth manifest");
+  return manifest;
+}
+
+export async function writeAuthManifest(file, manifest) {
+  assertNoCredentialFields(manifest, "auth manifest");
+  await mkdir(path.dirname(file), { recursive: true });
+  await writeFile(file, `${JSON.stringify(manifest, null, 2)}\n`, { mode: 0o600 });
+  await chmod(file, 0o600);
 }
 
 function quantile(values, percentile) {
@@ -370,8 +673,8 @@ async function requestWithTimeout({ baseUrl, request, actor, options, rootSignal
     "X-Capacity-Run-Id": options.runId,
   };
   if (request.authenticated) {
-    const token = actor?.tokenEnv ? process.env[actor.tokenEnv] : "";
-    if (!token) throw new Error(`CAPACITY_MANIFEST: missing token env for ${actor?.actorId || request.actorId}`);
+    const token = actor?.accessToken || "";
+    if (!token) throw new Error(`CAPACITY_AUTH: missing in-memory session for ${actor?.actorId || request.actorId}`);
     headers.Authorization = `Bearer ${token}`;
   }
   try {
@@ -385,6 +688,7 @@ async function requestWithTimeout({ baseUrl, request, actor, options, rootSignal
     const result = {
       at: new Date().toISOString(),
       actorId: request.actorId,
+      readerId: request.readerId,
       path: operation.path,
       method: operation.method,
       status: response.status,
@@ -398,12 +702,12 @@ async function requestWithTimeout({ baseUrl, request, actor, options, rootSignal
     return result;
   } catch (error) {
     if (timedOut) {
-      const result = { at: new Date().toISOString(), actorId: request.actorId, path: request.path, method: "GET", status: null, durationMs: Number((performance.now() - started).toFixed(2)), authenticated: request.authenticated, errorClass: "timeout" };
+      const result = { at: new Date().toISOString(), actorId: request.actorId, readerId: request.readerId, path: request.path, method: "GET", status: null, durationMs: Number((performance.now() - started).toFixed(2)), authenticated: request.authenticated, errorClass: "timeout" };
       if (options.abortOnTimeout) throw Object.assign(new Error("request timeout"), { result });
       return result;
     }
     if (error?.result) throw error;
-    throw Object.assign(new Error(safeError(error)), { result: { at: new Date().toISOString(), actorId: request.actorId, path: request.path, method: "GET", status: null, durationMs: Number((performance.now() - started).toFixed(2)), authenticated: request.authenticated, errorClass: "network" } });
+    throw Object.assign(new Error(safeError(error)), { result: { at: new Date().toISOString(), actorId: request.actorId, readerId: request.readerId, path: request.path, method: "GET", status: null, durationMs: Number((performance.now() - started).toFixed(2)), authenticated: request.authenticated, errorClass: "network" } });
   } finally {
     clearTimeout(timeout);
     rootSignal.removeEventListener("abort", abortFromRoot);
@@ -502,8 +806,11 @@ export async function writeEvidence({ directory, manifest, plan, result }) {
   const safeManifest = {
     run_id: manifest.run_id || result?.runId || "UNKNOWN",
     release_candidate: manifest.release_candidate || "UNKNOWN",
-    actors: manifest.actors.map(({ actorId, userId, mode, profile }) => ({ actor_id: actorId, user_id: userId, mode, profile })),
+    endpoint: manifest.endpoint || "/api/state",
+    reader_allocation: manifest.readerAllocation || manifest.reader_allocation || null,
+    actors: manifest.actors.map(({ actorId, userId, mode, profile, tokenExpiry }) => ({ actor_id: actorId, user_id: userId, mode, profile, token_expiry: tokenExpiry })),
   };
+  assertNoCredentialFields(safeManifest, "evidence manifest");
   await writeFile(path.join(directory, "run-manifest.json"), `${JSON.stringify(safeManifest, null, 2)}\n`);
   await writeFile(path.join(directory, "api-metrics.json"), `${JSON.stringify(result?.metrics || { status: "NOT_EXECUTED" }, null, 2)}\n`);
   await writeFile(path.join(directory, "resource-metrics.json"), `${JSON.stringify({ before: result?.resourceBefore || null, after: result?.resourceAfter || null }, null, 2)}\n`);
@@ -512,7 +819,7 @@ export async function writeEvidence({ directory, manifest, plan, result }) {
 }
 
 export function helpText() {
-  return `Usage:\n  pnpm capacity:run -- --dry-run --run-id <id>\n  pnpm capacity:run -- --execute-read-only --base-url <url> --run-id <id> --manifest <file> --max-users <n> --max-rps <n> --max-requests <n> --allow-production --production-ack <id>\n\nSafety:\n  dry-run is the default and performs no network request. Read-only execution only permits GET/HEAD on the fixed allowlist. Production execution requires --allow-production and --production-ack=<run-id>. Stateful mode additionally requires --stateful-approval=<run-id> and currently stops before mutation because the lifecycle/Realtime adapter is not implemented.\n`;
+  return `Usage:\n  pnpm capacity:run -- --dry-run --run-id <id>\n  pnpm capacity:run -- --prepare-auth --base-url <url> --run-id <id> --auth-secret-file <0600-file> --manifest-out <safe-file> --allow-production --production-ack <id>\n  pnpm capacity:run -- --execute-read-only --base-url <url> --run-id <id> --manifest <file> --auth-secret-file <0600-file> --max-users <n> --max-rps <n> --max-requests <n> --allow-production --production-ack <id>\n\nSafety:\n  dry-run is the default and performs no network request. Auth preparation accepts credentials only through hidden TTY stdin or a 0600 JSON file; credentials and access tokens never enter manifests, evidence, logs, or command arguments. Auth preparation uses the normal /api/auth/login plus Supabase password sign-in path and only performs authenticated GET smoke reads. Read-only execution only permits GET/HEAD on the fixed allowlist. Production execution requires --allow-production and --production-ack=<run-id>. Stateful mode additionally requires --stateful-approval=<run-id> and currently stops before mutation because the lifecycle/Realtime adapter is not implemented.\n`;
 }
 
 async function main() {
@@ -521,20 +828,47 @@ async function main() {
     console.log(helpText());
     return;
   }
-  const manifest = options.manifest ? await loadManifest(options.manifest) : { actors: [] };
   if (options.mode === "dry-run") {
+    const manifest = options.manifest ? await loadManifest(options.manifest) : { actors: [] };
     console.log(JSON.stringify(dryRunPlan({ options, manifest }), null, 2));
     return;
   }
   if (options.mode === "stateful") {
     throw new Error("CAPACITY_RUNNER_NOT_READY: stateful lifecycle and Realtime adapter is not implemented; no request was sent");
   }
-  const plan = buildReadOnlyPlan({ actors: manifest.actors, maxUsers: options.maxUsers, maxRequests: options.maxRequests, runId: options.runId });
-  const result = await runReadOnlyBurst({ options, manifest, plan });
-  const directory = options.evidenceDir || path.join(process.cwd(), "output", "capacity-validation", options.runId);
-  await writeEvidence({ directory, manifest, plan, result });
-  console.log(JSON.stringify({ ...result, evidenceDir: directory }, null, 2));
-  if (result.metrics.aborted || result.metrics.five_xx || result.metrics.timeout || result.metrics.rate_limited) process.exitCode = 1;
+  let authInput = null;
+  let manifest = { actors: [] };
+  try {
+    authInput = await readAuthCredentials(options);
+    if (options.mode === "auth-prepare") {
+      manifest = { actors: AUTH_IDENTITIES.map((identity) => ({ actorId: identity, userId: "UNKNOWN", mode: "authenticated-read", profile: "synthetic" })) };
+      const authResult = await authenticateActors({ baseUrl: options.baseUrl, actors: manifest.actors, credentials: authInput.credentials, runId: options.runId });
+      const safeManifest = buildAuthManifest({ runId: options.runId, smoke: authResult.smoke });
+      await writeAuthManifest(options.manifestOut, safeManifest);
+      console.log(JSON.stringify({
+        runId: options.runId,
+        authenticatedIdentities: authResult.smoke.length,
+        stateSmoke: authResult.smoke.map(({ identity, userId, stateStatus, sessionStatus, tokenExpiry, mutationExecuted }) => ({ identity, userId, stateStatus, sessionStatus, tokenExpiry, mutationExecuted })),
+        identityIsolation: authResult.identityIsolation,
+        manifest: options.manifestOut,
+        secretPersistedInEvidence: false,
+        productionMutation: false,
+      }, null, 2));
+      return;
+    }
+    manifest = await loadManifest(options.manifest);
+    const authResult = await authenticateActors({ baseUrl: options.baseUrl, actors: manifest.actors, credentials: authInput.credentials, runId: options.runId });
+    const plan = buildReadOnlyPlan({ actors: manifest.actors, maxUsers: options.maxUsers, maxRequests: options.maxRequests, runId: options.runId, readerAllocation: manifest.readerAllocation });
+    const result = await runReadOnlyBurst({ options, manifest, plan });
+    const directory = options.evidenceDir || path.join(process.cwd(), "output", "capacity-validation", options.runId);
+    await writeEvidence({ directory, manifest, plan, result });
+    console.log(JSON.stringify({ ...result, authSmoke: authResult.smoke.map(({ identity, userId, stateStatus, sessionStatus }) => ({ identity, userId, stateStatus, sessionStatus })), identityIsolation: authResult.identityIsolation, evidenceDir: directory }, null, 2));
+    if (result.metrics.aborted || result.metrics.five_xx || result.metrics.timeout || result.metrics.rate_limited) process.exitCode = 1;
+  } finally {
+    clearActorTokens(manifest.actors);
+    clearCredentials(authInput?.credentials);
+    await authInput?.cleanup?.();
+  }
 }
 
 const entry = process.argv[1] ? pathToFileURL(path.resolve(process.argv[1])).href : "";

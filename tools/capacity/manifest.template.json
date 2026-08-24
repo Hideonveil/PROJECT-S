@@ -2,20 +2,34 @@
   "run_id": "cap100-YYYYMMDD-HHMMSS",
   "release_candidate": "875bb9786b5c4c5684de87358cb0289236adc869",
   "account_source": "PRECREATED_SYNTHETIC_ACCOUNTS_REQUIRED",
-  "token_policy": "Tokens are injected only through token_env environment variables; never place credentials in this file.",
-  "actors": [
+  "endpoint": "/api/state",
+  "reader_allocation": {
+    "A": 34,
+    "B": 33,
+    "C": 33
+  },
+  "identities": [
     {
-      "actor_id": "capacity-001",
+      "identity": "A",
       "user_id": "UNKNOWN",
-      "token_env": "CAPACITY_ACTOR_001_TOKEN",
-      "mode": "ranked",
+      "token_expiry": "UNKNOWN",
+      "mode": "authenticated-read",
+      "profile": "UNKNOWN"
+    },
+    {
+      "identity": "B",
+      "user_id": "UNKNOWN",
+      "token_expiry": "UNKNOWN",
+      "mode": "authenticated-read",
+      "profile": "UNKNOWN"
+    },
+    {
+      "identity": "C",
+      "user_id": "UNKNOWN",
+      "token_expiry": "UNKNOWN",
+      "mode": "authenticated-read",
       "profile": "UNKNOWN"
     }
   ],
-  "workload": {
-    "ranked": "FREEZE_BEFORE_RUN",
-    "casual": "FREEZE_BEFORE_RUN",
-    "fragmented": "FREEZE_BEFORE_RUN"
-  },
-  "historical_ghost_baseline": "ID_SET_REQUIRED_OUT_OF_BAND"
+  "token_policy": "Credentials and access tokens are supplied only through hidden stdin or a 0600 temporary secret file; never place them in this manifest."
 }
