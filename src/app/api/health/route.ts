@@ -1,24 +1,14 @@
-import { poolCounts } from "@/lib/api";
 import { errorResponse, jsonOk, requestId } from "@/lib/http";
-import { reconcileStalePresence } from "@/lib/presence";
+import { runHealthDiagnostics } from "@/lib/health";
 
 export async function GET(request: Request) {
   const rid = requestId(request);
-  const startedAt = Date.now();
   try {
-    // Request-triggered fallback for deployments without a separate scheduler.
-    // The database function is bounded and idempotent; heartbeat requests also
-    // invoke it, so this does not make health the sole cleanup path.
-    await reconcileStalePresence().catch(() => null);
-    const counts = await poolCounts();
+    const diagnostics = await runHealthDiagnostics({ requestId: rid });
     return jsonOk({
-      ok: true,
-      status: "ready",
-      checkedAt: new Date().toISOString(),
-      databaseLatencyMs: Date.now() - startedAt,
+      ...diagnostics.body,
       version: process.env.APP_VERSION || "development",
-      ...counts,
-    }, rid);
+    }, rid, diagnostics.httpStatus);
   } catch (error) {
     return errorResponse(error, rid, "数据库暂时不可用");
   }

@@ -40,7 +40,7 @@ function maskPublicNickname(value: string | null | undefined): string {
   return `${chars[0]}${"*".repeat(Math.min(3, chars.length - 2))}${chars.at(-1)}`;
 }
 
-export async function publicMatchDirectory(limit = 6): Promise<PublicMatchDirectoryEntry[]> {
+export async function publicMatchDirectory(limit = 6, options: { strict?: boolean } = {}): Promise<PublicMatchDirectoryEntry[]> {
   const safeLimit = Math.max(1, Math.min(18, Number(limit) || 6));
   const { data: rows, error } = await supabaseAdmin()
     .from("matchmaking_tickets")
@@ -52,7 +52,11 @@ export async function publicMatchDirectory(limit = 6): Promise<PublicMatchDirect
     .eq("state", "searching")
     .order("search_started_at", { ascending: true })
     .limit(safeLimit);
-  if (error || !rows?.length) return [];
+  if (error) {
+    if (options.strict) throw error;
+    return [];
+  }
+  if (!rows?.length) return [];
   const profiles = await publicProfilesFor(rows.map((row) => row.user_id), { onlineOnly: true });
   const profileById = new Map(profiles.map((profile) => [profile.id, profile]));
   return rows
@@ -68,10 +72,10 @@ export async function publicMatchDirectory(limit = 6): Promise<PublicMatchDirect
     }));
 }
 
-export async function poolCounts(): Promise<{ online: number; matching: number; users: number; playing: number; directory: PublicMatchDirectoryEntry[] }> {
+export async function poolCounts(options: { strict?: boolean } = {}): Promise<{ online: number; matching: number; users: number; playing: number; directory: PublicMatchDirectoryEntry[] }> {
   // The old `.gt("expires_at", activeTicketCutoff)` filter was a TTL-based
   // cleanup boundary; explicit-exit mode intentionally does not use it.
-  const [{ count: matching }, { count: online }, { count: users }, { data: playingSessions }, directory] = await Promise.all([
+  const [matchingResult, onlineResult, usersResult, playingResult, directory] = await Promise.all([
     supabaseAdmin().from("matchmaking_tickets").select("id", { count: "exact", head: true }).in("state", ["searching", "candidate_found", "waiting_confirmation"]),
     supabaseAdmin().from("profiles").select("id", { count: "exact", head: true })
       .eq("online", true).gt("last_seen", presenceCutoffIso()),
@@ -79,15 +83,25 @@ export async function poolCounts(): Promise<{ online: number; matching: number; 
     supabaseAdmin().from("sessions").select("room_id").eq("status", "playing"),
     // The Hero shows six cards at a time and rotates through this larger,
     // privacy-safe window so the same first few players do not stay pinned.
-    publicMatchDirectory(18),
+     publicMatchDirectory(18 /* privacy-safe directory window */, options),
   ]);
+  if (options.strict) {
+    const failed = [matchingResult, onlineResult, usersResult, playingResult].find((result) => result.error);
+    if (failed?.error) throw failed.error;
+  }
+  const { count: matching } = matchingResult;
+  const { count: online } = onlineResult;
+  const { count: users } = usersResult;
+  const { data: playingSessions } = playingResult;
   // A room shell intentionally remains visible after one member exits so the
   // other member can see what happened. Only a genuinely playing Session is
   // therefore allowed to contribute to the live playing count.
   const roomIds = Array.from(new Set((playingSessions || []).map((session) => session.room_id).filter(Boolean)));
-  const { count: playing } = roomIds.length
+  const activeMembersResult = roomIds.length
     ? await supabaseAdmin().from("room_members").select("id", { count: "exact", head: true }).eq("status", "active").in("room_id", roomIds)
     : { count: 0 };
+  if (options.strict && "error" in activeMembersResult && activeMembersResult.error) throw activeMembersResult.error;
+  const { count: playing } = activeMembersResult;
   return { online: online ?? 0, matching: matching ?? 0, users: users ?? 0, playing: playing ?? 0, directory };
 }
 

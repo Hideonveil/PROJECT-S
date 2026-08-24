@@ -25,7 +25,7 @@ describe("hero activity privacy and rotation contract", () => {
     expect(app).toContain("window.setInterval(beat, 10_000)");
     expect(app).toContain('document.visibilityState !== "visible"');
     expect(app).toContain("HERO_PREVIEW_DIRECTORY");
-    expect(api).toContain("publicMatchDirectory(18)");
+    expect(api).toMatch(/publicMatchDirectory\(18\b/);
     expect(api).toContain("Math.min(18");
   });
 });

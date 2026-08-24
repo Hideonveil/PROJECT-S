@@ -51,10 +51,12 @@ describe("Presence reconnect lifecycle", () => {
     const api = read(`${root}/src/lib/api.ts`);
     const data = read(`${root}/src/lib/data.ts`);
     const health = read(`${root}/src/app/api/health/route.ts`);
+    const healthDiagnostics = read(`${root}/src/lib/health.ts`);
     expect(api).toContain('.eq("online", true).gt("last_seen", presenceCutoffIso())');
     expect(data).toContain("isEffectivelyOnline(profile)");
     expect(data).toContain('.eq("online", true).gt("last_seen", presenceCutoffIso())');
-    expect(health).toContain("reconcileStalePresence");
+    expect(health).toContain("runHealthDiagnostics");
+    expect(healthDiagnostics).toContain("reconcileStalePresence");
   });
 
   it("does not turn Logout into immediate Room Leave", () => {
