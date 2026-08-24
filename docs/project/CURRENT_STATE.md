@@ -18,8 +18,8 @@
 
 - 仓库：`output/jiyuan-computer-handoff-2026-08-22/project-s-source`
 - Canonical engineering branch：`main`。
-- Git 当前可信应用源码基线：`47f3a110e1329977833fe65d970f798de7891696`（`fix: reduce production health and state read pressure`）。`main` 已将 `agent/ui-shell-production` fast-forward 收敛；此前 `892d61e`、`875bb97` 与 `923bf47` 的产品修复继续保留在当前主线。后续事实文档提交属于 docs-only，不改变该应用发布基线。
-- 当前 `main` HEAD：以当前仓库 `git rev-parse HEAD` 为准；本次已部署的应用提交为 `47f3a110e1329977833fe65d970f798de7891696`，其后追加本次 Production 变更后的事实源同步。
+- Git 当前可信应用源码基线：`40c138c105f55f24e31a481a2067202bec9cd0bf`（`fix: reduce production database read pressure`）。`main` 已将 `agent/ui-shell-production` fast-forward 收敛；此前 `892d61e`、`875bb97` 与 `923bf47` 的产品修复继续保留在当前主线。后续事实文档提交属于 docs-only，不改变该应用发布基线。
+- 当前 `main` HEAD：以当前仓库 `git rev-parse HEAD` 为准；本次已部署的应用提交为 `40c138c105f55f24e31a481a2067202bec9cd0bf`，其后追加本次 Production 变更后的事实源同步。
 - Project source tracked files：clean；仓库根下既有未跟踪 `output/` 证据目录保留，不能将其误写为不存在。
 - `agent/ui-shell-production` 已完成 fast-forward 收敛并保留，不删除该 branch。
 - Runtime source baseline、tests/tooling、project docs 与 migration provenance 均已进入 Git。
@@ -31,15 +31,15 @@
 
 - 公网入口：`https://www.jiyuan.online`
 - 部署方式：腾讯云中国香港节点上的 Docker Compose，Caddy 对外提供 HTTPS 和代理。
-- 最近 Production source commit：`47f3a110e1329977833fe65d970f798de7891696`；Production runtime `APP_VERSION` / health label：`47f3a11`。此前 `923bf47`、`875bb97`、`892d61e`、`cd51a83` 与 `7bee0a2-dirty-presence-2c0143f4` 作为历史部署版本/标签保留。
+- 最近 Production source commit：`40c138c105f55f24e31a481a2067202bec9cd0bf`；Production runtime `APP_VERSION` / health label：`40c138c105f55f24e31a481a2067202bec9cd0bf`。此前 `47f3a11`、`923bf47`、`875bb97`、`892d61e`、`cd51a83` 与 `7bee0a2-dirty-presence-2c0143f4` 作为历史部署版本/标签保留。
 - Git 应用源码基线与 Production runtime version / deployment label 仍是两个不同概念；本次具备源码同步、容器 build、health、HTTP 与容器状态证据，但不把单独的 health 字段解释为任意容器文件的字节级证明。
-- 此前 `875bb97` 发布后的健康检查曾确认：`HTTP 200`、`ok=true`、`status=ready`、`version=875bb9786b5c4c5684de87358cb0289236adc869`、`online=0`、`matching=0`、`playing=0`、`users=531`；检查时间 `2026-08-24T10:17:41.166Z`。这是历史安全收尾快照，不覆盖当前 `47f3a11` 发布后的 degraded 诊断证据。
-- `923bf47` Health diagnostics 修复发布后的连续 5 次公开烟测均在 `4.046–4.466s` 内返回结构化 `HTTP 503`、`ok=false`、`status=degraded`、`version=923bf470938cd5ab721a0b37a6e39e56fff97395`；`presence` 与 `database` 各自明确记录 `HEALTH_CHECK_TIMEOUT`（单项边界 `2000ms`），不再出现 20 秒无响应。该历史结果与本次 `47f3a11` 发布后的 15 次观察共同证明 response bound 与 diagnostics 已生效，但底层依赖异常仍未恢复，5-user rerun 保持 `NOT READY`。
+- 此前 `875bb97` 发布后的健康检查曾确认：`HTTP 200`、`ok=true`、`status=ready`、`version=875bb9786b5c4c5684de87358cb0289236adc869`、`online=0`、`matching=0`、`playing=0`、`users=531`；检查时间 `2026-08-24T10:17:41.166Z`。这是历史安全收尾快照，不覆盖当前 `40c138c` 发布后的 degraded 诊断证据。
+- `923bf47` Health diagnostics 修复发布后的连续 5 次公开烟测均在 `4.046–4.466s` 内返回结构化 `HTTP 503`、`ok=false`、`status=degraded`、`version=923bf470938cd5ab721a0b37a6e39e56fff97395`；`presence` 与 `database` 各自明确记录 `HEALTH_CHECK_TIMEOUT`（单项边界 `2000ms`），不再出现 20 秒无响应。该历史结果只证明 response bound 与 diagnostics 的设计已生效；当前 `40c138c` 的低频观察仍显示底层依赖异常未恢复，5-user rerun 保持 `NOT READY`。
 - `capstate500-stage5-0824` 超时后的只读健康检查：`status=ready`、`online=0`、`matching=0`、`playing=0`、`users=531`、`databaseLatencyMs=123857`；检查时间 `2026-08-24T10:38:53.169Z`。该阶段后 app/gateway 容器均无 restart，`OOMKilled=false`；这只是失败后的安全收尾快照，不是 Stateful capacity PASS。
 - 先前 `2026-08-24T05:10:45.191Z` 的健康检查仍作为历史快照保留；不同时间点的 `online/users` 数字不得混写。
 - Production 应用容器 `china-hk-app-1` 为 `healthy`，Caddy gateway 正常运行；部署构建仅出现 Docker Buildx 未安装警告，未导致失败。
-- `47f3a11` 发布新增 `/api/health/live` liveness endpoint，monitor 改为每分钟读取 liveness；`/api/health` 改为只读 Presence probe、可 abort 的依赖检查，并由带 7.5 秒短缓存的 `poolSummary()` 支撑 `/api/state`，未改变 Matching、Room/Session lifecycle、Presence heartbeat/TTL/grace、RLS、Realtime 或 migration。
-- 本次发布后 15/15 个公开观察样本：`/api/health/live` 全部 HTTP `200`；`/api/health` 全部有界返回 HTTP `503`，约 `4.04–4.48s`，presence/database 均明确记录 `HEALTH_CHECK_TIMEOUT`；`/api/config` HTTP `200`。Caddy error/upstream/504 日志行 `0`（当前 Caddy 配置无 access-log 总量，因此仅记录可观察错误）；app/gateway restart `0`、`OOMKilled=false`，Docker 资源保持低位。
+- `40c138c` 发布新增 `/api/health/live` liveness endpoint，monitor 改为每分钟读取 liveness；`/api/health` 改为只读 Presence probe、可 abort 的依赖检查，并由带 7.5 秒短缓存的 `poolSummary()` 支撑 `/api/state`，未改变 Matching、Room/Session lifecycle、Presence heartbeat/TTL/grace、RLS、Realtime 或 migration。
+- 本次发布后已完成 13 个低频公开观察样本（约 `2026-08-24T14:22:18Z`–`14:36:43Z`，观察按用户要求中止，未完成完整 15–30 分钟窗口）：`/api/health/live` 全部 HTTP `200`；`/api/health` 全部有界返回 HTTP `503`，约 `4.04–4.21s`，presence/database 均明确记录 `HEALTH_CHECK_TIMEOUT`；`/api/config` HTTP `200`；`/api/pool-summary` 全部 HTTP `200` 但约 `6.27–7.23s`。Caddy error/upstream/504 日志行 `0`（当前 Caddy 配置无 access-log 总量，因此仅记录可观察错误）；app/gateway restart `0`、`OOMKilled=false`，Docker 应用资源未显示瓶颈。
 - 本次未取得 A/B/C authenticated browser session；最终低频未认证读取为 `/api/state=401`、`/api/session=200`，不能替代 3/3 authenticated `/api/state`、`/api/session` smoke，后者保持 `NOT VERIFIED`。Production Supabase/DB CPU after 未从 Dashboard 取得；健康依赖持续超时，因此 `SUPABASE RESOURCE PRESSURE=NOT RESOLVED`，5-user rerun 继续 `NOT READY`。
 - `20260824100000_session_member_likes.sql` 已按授权在 Production 执行；表、3 个索引、3 个 RLS policy 与 RLS enabled 已只读确认，表内点赞行数为 `0`；未修改历史点赞、旧 `session_responses`、旧 tags 或 migration history。
 - 生产前端静态 bundle 已确认包含 Presence heartbeat 客户端标记，说明 Presence 客户端代码已随网站发布。
@@ -91,7 +91,7 @@
 
 ### 非阻断但必须保留的事实
 
-- Production health 当前返回 runtime label `47f3a11`；该值来自部署环境 release metadata，仍与 Git 应用源码基线的完整 SHA 分开记录。
+- Production health 当前返回 runtime label `40c138c105f55f24e31a481a2067202bec9cd0bf`；该值来自部署环境 release metadata，仍与 Git 应用源码基线的完整 SHA 分开记录。
 - 本次无法取得 A/B/C 三个同时受控的已登录 Production 身份，因此“两人/三人 Production 视觉 smoke、逐成员点赞刷新恢复、self/non-member 拒绝”保持 `NOT VERIFIED`；不以单一登录身份或本地 build 证据替代 Production smoke。
 - Project source tracked files 当前 clean；仓库根下既有未跟踪 `output/` 证据目录保留。Production deployment label 与 Git 基线分开记录，Production release provenance 仍需结合源码同步、容器 build、health 和静态 bundle 证据理解。
 - 三个已登记的 P0 均保持 `CLOSED`；当前不存在新的 P0。后续只按 `Final Private Pilot Gate` 剩余范围补证据。
