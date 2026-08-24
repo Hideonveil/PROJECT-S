@@ -18,8 +18,8 @@
 
 - 仓库：`output/jiyuan-computer-handoff-2026-08-22/project-s-source`
 - Canonical engineering branch：`main`。
-- Git 当前可信工程基线：`347c0bb`（包含 `d3b5766` 的 RLS migration/test 与本次事实源同步）；`main` 已将 `agent/ui-shell-production` fast-forward 收敛；此前 `892d61e`、`875bb97` 与 `923bf47` 的产品修复继续保留在当前主线。
-- 当前 `main` HEAD：以当前仓库 `git rev-parse HEAD` 为准；RLS forward-only migration 与测试已进入主线并完成 Production 部署，runtime label 为 `347c0bb`。
+- Git 当前可信工程基线：`0b4ebba`（docs-only sync；包含已部署的 `347c0bb` RLS migration/test release）；`main` 已将 `agent/ui-shell-production` fast-forward 收敛；此前 `892d61e`、`875bb97` 与 `923bf47` 的产品修复继续保留在当前主线。
+- 当前 `main` HEAD：`0b4ebba`；RLS forward-only migration 与测试已进入主线并完成 Production 部署，Production runtime label 为 `347c0bb`。两者分别记录，不混为同一字节级版本。
 - Project source tracked files：clean；仓库根下既有未跟踪 `output/` 证据目录保留，不能将其误写为不存在。
 - `agent/ui-shell-production` 已完成 fast-forward 收敛并保留，不删除该 branch。
 - Runtime source baseline、tests/tooling、project docs 与 migration provenance 均已进入 Git。
