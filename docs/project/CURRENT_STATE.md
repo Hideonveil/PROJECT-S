@@ -18,8 +18,8 @@
 
 - 仓库：`output/jiyuan-computer-handoff-2026-08-22/project-s-source`
 - Canonical engineering branch：`main`。
-- Git 当前可信工程基线：`d3b5766`（`perf: optimize RLS auth initplans`）；当前已部署应用提交仍为 `8631311`。`main` 已将 `agent/ui-shell-production` fast-forward 收敛；此前 `892d61e`、`875bb97` 与 `923bf47` 的产品修复继续保留在当前主线。
-- 当前 `main` HEAD：以当前仓库 `git rev-parse HEAD` 为准；`d3b5766` 已包含 RLS forward-only migration 与测试，但应用部署尚未完成，Production runtime 仍为 `8631311`。
+- Git 当前可信工程基线：`347c0bb`（包含 `d3b5766` 的 RLS migration/test 与本次事实源同步）；`main` 已将 `agent/ui-shell-production` fast-forward 收敛；此前 `892d61e`、`875bb97` 与 `923bf47` 的产品修复继续保留在当前主线。
+- 当前 `main` HEAD：以当前仓库 `git rev-parse HEAD` 为准；RLS forward-only migration 与测试已进入主线并完成 Production 部署，runtime label 为 `347c0bb`。
 - Project source tracked files：clean；仓库根下既有未跟踪 `output/` 证据目录保留，不能将其误写为不存在。
 - `agent/ui-shell-production` 已完成 fast-forward 收敛并保留，不删除该 branch。
 - Runtime source baseline、tests/tooling、project docs 与 migration provenance 均已进入 Git。
@@ -31,7 +31,7 @@
 
 - 公网入口：`https://www.jiyuan.online`
 - 部署方式：腾讯云中国香港节点上的 Docker Compose，Caddy 对外提供 HTTPS 和代理。
-- 最近 Production source commit：`8631311`；Production runtime `APP_VERSION` / health label：`8631311`。此前 `40c138c`、`47f3a11`、`923bf47`、`875bb97`、`892d61e`、`cd51a83` 与 `7bee0a2-dirty-presence-2c0143f4` 作为历史部署版本/标签保留。
+- 最近 Production source commit：`347c0bb`；Production runtime `APP_VERSION` / health label：`347c0bb`。此前 `8631311`、`40c138c`、`47f3a11`、`923bf47`、`875bb97`、`892d61e`、`cd51a83` 与 `7bee0a2-dirty-presence-2c0143f4` 作为历史部署版本/标签保留。
 - Git 应用源码基线与 Production runtime version / deployment label 仍是两个不同概念；本次具备源码同步、容器 build、health、HTTP 与容器状态证据，但不把单独的 health 字段解释为任意容器文件的字节级证明。
 - 此前 `875bb97` 发布后的健康检查曾确认：`HTTP 200`、`ok=true`、`status=ready`、`version=875bb9786b5c4c5684de87358cb0289236adc869`、`online=0`、`matching=0`、`playing=0`、`users=531`；检查时间 `2026-08-24T10:17:41.166Z`。这是历史安全收尾快照，不覆盖当前 `40c138c` 发布后的 degraded 诊断证据。
 - `923bf47` Health diagnostics 修复发布后的连续 5 次公开烟测均在 `4.046–4.466s` 内返回结构化 `HTTP 503`、`ok=false`、`status=degraded`、`version=923bf470938cd5ab721a0b37a6e39e56fff97395`；`presence` 与 `database` 各自明确记录 `HEALTH_CHECK_TIMEOUT`（单项边界 `2000ms`），不再出现 20 秒无响应。该历史结果只证明 response bound 与 diagnostics 的设计已生效；此前 `40c138c` 观察到的底层依赖异常和本次 `8631311` 的 rollback 证据分别按各自时间窗口记录，5-user rerun 保持 `NOT READY`。
@@ -42,7 +42,7 @@
 - 本次发布后已完成 13 个低频公开观察样本（约 `2026-08-24T14:22:18Z`–`14:36:43Z`，观察按用户要求中止，未完成完整 15–30 分钟窗口）：`/api/health/live` 全部 HTTP `200`；`/api/health` 全部有界返回 HTTP `503`，约 `4.04–4.21s`，presence/database 均明确记录 `HEALTH_CHECK_TIMEOUT`；`/api/config` HTTP `200`；`/api/pool-summary` 全部 HTTP `200` 但约 `6.27–7.23s`。Caddy error/upstream/504 日志行 `0`（当前 Caddy 配置无 access-log 总量，因此仅记录可观察错误）；app/gateway restart `0`、`OOMKilled=false`，Docker 应用资源未显示瓶颈。
 - 本次未取得 A/B/C authenticated browser session；最终低频未认证读取为 `/api/state=401`、`/api/session=200`，不能替代 3/3 authenticated `/api/state`、`/api/session` smoke，后者保持 `NOT VERIFIED`。Production Supabase/DB CPU after 未从 Dashboard 取得；健康依赖持续超时，因此 `SUPABASE RESOURCE PRESSURE=NOT RESOLVED`，5-user rerun 继续 `NOT READY`。
 - `20260824100000_session_member_likes.sql` 已按授权在 Production 执行；表、3 个索引、3 个 RLS policy 与 RLS enabled 已只读确认，表内点赞行数为 `0`；未修改历史点赞、旧 `session_responses`、旧 tags 或 migration history。
-- `20260825110000_optimize_rls_initplan.sql` 已按授权在 Production 执行；四条 RLS policy 已只读确认改为 `(select auth.uid())`，roles/commands/USING/WITH CHECK 与 participant visibility 保持不变。Production identity isolation read-only verification：own profile `1`、other profile `0`、participant session `1`、non-participant session `0`。Performance Advisor 重跑为 `0 errors / 0 warnings / 38 suggestions`，但 DB CPU after 尚未取得，不能据此宣称 CPU incident 已解决。应用尚未重新部署，因腾讯云终端 MFA 阻塞；runtime 仍为 `8631311`。
+- `20260825110000_optimize_rls_initplan.sql` 已按授权在 Production 执行并随 `347c0bb` 部署；四条 RLS policy 已只读确认改为 `(select auth.uid())`，roles/commands/USING/WITH CHECK 与 participant visibility 保持不变。Production identity isolation read-only verification：own profile `1`、other profile `0`、participant session `1`、non-participant session `0`。Performance Advisor 重跑为 `0 errors / 0 warnings / 38 suggestions`，但 DB CPU after 尚未取得，不能据此宣称 CPU incident 已解决。部署后 liveness/readiness/config 均为 `200`，app healthy、gateway running、restart/OOM 为 `0`；当前 matching/playing 为 `3/2`，5-user rerun 仍未启动。
 - 生产前端静态 bundle 已确认包含 Presence heartbeat 客户端标记，说明 Presence 客户端代码已随网站发布。
 - 生产数据库 project ref：`chqxaqibegpdjtedrxwx`。
 - 历史生产数据库快照曾确认：`pg_cron` 可用；Presence migration 所需字段、函数、trigger、cron job 已存在；当时 active ticket `0`、active Session `0`，原始 active Room `1` 与 terminal Session + playing Room `1` 均对应已登记历史 baseline `F1A64`，排除历史 5 个 ghost Room 后 New Active Room `0`、New Ghost `0`、New Active Ticket Residue `0`、New Active Session Residue `0`。本次新部署观察时 health 显示 `matching=3`、`playing=2`，不能沿用该历史零值作为当前 preflight。
