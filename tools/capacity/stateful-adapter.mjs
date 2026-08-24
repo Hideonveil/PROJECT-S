@@ -22,6 +22,12 @@ const STAGES = Object.freeze([
   { name: "50", count: 50, ranked: 30, casual: 15, fragmented: 5 },
   { name: "75", count: 75, ranked: 42, casual: 24, fragmented: 9 },
   { name: "100", count: 100, ranked: 60, casual: 30, fragmented: 10 },
+  { name: "125", count: 125, ranked: 72, casual: 39, fragmented: 14 },
+  { name: "150", count: 150, ranked: 84, casual: 48, fragmented: 18 },
+  { name: "200", count: 200, ranked: 114, casual: 66, fragmented: 20 },
+  { name: "300", count: 300, ranked: 174, casual: 96, fragmented: 30 },
+  { name: "400", count: 400, ranked: 234, casual: 126, fragmented: 40 },
+  { name: "500", count: 500, ranked: 294, casual: 156, fragmented: 50 },
 ]);
 
 const ACTIVE_SESSION_STATES = new Set(["active", "playing", "matched"]);
@@ -74,7 +80,7 @@ export function statefulDryRunPlan({ actors = [], runId, maxUsers = STATEFUL_MAX
     mutationPaths: ["/api/auth/login", "/api/online", "/api/offline", "/api/matchmaking/*", "/api/room/:code/*", "Supabase messages insert", "Supabase Realtime subscribe"],
     safety: {
       maxStageUsers: STATEFUL_MAX_USERS,
-      progressiveSequence: "5 -> 10 -> 20 -> 30 -> 40 -> 50 -> 75 -> 100",
+      progressiveSequence: "5 -> 10 -> 20 -> 30 -> 40 -> 50 -> 75 -> 100 -> 125 -> 150 -> 200 -> 300 -> 400 -> 500",
       rawSql: false,
       serviceRole: false,
       globalKillSwitch: true,

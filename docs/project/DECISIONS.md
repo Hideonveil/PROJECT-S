@@ -77,6 +77,6 @@
 ## DEC-012 — 容量验证采用渐进式容量探顶
 
 - 状态：ACTIVE
-- 决策：容量验证使用 `5 → 10 → 20 → 30 → 40 → 50 → 75 → 100` 递增梯度，人数档位只是观测级别，不是预设的自动 FAIL 上限。当前容量工具支持到 `100`；超过 `100` 必须由 00 单独授权。
+- 决策：容量验证使用 `5 → 10 → 20 → 30 → 40 → 50 → 75 → 100 → 125 → 150 → 200 → 300 → 400 → 500` 递增梯度，人数档位只是观测级别，不是预设的自动 FAIL 上限。当前容量工具支持到 `500`；超过 `500` 必须由 00 单独授权。
 - 原因：需要识别 Production 在真实登录、匹配、Room / Session、Presence、Realtime 和 Chat 行为下的第一个可复现容量拐点，不能让 runner 的旧 20 人保护上限代替系统容量结论。
 - 约束：不关闭 rate limit、不修改产品规则或 schema、不使用 service role 执行业务、不用 raw SQL 制造或清理业务状态；只有持续错误、资源危险、数据一致性破坏、Realtime 系统性失败或影响真实用户时才停止。当前没有形成 `LOGIN VALIDATED CAPACITY`、`MATCHING VALIDATED CAPACITY` 或 `STATEFUL VALIDATED CAPACITY` 结论。

@@ -137,18 +137,18 @@ describe("capacity runner safety contract", () => {
     ] })).toThrow(/distinct/);
   });
 
-  it("validates the progressive 100-user stateful credential envelope", () => {
-    const credentials = normalizeStatefulCredentials({ identities: Array.from({ length: 100 }, (_, index) => ({
+  it("validates the progressive 500-user stateful credential envelope", () => {
+    const credentials = normalizeStatefulCredentials({ identities: Array.from({ length: 500 }, (_, index) => ({
       identity: `S${String(index + 1).padStart(2, "0")}`,
       identifier: `stateful-${index + 1}`,
       password: "not-written-to-evidence",
     })) });
-    expect(credentials).toHaveLength(100);
-    expect(() => normalizeStatefulCredentials({ identities: credentials.slice(0, 4) })).toThrow(/5 to 100/);
-    expect(() => normalizeStatefulCredentials({ identities: [...credentials, { identity: "S101", identifier: "x", password: "y" }] })).toThrow(/5 to 100/);
+    expect(credentials).toHaveLength(500);
+    expect(() => normalizeStatefulCredentials({ identities: credentials.slice(0, 4) })).toThrow(/5 to 500/);
+    expect(() => normalizeStatefulCredentials({ identities: [...credentials, { identity: "S501", identifier: "x", password: "y" }] })).toThrow(/5 to 500/);
   });
 
-  it("builds the progressive 5 -> 100 stateful stages", () => {
+  it("builds the progressive 5 -> 500 stateful stages", () => {
     const statefulActors = [
       { actorId: "R01", role: "ranked", mode: "ranked" },
       { actorId: "R02", role: "ranked", mode: "ranked" },
@@ -169,11 +169,17 @@ describe("capacity runner safety contract", () => {
         ...Array(6).fill("ranked"), ...Array(3).fill("casual"), ...Array(1).fill("fragmented"),
         ...Array(12).fill("ranked"), ...Array(9).fill("casual"), ...Array(4).fill("fragmented"),
         ...Array(18).fill("ranked"), ...Array(6).fill("casual"), ...Array(1).fill("fragmented"),
+        ...Array(12).fill("ranked"), ...Array(9).fill("casual"), ...Array(4).fill("fragmented"),
+        ...Array(12).fill("ranked"), ...Array(9).fill("casual"), ...Array(4).fill("fragmented"),
+        ...Array(30).fill("ranked"), ...Array(18).fill("casual"), ...Array(2).fill("fragmented"),
+        ...Array(60).fill("ranked"), ...Array(30).fill("casual"), ...Array(10).fill("fragmented"),
+        ...Array(60).fill("ranked"), ...Array(30).fill("casual"), ...Array(10).fill("fragmented"),
+        ...Array(60).fill("ranked"), ...Array(30).fill("casual"), ...Array(10).fill("fragmented"),
       ].map((role, index) => ({ actorId: `X${String(index + 1).padStart(2, "0")}`, role, mode: role })),
     ];
-    const plan = buildStatefulPlan({ actors: statefulActors, runId: "stateful-test", maxUsers: 100 });
-    expect(plan.stages.map((stage) => stage.count)).toEqual([5, 10, 20, 30, 40, 50, 75, 100]);
-    expect(statefulDryRunPlan({ actors: statefulActors, runId: "stateful-test", maxUsers: 100 })).toMatchObject({ networkExecuted: false, safety: { rawSql: false, serviceRole: false, progressiveSequence: "5 -> 10 -> 20 -> 30 -> 40 -> 50 -> 75 -> 100" } });
+    const plan = buildStatefulPlan({ actors: statefulActors, runId: "stateful-test", maxUsers: 500 });
+    expect(plan.stages.map((stage) => stage.count)).toEqual([5, 10, 20, 30, 40, 50, 75, 100, 125, 150, 200, 300, 400, 500]);
+    expect(statefulDryRunPlan({ actors: statefulActors, runId: "stateful-test", maxUsers: 500 })).toMatchObject({ networkExecuted: false, safety: { rawSql: false, serviceRole: false, progressiveSequence: "5 -> 10 -> 20 -> 30 -> 40 -> 50 -> 75 -> 100 -> 125 -> 150 -> 200 -> 300 -> 400 -> 500" } });
   });
 
   it("reads 0600 secrets and writes a manifest without credentials", async () => {
