@@ -16,6 +16,7 @@ describe("operations manual matching contract", () => {
     const route = read("src/app/api/ops/manual-match/route.ts");
     const page = read("src/app/ops/page.tsx");
     expect(route).toContain("OPS_MANUAL_MATCH_UNAVAILABLE");
+    expect(route).toContain('pair.reason === "MATCH_RESERVATION_CONFLICT"');
     expect(route).toContain('status: "waiting_confirmation"');
     expect(route).not.toContain("matchmaking_confirm_pair");
     expect(page).toContain("双方仍需在自己的页面确认");

@@ -72,9 +72,9 @@ function groupRangeAllows(groupRow: TicketRow, candidate: MatchTicket, currentTe
   return intersectionMin <= intersectionMax && currentTeammates <= intersectionMax;
 }
 
-const RESERVATION_CONFLICT_BUDGET = 4;
-const RESERVATION_CONFLICT_BACKOFF_BASE_MS = 25;
-const RESERVATION_CONFLICT_BACKOFF_JITTER_MS = 25;
+const RESERVATION_CONFLICT_BUDGET = 2;
+const RESERVATION_CONFLICT_BACKOFF_BASE_MS = 100;
+const RESERVATION_CONFLICT_BACKOFF_JITTER_MS = 150;
 
 type ReservationKind = "pair" | "group";
 
@@ -127,16 +127,23 @@ function recordReservationConflict(kind: ReservationKind) {
   if (kind === "group") reservationMetricBucket.groupConflicts += 1;
 }
 
-function isPairReservationConflict(error: any) {
-  // The current RPC intentionally uses SQLSTATE 40001 for its business
-  // reservation outcome. A bare 40001 without this marker is a real database
-  // serialization failure and must propagate instead of being treated as a
-  // safe candidate miss.
-  return error?.message?.includes("MATCH_RESERVATION_CONFLICT");
+function hasReservationConflictReason(data: any, reasons: string[]) {
+  return data?.ok === false && reasons.includes(data?.reason);
 }
 
-function isGroupReservationConflict(error: any) {
-  return error?.message?.includes("GROUP_RESERVATION_CONFLICT")
+function isPairReservationConflict(error: any, data?: any) {
+  // New RPCs return expected business contention as a committed JSON result.
+  // During rollout, older RPCs may still encode the same outcome as SQLSTATE
+  // 40001. A bare 40001 without this marker is a real database serialization
+  // failure and must propagate instead of being treated as a safe candidate
+  // miss.
+  return hasReservationConflictReason(data, ["MATCH_RESERVATION_CONFLICT"])
+    || error?.message?.includes("MATCH_RESERVATION_CONFLICT");
+}
+
+function isGroupReservationConflict(error: any, data?: any) {
+  return hasReservationConflictReason(data, ["GROUP_RESERVATION_CONFLICT", "GROUP_SIZE_CONFLICT"])
+    || error?.message?.includes("GROUP_RESERVATION_CONFLICT")
     || error?.message?.includes("GROUP_SIZE_CONFLICT");
 }
 
@@ -234,8 +241,8 @@ async function attemptMatch(userId: string) {
       p_hard_snapshot: { passed: true, ruleSetVersion: rules.version },
       p_soft_snapshot: compatibility.softSignals,
     });
-    if (error) {
-      if (isPairReservationConflict(error)) {
+    if (error || isPairReservationConflict(null, pair)) {
+      if (isPairReservationConflict(error, pair)) {
         conflictCount += 1;
         recordReservationConflict("pair");
         if (conflictCount < RESERVATION_CONFLICT_BUDGET) await waitForReservationConflict(conflictCount);
@@ -355,17 +362,17 @@ async function attemptCasualGroup(userId: string) {
     const compatibility = ownerCandidates[0].compatibility;
     if (!groupRangeAllows(groupRow, source, currentTeammates)) continue;
     recordReservationAttempt();
-    const { error } = await admin.rpc("matchmaking_reserve_group_member", {
+    const { data: reservation, error } = await admin.rpc("matchmaking_reserve_group_member", {
       p_group_id: groupRow.id,
       p_ticket_id: source.id,
       p_hard_snapshot: { passed: true, ruleSetVersion: rules.version },
       p_soft_snapshot: compatibility.softSignals,
     });
-    if (!error) {
+    if (!error && !isGroupReservationConflict(null, reservation)) {
       sourceRow = await activeTicketRow(userId);
       break;
     }
-    if (!isGroupReservationConflict(error)) throw error;
+    if (!isGroupReservationConflict(error, reservation)) throw error;
     conflictCount += 1;
     recordReservationConflict("group");
     if (conflictCount < RESERVATION_CONFLICT_BUDGET) await waitForReservationConflict(conflictCount);
@@ -400,15 +407,15 @@ async function attemptCasualGroup(userId: string) {
     if (teammateCount >= Number(ownGroup.desired_teammates || source.desiredTeammates || 1)) break;
     if (!groupRangeAllows(ownGroup, candidate.ticket, teammateCount)) continue;
     recordReservationAttempt();
-    const { error } = await admin.rpc("matchmaking_reserve_group_member", {
+    const { data: reservation, error } = await admin.rpc("matchmaking_reserve_group_member", {
       p_group_id: ownGroup.id,
       p_ticket_id: candidate.ticket.id,
       p_hard_snapshot: { passed: true, ruleSetVersion: rules.version },
       p_soft_snapshot: candidate.compatibility.softSignals,
     });
-    if (!error) {
+    if (!error && !isGroupReservationConflict(null, reservation)) {
       teammateCount += 1;
-    } else if (isGroupReservationConflict(error)) {
+    } else if (isGroupReservationConflict(error, reservation)) {
       conflictCount += 1;
       recordReservationConflict("group");
       if (conflictCount < RESERVATION_CONFLICT_BUDGET) await waitForReservationConflict(conflictCount);
@@ -535,13 +542,16 @@ async function joinPublicTicketInternal(userId: string, targetTicketId: string, 
       }
       if (!groupId) throw new AppError("DIRECT_JOIN_UNAVAILABLE", "这支队伍刚刚发生变化，请重新选择", 409, true);
       recordReservationAttempt();
-      const { error: reserveError } = await admin.rpc("matchmaking_reserve_group_member", {
+      const { data: reservation, error: reserveError } = await admin.rpc("matchmaking_reserve_group_member", {
         p_group_id: groupId,
         p_ticket_id: joiner.id,
         p_hard_snapshot: { passed: true, source: "public_direct_join", ruleSetVersion: rules.version },
         p_soft_snapshot: { ...compatibility.softSignals, source: "public_direct_join" },
       });
-      if (reserveError && isGroupReservationConflict(reserveError)) recordReservationConflict("group");
+      if (isGroupReservationConflict(reserveError, reservation)) {
+        recordReservationConflict("group");
+        throw new AppError("GROUP_RESERVATION_CONFLICT", "这位玩家刚刚被其他队伍占用，请重新选择", 409, true);
+      }
       if (reserveError) throw reserveError;
     } else {
       recordReservationAttempt();
@@ -551,7 +561,10 @@ async function joinPublicTicketInternal(userId: string, targetTicketId: string, 
         p_hard_snapshot: { passed: true, source: "public_direct_join", ruleSetVersion: rules.version },
         p_soft_snapshot: { ...compatibility.softSignals, source: "public_direct_join" },
       });
-      if (reserveError && isPairReservationConflict(reserveError)) recordReservationConflict("pair");
+      if (isPairReservationConflict(reserveError, pair)) {
+        recordReservationConflict("pair");
+        throw new AppError("MATCH_RESERVATION_CONFLICT", "候选刚刚被其他匹配占用，请重新选择", 409, true);
+      }
       if (reserveError) throw reserveError;
       if (!pair?.id) throw new AppError("DIRECT_JOIN_FAILED", "加入匹配失败，请重试", 500, true);
       const { error: presentError } = await admin.rpc("matchmaking_present_pair", { p_pair_id: pair.id });

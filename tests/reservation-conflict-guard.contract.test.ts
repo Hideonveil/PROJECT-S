@@ -5,7 +5,7 @@ const service = readFileSync("src/lib/matchmaking/service.ts", "utf8");
 
 describe("reservation conflict guard", () => {
   it("bounds candidate reservation conflicts instead of walking the full candidate list", () => {
-    expect(service).toContain("const RESERVATION_CONFLICT_BUDGET = 4;");
+    expect(service).toContain("const RESERVATION_CONFLICT_BUDGET = 2;");
     expect(service).toContain("if (conflictCount >= RESERVATION_CONFLICT_BUDGET) break;");
     expect(service).toContain("if (conflictCount >= RESERVATION_CONFLICT_BUDGET) return activeTicketRow(userId);");
   });
@@ -16,6 +16,9 @@ describe("reservation conflict guard", () => {
     expect(service).toContain("await waitForReservationConflict(conflictCount)");
     expect(service).toContain("continue;");
     expect(service).toContain("A bare 40001 without this marker is a real database");
+    expect(service).toContain("hasReservationConflictReason(data");
+    expect(service).toContain("isPairReservationConflict(error, pair)");
+    expect(service).toContain("isGroupReservationConflict(error, reservation)");
   });
 
   it("serializes matching mutations per user", () => {

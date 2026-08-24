@@ -123,6 +123,9 @@ export async function POST(request: Request) {
       p_hard_snapshot: { passed: true, source: "ops_manual", ruleSetVersion: rules.version },
       p_soft_snapshot: { ...compatibility.softSignals, source: "ops_manual", reason: String(body.reason || "运营人工匹配").slice(0, 200) },
     });
+    if (pair?.ok === false && pair.reason === "MATCH_RESERVATION_CONFLICT") {
+      throw new AppError("MATCH_RESERVATION_CONFLICT", "候选刚刚被其他匹配占用，请刷新候选后重试", 409, true);
+    }
     if (reserveError) throw reserveError;
     const pairId = String(pair?.id || "");
     if (!UUID.test(pairId)) throw new AppError("OPS_MANUAL_MATCH_FAILED", "人工匹配未生成有效候选", 500, true);
