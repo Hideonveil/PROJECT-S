@@ -2,6 +2,15 @@
 
 > 只记录已经影响 Production、或已完成 Production 验收的事件。测试中的本地改动、未部署方案和未授权修复不写入本表。
 
+## 2026-08-24 — Supabase resource pressure minimum safe fix 发布
+
+- 应用发布源 commit：`47f3a110e1329977833fe65d970f798de7891696`，Production runtime `APP_VERSION` / health label：`47f3a11`；已通过腾讯云中国香港 Docker Compose 流程同步并部署，`china-hk-app-1` 为 `healthy`，gateway 为 `running`。
+- 新增 `/api/health/live`，monitor 改为 liveness；`/api/health` 不再调用 `presence_reconcile_stale()`，依赖检查使用只读 probe、独立 abort timeout 与总体 deadline；`/api/state` 改用带 7.5 秒短缓存的 `poolSummary()`，目录读取与统计读取分离。
+- 部署前：定向测试通过；完整测试 `44 files / 225 tests PASS`；TypeScript `PASS`；Next build `PASS`；`git diff --check PASS`。未执行 migration，未修改 Production schema/data，未执行 stateful workload。
+- 发布后 15/15 个低频公开观察样本：`/api/health/live=200`；`/api/health=503` 且均在约 `4.04–4.48s` 内有界返回，presence/database 各记录 `HEALTH_CHECK_TIMEOUT`；`/api/config=200`。Caddy 可观察 error/upstream/504 行为 `0`；app/gateway restart `0`、`OOMKilled=false`，容器资源未进入危险区。
+- 结论：`SUPABASE RESOURCE PRESSURE=NOT RESOLVED`。本次修复确认 liveness 与 health response bound 生效，但 Supabase/DB 只读检查仍持续超时；DB CPU after 未取得 Dashboard 证据，不能宣称资源压力已消除。5-user rerun 保持 `NOT READY`。
+- 当前未取得 A/B/C authenticated session；低频未认证结果为 `/api/state=401`、`/api/session=200`，3/3 authenticated read smoke 保持 `NOT VERIFIED`。Final Private Pilot Gate 继续 `PENDING / NO-GO`。
+
 ## 2026-08-24 — `/api/health` 可诊断性与超时边界修复发布
 
 - Git application release baseline：`923bf470938cd5ab721a0b37a6e39e56fff97395`，`fix: bound and diagnose health checks`；已按腾讯云中国香港 Docker Compose 流程部署，`china-hk-app-1` 与 `china-hk-gateway-1` 均保持运行，restart `0`、OOM `false`。
