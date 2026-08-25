@@ -8,6 +8,7 @@
 - 建立无秘密 synthetic account registry：`docs/project/SYNTHETIC_ACCOUNT_REGISTRY.md`。账号 provisioning 与普通用户身份的业务行为分离；registry 不保存 password、access token、refresh token、service role 或 Authorization header。
 - 当前事实修正为 `REAL PRODUCTION USERS=0`。`matching=3` / `playing=2` 对应 `CAP001`–`CAP005` synthetic capacity identities，归类为 `SYNTHETIC RESIDUE / TEST GHOST CANDIDATE`；历史实体 ID 冻结，不执行 SQL 删除或更新。
 - 当前 DB CPU 为 `NORMAL`（idle/read-only snapshot）；`MATCHMAKING_RESERVATION_ROLLBACK_STORM` 更新为 `FIX DEPLOYED / PENDING LOAD VERIFICATION`，stateful matching 根行为仍未验证，P0 不关闭。
+- 追加只读 Production health 核验：`2026-08-25T05:07:16.730Z` 返回 `200 ready`、runtime `1454bd4`、`online=0`、`matching=3`、`playing=2`、`users=531`；presence/database checks 成功。该快照不替代逐实体 inventory 或 stateful load verification。
 
 ## 2026-08-25 — Stateful Runner load-amplification fix deployed; 5-user preflight held
 
