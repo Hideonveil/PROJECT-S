@@ -18,14 +18,16 @@
 
 - 仓库：`output/jiyuan-computer-handoff-2026-08-22/project-s-source`
 - Canonical engineering branch：`main`。
-- Git 当前可信应用基线：`8972b1e134328bded364523a7ffab862316c93ea`；`main` 已将 `agent/ui-shell-production` fast-forward 收敛，后续事实源同步提交另行记录。此前 `892d61e`、`875bb97` 与 `923bf47` 的产品修复继续保留在当前主线。
+- Git 当前可信工程基线：`2e269f2c6e1c580afe0b3c0a4fe013a95fcd1b52`；该 commit 尚未部署 Production。最近已部署的 Production application baseline 仍为 `8972b1e134328bded364523a7ffab862316c93ea`；`main` 已将 `agent/ui-shell-production` fast-forward 收敛，后续事实源同步提交另行记录。此前 `892d61e`、`875bb97` 与 `923bf47` 的产品修复继续保留在当前主线。
 - 本次 `main` 应用基线 `8972b1e` 已推送 `origin/main` 并完成 Production 发布；Production runtime 与 Git 应用基线分别记录，不把后续 docs-only commit 混同为已部署应用字节版本。
 - Project source tracked files：clean；仓库根下既有未跟踪 `output/` 证据目录保留，不能将其误写为不存在。
 - `agent/ui-shell-production` 已完成 fast-forward 收敛并保留，不删除该 branch。
 - Runtime source baseline、tests/tooling、project docs 与 migration provenance 均已进入 Git。
 - `0009_realtime_matchmaking.sql` 已恢复为历史原始版本；当前 migration provenance 规则保持有效：`NOT_RECORDED` 不得解释为未执行，不得 replay 或 repair production migration history，后续数据库变化必须使用 forward-only migration。
 - `v0.1` / `v1` / `v2` 仅作为 historical archive，不承担当前项目事实源职责。
-- 当前源码 migration 文件数：33。新增 `20260824100000_session_member_likes.sql`、`20260825110000_optimize_rls_initplan.sql` 与 `20260825130000_return_reservation_conflicts.sql` 均为 forward-only migration；此前审计中使用的“27 个 migration”属于更早时间点，不能继续作为当前仓库总数。
+- 当前源码 migration 文件数：34。新增 `20260824100000_session_member_likes.sql`、`20260825110000_optimize_rls_initplan.sql`、`20260825130000_return_reservation_conflicts.sql` 与 `20260825150000_separate_presence_heartbeat_from_reconcile.sql` 均为 forward-only migration；此前审计中使用的“27 个 migration”属于更早时间点，不能继续作为当前仓库总数。
+- 本轮新增工程修复 commit：`2e269f2c6e1c580afe0b3c0a4fe013a95fcd1b52`。它将 Stateful Runner 的同一 Actor `/api/state` 读取做 in-flight 合并、将等待轮询默认间隔从 1 秒调整为约 2 秒并加入轻微 jitter，同时防止 heartbeat 请求重叠；该 commit 尚未部署 Production。
+- 本轮新增 forward-only migration：`20260825150000_separate_presence_heartbeat_from_reconcile.sql`。它只移除 `presence_heartbeat()` 内对 `presence_reconcile_stale()` 的调用，保留 heartbeat、30 秒 effective-online、180 秒 reconnect grace 及 `pg_cron` stale sweep；Production migration 尚未执行。
 
 ## 3. Production 当前事实
 
@@ -46,6 +48,7 @@
 - `8972b1e` 已按腾讯云中国香港 Docker Compose 正式流程发布；Production smoke：`/api/health/live` 连续 `5/5` 为 `200`，`/api/health` 连续 `3/3` 为 `200 ready`，`/api/config=200`，根路径既有 `307` 重定向；health version 为完整 `8972b1e`，presence/database checks 均成功。观察时 health 显示 `matching=3`、`playing=2`，这些既有 Production 活动未被本次 smoke 修改或清理。
 - `20260825130000_return_reservation_conflicts.sql` 已在 Production Supabase SQL Editor 执行一次；只读核对确认 Pair/Group reservation 函数均支持结构化业务冲突返回，且不再主动以业务冲突抛出 SQLSTATE `40001`；routine 执行权限仅保留 `postgres` / `service_role`。未 replay/repair migration history，未修改历史业务数据。
 - 本次发布只读 smoke 未执行 Matching、Room/Session、Chat、Goodbye、Leave、Feedback 或容量负载。Supabase Dashboard 当前仍显示 high CPU usage banner；本次尚未取得部署后 DB CPU/rollback delta，因此 `MATCHMAKING_RESERVATION_ROLLBACK_STORM` 仍为 `FIX_IN_PROGRESS`，不得写成 P0 CLOSED，5-user rerun 仍 `NOT READY`。
+- 当前 Production 仍为应用 runtime `8972b1e`；`2e269f2` 未部署，新的 Presence migration 未执行，未进行新的 5-user 测试。因此本轮只能记录为本地修复与待部署验证，不能写成 Production CPU 已下降或 P0 已关闭。
 - 生产前端静态 bundle 已确认包含 Presence heartbeat 客户端标记，说明 Presence 客户端代码已随网站发布。
 - 生产数据库 project ref：`chqxaqibegpdjtedrxwx`。
 - 历史生产数据库快照曾确认：`pg_cron` 可用；Presence migration 所需字段、函数、trigger、cron job 已存在；当时 active ticket `0`、active Session `0`，原始 active Room `1` 与 terminal Session + playing Room `1` 均对应已登记历史 baseline `F1A64`，排除历史 5 个 ghost Room 后 New Active Room `0`、New Ghost `0`、New Active Ticket Residue `0`、New Active Session Residue `0`。本次新部署观察时 health 显示 `matching=3`、`playing=2`，不能沿用该历史零值作为当前 preflight。
@@ -99,13 +102,14 @@
 
 ### 非阻断但必须保留的事实
 
-- Production health 当前返回 runtime label `8631311`；该值来自部署环境 release metadata，仍与 Git 应用源码基线的完整 SHA 分开记录。
+- 历史 Production health 曾返回 runtime label `8631311`；当前最近已验证的 Production runtime 为 `8972b1e`。这些 deployment label 来自部署环境 release metadata，仍与 Git 当前工程基线的完整 SHA 分开记录。
 - 本次无法取得 A/B/C 三个同时受控的已登录 Production 身份，因此“两人/三人 Production 视觉 smoke、逐成员点赞刷新恢复、self/non-member 拒绝”保持 `NOT VERIFIED`；不以单一登录身份或本地 build 证据替代 Production smoke。
 - Project source tracked files 当前 clean；仓库根下既有未跟踪 `output/` 证据目录保留。Production deployment label 与 Git 基线分开记录，Production release provenance 仍需结合源码同步、容器 build、health 和静态 bundle 证据理解。
 - 三个历史 P0 均保持 `CLOSED`；新增 `MATCHMAKING_RESERVATION_ROLLBACK_STORM` 尚未关闭。后续先完成该 P0 的 Production 归因/收敛证据，再考虑 5-user rerun；不得把本次部署或低频 readiness 观察写成容量 PASS。
 - 历史 5 个 ghost Room 仍存在，属于已知历史基线，不是本轮新增问题。
 - 旧兼容代码和旧 API 仍可能存在；不能仅因为某个字段或 API 存在，就推断其为当前主产品路径。
 - Stateful capacity rehearsal 尚未取得有效容量结论：历史 20 人尝试曾分别因 runner 环境兼容错误、Production preflight `playing=2` 和认证阶段 HTTP `429` 停止；本次 `run_id=capstate500-stage5-0824` 在 5 人阶段因 `The operation was aborted due to timeout` 停止，未进入 10 人及以上档位。该阶段未生成结构化 evidence 文件，失败请求的 endpoint、底层 `error.cause` 与完整 mutation ledger 均 `NOT CAPTURED`；不能据此区分 Runner、网络或 App 根因，也不能把本次结果写成容量 FAIL 或 PASS。失败后的健康检查显示 `matching=0`、`playing=0`，但完整 DB integrity 查询与同批账号事后 state 复核未完成，Capacity 结论继续保持 `NOT ASSESSED`。
+- 本轮只读代码归因已确认 5-user 的请求放大机制：5 个 Actor 并发启动；`waitForRooms()` 最多每秒并发刷新 5 个 `/api/state`；`waitForTerminal()` 还会继续轮询；每次 `/api/state` 又会触发多组状态、统计、目录和关系读取。另确认当前仓库中的 `presence_heartbeat()` 仍会调用 `presence_reconcile_stale(p_now, 200)`，这会把每个测试 heartbeat 变成 stale profile/ticket/room-member 扫描。该代码链解释了“5 个测试账号造成远高于 5 个真人的数据库负载”，但历史 `capstate500-stage5-0824` 缺少逐请求 ledger 与同窗口 DB 指标，Production 精确 CPU 归因仍未闭合。
 - 为后续容量验证已在 Production 完成 `run_id=capstate500-0824` 的 500 个专用普通测试账号/身份 provisioning；最终测试 manifest 中 `actors=500`、唯一 `userId=500`，角色分配按当前渐进档位校正为 `ranked=294`、`casual=156`、`fragmented=50`（原始 provisioning manifest 保留）。service role 仅用于受控账号 provisioning，不用于业务动作；provisioning 阶段未执行 Matching、Presence、Room、Realtime、Chat、Goodbye、Leave、Feedback 或 stateful workload。随后 5 个普通账号的 authenticated `/api/state` 与 `/api/session` smoke 为 `PASS`，唯一 user ID 与 user-scoped state 均匹配；这不等于 500 个身份全部 smoke，也不替代已在 5 人阶段超时的 stateful capacity evidence。容量结论仍为 `NOT ASSESSED`。
 
 ## 6. 当前不重复执行的工作

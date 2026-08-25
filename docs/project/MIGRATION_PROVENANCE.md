@@ -31,6 +31,12 @@
 |---|---|---|---|---|
 | `20260825090000_reconcile_production_matchmaking_indexes.sql` | `NOT_EXECUTED_AS_MIGRATION` | `NOT_RECORDED` | `d3db474d8e9ebace0d617a39babad35d5fa6fc023a72807b2aa20c5c921026d5` | Production 已直接存在并经 catalog 只读确认：`matchmaking_pairs_active_unordered_unique` 与 12 个 matchmaking FK indexes。该文件仅以 forward-only、idempotent DDL 表达当前 Production schema；本次未执行 migration、未修改 `schema_migrations`。不得在当前 Production 自动 replay 或用于 repair history。 |
 
+## Pending forward-only artifacts
+
+| Migration | Production execution status | Production history status | Current SHA-256 | Production fact |
+|---|---|---|---|---|
+| `20260825150000_separate_presence_heartbeat_from_reconcile.sql` | `NOT_EXECUTED` | `NOT_RECORDED` | `d3014accb511b75a53a1f94e0c93423b328e393dc80abe576def2eb88b5b7fd8` | 仅替换 `presence_heartbeat()`，移除每次 heartbeat 对 `presence_reconcile_stale()` 的调用；保留 10 秒 heartbeat、30 秒 effective-online TTL、180 秒 reconnect grace 和现有 `pg_cron` stale sweep。仅已进入 Git，未经 Production migration 授权不得执行。 |
+
 ## Provenance-review artifacts
 
 以下 10 个 migration 进入 Git 只代表保存未闭合 provenance 的 SQL artifact。它们的 production history 均为 `NOT_RECORDED`，不能据此推断已经在 Production 执行，也不能据此认为可以安全 replay。

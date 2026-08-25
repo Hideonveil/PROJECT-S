@@ -75,11 +75,11 @@ Gate Evidence 额外允许：`PENDING` · `PASS` · `FAIL`。
 - **Impact:** 同窗口出现 DB CPU 约 `91%`、PostgREST transaction setup `528,970 / 5min`、rollback `528,989 / 5min`（约 `1,690/sec`），并伴随 Pair/Group reservation conflict；阻塞 Stateful 5-user rerun。
 - **Pilot impact:** BLOCKING；在 rollback/CPU 根因未收敛、Production active matching/playing 未清空前，不得启动 5-user rehearsal。
 - **Evidence:** 既有 Production 日志/统计窗口；原始部署前 runtime 为 `40c138c`。此前 `pg_stat_statements` 约 60 秒窗口 Pair reserve `612,505 → 612,505`、Group reserve `643,304 → 643,304`，但 `pg_stat_database.xact_rollback` `314,779,825 → 314,890,889`（约 `1,775/sec`）；Supabase Dashboard CPU/connection/IO 图表曾返回 `Unable to load data`。本次 `8972b1e` 部署后 health smoke 为 live `5/5=200`、readiness `3/3=200 ready`，但尚未取得新的 DB CPU/rollback delta。
-- **Root cause:** Reservation conflict storm 的应用放大机制已确认；全库 rollback/CPU 的最终来源仍 `UNKNOWN`。Production 函数曾以 SQLSTATE `40001` 表达预期 `MATCH_RESERVATION_CONFLICT` / `GROUP_RESERVATION_CONFLICT`；当前发布已将预期冲突改为结构化 JSON 返回，并保留真实数据库 serialization failure 的异常语义。
-- **Fix / Decision:** `8972b1e` 延续并收紧应用侧 single-flight、active-ticket guard、conflict budget（最多 2 次）及 `100–250ms` backoff+jitter；Production 已执行 forward-only migration `20260825130000_return_reservation_conflicts.sql`，Pair/Group RPC 预期冲突不再主动抛出业务 `40001`。未修改 Matching/Presence/Room/Session 规则或历史数据。
-- **Verification:** 本地定向 `5 files / 34 tests PASS`；完整 `47 files / 242 tests PASS`；TypeScript PASS；Next build PASS（38/38 static pages）；`git diff --check` PASS。Production 函数定义与权限只读核对通过，routine 执行权限仅 `postgres` / `service_role`。部署后只读 smoke 通过，但 Supabase high CPU banner 仍在，P0 尚未关闭。
-- **Production status:** `FIX_IN_PROGRESS`；runtime `8972b1e` 已部署。Migration executed `YES`（仅本次新 forward-only migration）；Production business data modified `NO`；历史 migration history modified `NO`。
-- **Next action:** 取得部署后可归因的 reservation conflict、rollback 与 DB CPU 时间窗口；在 P0 closure evidence 完整前，不执行 5-user 或更高 Stateful capacity rehearsal，由 03 决定是否关闭。
+- **Root cause:** Reservation conflict storm 的应用放大机制已确认；本轮进一步确认 5-user Runner 还有独立的读取/Presence 放大链：5 个 Actor 并发启动，成团等待阶段每秒并发轮询 `/api/state`，而当前 `presence_heartbeat()` 还会调用 `presence_reconcile_stale(p_now, 200)`。全库 rollback/CPU 的最终 Production 来源仍 `UNKNOWN`；历史失败 run 缺少同窗口逐请求和 DB 指标，不能把该链条写成已完成的 Production 归因。
+- **Fix / Decision:** `8972b1e` 保留 reservation conflict 结构化返回。新增本地修复 commit `2e269f2`：Runner 增加同 Actor state-read in-flight 合并、约 2 秒轮询间隔+jitter、heartbeat in-flight guard；新增 forward-only migration `20260825150000_separate_presence_heartbeat_from_reconcile.sql`，使 stale reconcile 只由现有 `pg_cron` 执行。该 migration 尚未执行，未改变 Matching、Room/Session、TTL/grace 规则或历史数据。
+- **Verification:** 本轮定向 `2 files / 25 tests PASS`；完整 `47 files / 245 tests PASS`；TypeScript PASS；Next build PASS（38/38 static pages）；`git diff --check` PASS。Production 尚未部署本轮修复，未执行新的 5-user 或数据库 migration。
+- **Production status:** `FIX_IN_PROGRESS`；runtime `8972b1e` 仍为最近 Production 应用版本。Production business data modified `NO`；本轮 migration executed `NO`；历史 migration history modified `NO`。
+- **Next action:** 在明确授权后部署 `2e269f2` 并按 forward-only 流程执行新 migration；先做低频 idle/read-only 观察，取得 heartbeat/reconcile、reservation conflict、rollback、DB CPU 的同窗口 before/after，再由 03 决定是否允许新的 5-user rehearsal。
 - **Closed date:** UNKNOWN
 
 ### JIY-P0-001 — `LEGACY_ROOM_DUAL_RENDER_PATH`
