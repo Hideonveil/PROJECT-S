@@ -26,7 +26,13 @@
 | `CAP003` | `NOT RECORDED IN CURRENT REPOSITORY` | `capacity` | `NOT RECORDED` | `synthetic; active ticket residue; prior Auth smoke HTTP 401` | `UNKNOWN` |
 | `CAP004` | `NOT RECORDED IN CURRENT REPOSITORY` | `capacity` | `NOT RECORDED` | `synthetic; active ticket residue; prior Auth smoke HTTP 401` | `UNKNOWN` |
 | `CAP005` | `NOT RECORDED IN CURRENT REPOSITORY` | `capacity` | `NOT RECORDED` | `synthetic; active ticket residue; prior Auth smoke HTTP 401` | `UNKNOWN` |
-| `CAPACITY-500-POOL` | `NOT RECORDED IN CURRENT REPOSITORY` | `capacity` | `NOT RECORDED` | `documented 500-account pool; raw provisioning manifest not present in canonical repo; identity mapping not proven` | `capstate500-0824` |
+| `CAPSTATE500-R01` | `2b4c582d-0679-48e7-a15d-756b61b8d6cc` | `capacity` | `2026-08-24` | `synthetic_test; reused from capstate500-0824; ordinary Auth session verified; no preflight active state; 5-user run produced 1 active room_member residue in completed room` | `capstate500-reuse-20260825` |
+| `CAPSTATE500-R02` | `c8dbbb47-0e1b-4027-a06c-ac12fb14f2c3` | `capacity` | `2026-08-24` | `synthetic_test; reused from capstate500-0824; ordinary Auth session verified; no preflight active state; 5-user run produced 1 active room_member residue in completed room` | `capstate500-reuse-20260825` |
+| `CAPSTATE500-C01` | `9d9b9eaf-2bbf-437b-ae58-c9ded1a6d3ec` | `capacity` | `2026-08-24` | `synthetic_test; reused from capstate500-0824; ordinary Auth session verified; no preflight active state; 5-user run produced 1 active room_member residue in completed room` | `capstate500-reuse-20260825` |
+| `CAPSTATE500-C02` | `cf015f77-388c-42a8-976c-46ef5d813b11` | `capacity` | `2026-08-24` | `synthetic_test; reused from capstate500-0824; ordinary Auth session verified; no preflight active state; 5-user run produced 1 active room_member residue in completed room` | `capstate500-reuse-20260825` |
+| `CAPSTATE500-C03` | `58678e49-a6b4-42df-8a49-b9baac61114e` | `capacity` | `2026-08-24` | `synthetic_test; reused from capstate500-0824; ordinary Auth session verified; no preflight active state; 5-user run produced 1 active room_member residue in completed room` | `capstate500-reuse-20260825` |
+| `CAPACITY-500-POOL` | `480 exact capacity_run_id rows + 20 legacy cap_stateful_824d rows; no credentials recorded` | `capacity` | `2026-08-24` | `identified by Auth metadata, naming convention, confirmed email, and creation window; five members safely reused` | `capstate500-reuse-20260825` |
+| `CAP-REUSE-0825-R01A` | `a631516e-d339-430b-b044-cb4b53248279` | `capacity` | `2026-08-25` | `synthetic_test; fallback registration probe; email unverified; not used in business behavior` | `none` |
 
 ## Current evidence boundary
 
@@ -40,3 +46,18 @@
   `New Active Residue`.
 - No account is considered ready for a stateful rerun until its ordinary-user Auth session is
   securely obtained and the preflight inventory is complete.
+
+## capstate500-reuse-20260825
+
+- Five identities were selected from the identified `capstate500-0824` pool and authenticated
+  through both the normal app login and direct Supabase ordinary-user sign-in path. All five
+  user IDs were distinct and had no preflight ticket, room, or session state.
+- The 5-user stateful runner completed `2 Ranked + 3 Casual`, with Realtime, chat delivery,
+  refresh, reconnect, goodbye, feedback, and final API state checks recorded in
+  `output/capacity-validation/capstate500-reuse-20260825/`.
+- The two rooms and two sessions reached `completed`, but five newly created `room_members`
+  rows remained `status=active` under those completed rooms at post-run read-only inspection.
+  This is `NEW ACTIVE RESIDUE=5`, frozen for lifecycle investigation; no raw SQL cleanup was
+  performed.
+- The fallback registration probe above was never authenticated for business behavior and
+  remains a synthetic account only; no password or token is recorded here.

@@ -11,6 +11,16 @@
 > 但其实体生命周期尚未完成正常 API 收敛核验，因此暂分类为 `SYNTHETIC RESIDUE / TEST
 > GHOST CANDIDATE`，不执行 raw SQL 清理。
 
+> 最新 5-user stateful 事实（`capstate500-reuse-20260825`）：从 `capstate500-0824` pool
+> 复用 5 个普通 synthetic identities，`2 Ranked + 3 Casual` 完成登录、Presence、Matching、
+> Pair/Group、Room/Session、Realtime、Chat、Refresh、Reconnect、Goodbye、Feedback 与最终
+> state 检查；5 个 user_id distinct、identity isolation PASS、runner stage 5 PASS。两间房和
+> 两个 session 均达到 `completed`，但只读 DB 核对发现本轮新建的 5 条 `room_members` 仍为
+> `status=active`（均挂在 completed room 下），因此 `NEW ACTIVE RESIDUE=5`，本轮整体
+> `5-USER STATEFUL=FAIL/INCONCLUSIVE`，不进入 10-user。Supabase Observability 本轮 CPU/RAM/
+> connections 图表均 `Unable to load data`；主机/app/gateway 采样未见危险峰值，但不能替代 DB
+> CPU/rollback evidence。
+
 ## 1. 当前阶段
 
 - 当前阶段：Final Private Pilot Gate（`PENDING / NO-GO`）。
@@ -19,7 +29,7 @@
 - 已确认关闭的 P0：`LEGACY_ROOM_DUAL_RENDER_PATH`、`ROOM_SESSION_TERMINAL_LIFECYCLE_GHOST`、`REFRESH_PAGEHIDE_FALSE_EXIT`。
 - 当前唯一任务：由 03 审核并补齐 Final Private Pilot Gate 剩余 evidence；不得把已关闭 P0 误写成 Final Gate PASS，也不得自动替代 03 给出最终 Gate 结论。
 - 本阶段不扩大产品、测试或审计范围；P0 Active Room regression 已完成并通过，后续仅执行 03 明确要求的剩余 Gate 证据。
-- 容量验证策略已改为渐进式容量探顶：`5 → 10 → 20 → 30 → 40 → 50 → 75 → 100 → 125 → 150 → 200 → 300 → 400 → 500`；当前工具支持至 `500`，容量结果仍为 `NOT ASSESSED`，不把人数档位本身解释为 FAIL 或 PASS。`capstate500-stage5-0824` 已实际启动 5 人 Stateful 阶段，但因请求超时在阶段完成前停止，未进入后续档位。
+- 容量验证策略已改为渐进式容量探顶：`5 → 10 → 20 → 30 → 40 → 50 → 75 → 100 → 125 → 150 → 200 → 300 → 400 → 500`；当前工具支持至 `500`。本轮 `capstate500-reuse-20260825` 的功能路径 runner stage 5 为 `PASS`，但因 `NEW ACTIVE RESIDUE=5` 且 DB CPU/RAM/connections 图表不可观测，整体容量结论为 `INCONCLUSIVE`，不得进入 10-user。
 
 ## 2. Git 与源码基线
 

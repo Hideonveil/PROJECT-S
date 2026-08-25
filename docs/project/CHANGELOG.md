@@ -2,6 +2,28 @@
 
 > 只记录已经影响 Production、或已完成 Production 验收的事件。测试中的本地改动、未部署方案和未授权修复不写入本表。
 
+## 2026-08-25 — capstate500 reuse 5-user stateful verification
+
+- 从已识别的 `capstate500-0824` 500-account pool 复用 5 个普通 synthetic identities；5 个
+  user_id distinct，普通 Auth 登录与 identity isolation preflight 均 PASS。另有 1 个 fallback
+  registration probe 保留为未验证、未用于业务行为的 synthetic account；registry 不含任何密码或 token。
+- `capstate500-reuse-20260825` 完成 `2 Ranked + 3 Casual`：Login、Presence、Matching、
+  Pair/Group、Room/Session、Realtime、Chat、Refresh、Reconnect、Goodbye、Feedback 与最终
+  state 均有 evidence。Runner stage 5 PASS；125 条 lifecycle entries 中 122 个 HTTP 200、
+  error/timeout/conflict/rollback action 均为 0；消息 4/4 收件人完整，Realtime 14 次订阅与
+  14 次关闭均正常。
+- 本轮只读 DB 核对：两房、两 session 均 `completed`，但 5 条本轮新建 `room_members` 仍为
+  `status=active`，记录为 `NEW ACTIVE RESIDUE=5`；不执行 raw SQL 清理。`NEW GHOST=0`、
+  `NEW DUPLICATE=0`（以本轮 runner/最终状态证据为准）。
+- Supabase Observability 本轮 CPU/RAM/connections 图表均返回 `Unable to load data`，因此
+  DB CPU baseline/peak/final、DB RAM、connections、rollback rate 不能宣称已测得。远端 app/
+  gateway 资源采样未见接近危险区；Production health 最终为 `200 ready`，database/presence
+  checks 成功，`matching=3`、`playing=2` 未新增。
+- 结论：`5-USER STATEFUL=INCONCLUSIVE`（功能 runner PASS，但 lifecycle residue 与 DB 指标缺口
+  阻止整体 PASS）；`RESERVATION STORM FIX=NOT VERIFIED`；`10-USER READINESS=NOT READY`。
+- 本轮未修改代码、未部署、未执行 migration、未迁库、未 raw SQL 清理；evidence 位于
+  `output/capacity-validation/capstate500-reuse-20260825/`。
+
 ## 2026-08-25 — Repository consolidation and current production fact correction
 
 - 唯一 canonical repository 已收敛到 `/Users/jasonhu/Documents/ChatGPT/project/JY_source`；旧 `PROJECT-S` 工作区已移除，旧 UI/spec 通过 archive ref 保留，未 merge legacy API/JS/room implementation。
