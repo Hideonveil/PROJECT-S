@@ -35,7 +35,7 @@
 
 | Migration | Production execution status | Production history status | Current SHA-256 | Production fact |
 |---|---|---|---|---|
-| `20260825150000_separate_presence_heartbeat_from_reconcile.sql` | `NOT_EXECUTED` | `NOT_RECORDED` | `d3014accb511b75a53a1f94e0c93423b328e393dc80abe576def2eb88b5b7fd8` | 仅替换 `presence_heartbeat()`，移除每次 heartbeat 对 `presence_reconcile_stale()` 的调用；保留 10 秒 heartbeat、30 秒 effective-online TTL、180 秒 reconnect grace 和现有 `pg_cron` stale sweep。仅已进入 Git，未经 Production migration 授权不得执行。 |
+| `20260825150000_separate_presence_heartbeat_from_reconcile.sql` | `CONFIRMED_EXECUTED` | `NOT_RECORDED` | `d3014accb511b75a53a1f94e0c93423b328e393dc80abe576def2eb88b5b7fd8` | 已按明确授权在 Production Supabase SQL Editor 成功执行一次。仅移除每次 heartbeat 对 `presence_reconcile_stale()` 的调用；保留 10 秒 heartbeat、30 秒 effective-online TTL、180 秒 reconnect grace 和现有 `pg_cron` stale sweep。未 replay/repair migration history，不得直接重复执行。 |
 
 ## Provenance-review artifacts
 

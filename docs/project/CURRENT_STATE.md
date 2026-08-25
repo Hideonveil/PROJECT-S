@@ -18,7 +18,7 @@
 
 - 仓库：`output/jiyuan-computer-handoff-2026-08-22/project-s-source`
 - Canonical engineering branch：`main`。
-- Git 当前可信工程基线：`2e269f2c6e1c580afe0b3c0a4fe013a95fcd1b52`；该 commit 尚未部署 Production。最近已部署的 Production application baseline 仍为 `8972b1e134328bded364523a7ffab862316c93ea`；`main` 已将 `agent/ui-shell-production` fast-forward 收敛，后续事实源同步提交另行记录。此前 `892d61e`、`875bb97` 与 `923bf47` 的产品修复继续保留在当前主线。
+- Git 当前可信工程基线：`1454bd49a91b70fb592c97ff1c4675dd8f046625`；该 commit 已推送 `origin/main` 并按正式腾讯云 Docker Compose 流程部署 Production。此前 `2e269f2`、`892d61e`、`875bb97` 与 `923bf47` 的产品修复继续保留在当前主线。
 - 本次 `main` 应用基线 `8972b1e` 已推送 `origin/main` 并完成 Production 发布；Production runtime 与 Git 应用基线分别记录，不把后续 docs-only commit 混同为已部署应用字节版本。
 - Project source tracked files：clean；仓库根下既有未跟踪 `output/` 证据目录保留，不能将其误写为不存在。
 - `agent/ui-shell-production` 已完成 fast-forward 收敛并保留，不删除该 branch。
@@ -26,14 +26,14 @@
 - `0009_realtime_matchmaking.sql` 已恢复为历史原始版本；当前 migration provenance 规则保持有效：`NOT_RECORDED` 不得解释为未执行，不得 replay 或 repair production migration history，后续数据库变化必须使用 forward-only migration。
 - `v0.1` / `v1` / `v2` 仅作为 historical archive，不承担当前项目事实源职责。
 - 当前源码 migration 文件数：34。新增 `20260824100000_session_member_likes.sql`、`20260825110000_optimize_rls_initplan.sql`、`20260825130000_return_reservation_conflicts.sql` 与 `20260825150000_separate_presence_heartbeat_from_reconcile.sql` 均为 forward-only migration；此前审计中使用的“27 个 migration”属于更早时间点，不能继续作为当前仓库总数。
-- 本轮新增工程修复 commit：`2e269f2c6e1c580afe0b3c0a4fe013a95fcd1b52`。它将 Stateful Runner 的同一 Actor `/api/state` 读取做 in-flight 合并、将等待轮询默认间隔从 1 秒调整为约 2 秒并加入轻微 jitter，同时防止 heartbeat 请求重叠；该 commit 尚未部署 Production。
-- 本轮新增 forward-only migration：`20260825150000_separate_presence_heartbeat_from_reconcile.sql`。它只移除 `presence_heartbeat()` 内对 `presence_reconcile_stale()` 的调用，保留 heartbeat、30 秒 effective-online、180 秒 reconnect grace 及 `pg_cron` stale sweep；Production migration 尚未执行。
+- 本轮新增工程修复 commit：`2e269f2c6e1c580afe0b3c0a4fe013a95fcd1b52`，并由 docs-only commit `1454bd4` 固化事实。它将 Stateful Runner 的同一 Actor `/api/state` 读取做 in-flight 合并、将等待轮询默认间隔从 1 秒调整为约 2 秒并加入轻微 jitter，同时防止 heartbeat 请求重叠；该修复已随 `1454bd4` 部署 Production。
+- 本轮新增 forward-only migration：`20260825150000_separate_presence_heartbeat_from_reconcile.sql`，SHA-256 为 `d3014accb511b75a53a1f94e0c93423b328e393dc80abe576def2eb88b5b7fd8`。已在 Production Supabase SQL Editor 成功执行一次；它只移除 `presence_heartbeat()` 内对 `presence_reconcile_stale()` 的调用，保留 heartbeat、30 秒 effective-online、180 秒 reconnect grace 及 `pg_cron` stale sweep；未 replay/repair migration history。
 
 ## 3. Production 当前事实
 
 - 公网入口：`https://www.jiyuan.online`
 - 部署方式：腾讯云中国香港节点上的 Docker Compose，Caddy 对外提供 HTTPS 和代理。
-- 最近 Production application source commit：`8972b1e134328bded364523a7ffab862316c93ea`；Production runtime `APP_VERSION` / health version：同一完整 SHA。此前 `347c0bb`、`8631311`、`40c138c`、`47f3a11`、`923bf47`、`875bb97`、`892d61e`、`cd51a83` 与 `7bee0a2-dirty-presence-2c0143f4` 作为历史部署版本/标签保留。
+- 最近 Production application source commit：`1454bd49a91b70fb592c97ff1c4675dd8f046625`；Production runtime health version：`1454bd4`。此前 `8972b1e`、`347c0bb`、`8631311`、`40c138c`、`47f3a11`、`923bf47`、`875bb97`、`892d61e`、`cd51a83` 与 `7bee0a2-dirty-presence-2c0143f4` 作为历史部署版本/标签保留。
 - Git 应用源码基线与 Production runtime version / deployment label 仍是两个不同概念；本次具备源码同步、容器 build、health、HTTP 与容器状态证据，但不把单独的 health 字段解释为任意容器文件的字节级证明。
 - 此前 `875bb97` 发布后的健康检查曾确认：`HTTP 200`、`ok=true`、`status=ready`、`version=875bb9786b5c4c5684de87358cb0289236adc869`、`online=0`、`matching=0`、`playing=0`、`users=531`；检查时间 `2026-08-24T10:17:41.166Z`。这是历史安全收尾快照，不覆盖当前 `40c138c` 发布后的 degraded 诊断证据。
 - `923bf47` Health diagnostics 修复发布后的连续 5 次公开烟测均在 `4.046–4.466s` 内返回结构化 `HTTP 503`、`ok=false`、`status=degraded`、`version=923bf470938cd5ab721a0b37a6e39e56fff97395`；`presence` 与 `database` 各自明确记录 `HEALTH_CHECK_TIMEOUT`（单项边界 `2000ms`），不再出现 20 秒无响应。该历史结果只证明 response bound 与 diagnostics 的设计已生效；此前 `40c138c` 观察到的底层依赖异常和本次 `8631311` 的 rollback 证据分别按各自时间窗口记录，5-user rerun 保持 `NOT READY`。
@@ -48,7 +48,8 @@
 - `8972b1e` 已按腾讯云中国香港 Docker Compose 正式流程发布；Production smoke：`/api/health/live` 连续 `5/5` 为 `200`，`/api/health` 连续 `3/3` 为 `200 ready`，`/api/config=200`，根路径既有 `307` 重定向；health version 为完整 `8972b1e`，presence/database checks 均成功。观察时 health 显示 `matching=3`、`playing=2`，这些既有 Production 活动未被本次 smoke 修改或清理。
 - `20260825130000_return_reservation_conflicts.sql` 已在 Production Supabase SQL Editor 执行一次；只读核对确认 Pair/Group reservation 函数均支持结构化业务冲突返回，且不再主动以业务冲突抛出 SQLSTATE `40001`；routine 执行权限仅保留 `postgres` / `service_role`。未 replay/repair migration history，未修改历史业务数据。
 - 本次发布只读 smoke 未执行 Matching、Room/Session、Chat、Goodbye、Leave、Feedback 或容量负载。Supabase Dashboard 当前仍显示 high CPU usage banner；本次尚未取得部署后 DB CPU/rollback delta，因此 `MATCHMAKING_RESERVATION_ROLLBACK_STORM` 仍为 `FIX_IN_PROGRESS`，不得写成 P0 CLOSED，5-user rerun 仍 `NOT READY`。
-- 当前 Production 仍为应用 runtime `8972b1e`；`2e269f2` 未部署，新的 Presence migration 未执行，未进行新的 5-user 测试。因此本轮只能记录为本地修复与待部署验证，不能写成 Production CPU 已下降或 P0 已关闭。
+- `1454bd4` 部署后公开 smoke：`/api/health/live=200`、`/api/health=200 ready`，health version 为 `1454bd4`；health 当时返回 `matching=3`、`playing=2`、`users=531`，这 5 个 active ticket 对应的 profiles 昵称为 `CAP001`–`CAP005`，已确认属于专用测试账号而非未知真实玩家。腾讯云 app 容器 `healthy`、gateway `running`、restart `0`、OOM 未观察到；远端 host snapshot load average `0.08/0.40/0.24`、CPU idle `90.9%`，容器 app `0.00%` / gateway `1.00%`。Supabase Dashboard 同窗口显示 Project Healthy、compute `micro / t3a.micro`、CPU `2%`、RAM `33%`、connections `6/100`；该快照不是 5-user capacity evidence。
+- Presence migration 与应用修复已部署，但新的 5-user 尚未启动：现有 `CAP001`–`CAP005` active records 仍未通过正常 API 收敛，且现有本地 5 个 stateful credential 在低频 Auth smoke 中均返回 `HTTP 401`。为避免重用未知有效状态或在凭据失败时发起业务 mutation，本轮 5-user preflight 判定 `NOT READY`，未执行 Matching/Room/Chat/Goodbye/Leave/Feedback。
 - 生产前端静态 bundle 已确认包含 Presence heartbeat 客户端标记，说明 Presence 客户端代码已随网站发布。
 - 生产数据库 project ref：`chqxaqibegpdjtedrxwx`。
 - 历史生产数据库快照曾确认：`pg_cron` 可用；Presence migration 所需字段、函数、trigger、cron job 已存在；当时 active ticket `0`、active Session `0`，原始 active Room `1` 与 terminal Session + playing Room `1` 均对应已登记历史 baseline `F1A64`，排除历史 5 个 ghost Room 后 New Active Room `0`、New Ghost `0`、New Active Ticket Residue `0`、New Active Session Residue `0`。本次新部署观察时 health 显示 `matching=3`、`playing=2`，不能沿用该历史零值作为当前 preflight。

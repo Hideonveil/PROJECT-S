@@ -2,6 +2,14 @@
 
 > 只记录已经影响 Production、或已完成 Production 验收的事件。测试中的本地改动、未部署方案和未授权修复不写入本表。
 
+## 2026-08-25 — Stateful Runner load-amplification fix deployed; 5-user preflight held
+
+- Git application baseline `1454bd49a91b70fb592c97ff1c4675dd8f046625` 已 fast-forward 推送到 `origin/main`，并按腾讯云中国香港 Docker Compose 正式流程部署；Production `/api/health/live` 返回 `200`、`/api/health` 返回 `200 ready`，runtime health version 为 `1454bd4`，app healthy、gateway running、restart `0`、未观察到 OOM。
+- Production forward-only migration `20260825150000_separate_presence_heartbeat_from_reconcile.sql` 已在 Supabase SQL Editor 成功执行一次；仅将 stale reconciliation 从 `presence_heartbeat()` 移出，保留 10 秒 heartbeat、30 秒 effective-online、180 秒 reconnect grace 与现有 `pg_cron` stale sweep；未 replay/repair migration history，未修改历史业务数据。
+- 部署后远端 host/container 与 Supabase Dashboard 快照未显示资源危险信号：host CPU idle `90.9%`、app `0.00%`、gateway `1.00%`；Supabase Project Healthy、compute `micro / t3a.micro`、CPU `2%`、RAM `33%`、connections `6/100`。这些是部署后 idle/read-only 快照，不是 capacity PASS。
+- 5-user 尚未执行。Health 显示 `matching=3`、`playing=2`，只读核对确认其对应 `CAP001`–`CAP005` 专用测试账号；当前本地五个 stateful credential 低频 Auth smoke 均为 `HTTP 401`，因此按安全边界保持 preflight `NOT READY`，避免在 active test records 未收敛且身份认证失败时发起业务 mutation。
+- Final Private Pilot Gate 继续 `PENDING / NO-GO`；`JIY-P0-004 MATCHMAKING_RESERVATION_ROLLBACK_STORM` 不因本次部署或 idle 快照自动关闭。
+
 ## 2026-08-25 — Reservation conflict structured-result release
 
 - 应用 commit：`8972b1e134328bded364523a7ffab862316c93ea`，已 fast-forward 推送至 `origin/main`，并按腾讯云中国香港 Docker Compose 正式流程同步和部署；Production health version 返回同一完整 SHA。
