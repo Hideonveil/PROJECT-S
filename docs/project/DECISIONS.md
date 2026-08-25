@@ -79,4 +79,11 @@
 - 状态：ACTIVE
 - 决策：容量验证使用 `5 → 10 → 20 → 30 → 40 → 50 → 75 → 100 → 125 → 150 → 200 → 300 → 400 → 500` 递增梯度，人数档位只是观测级别，不是预设的自动 FAIL 上限。当前容量工具支持到 `500`；超过 `500` 必须由 00 单独授权。
 - 原因：需要识别 Production 在真实登录、匹配、Room / Session、Presence、Realtime 和 Chat 行为下的第一个可复现容量拐点，不能让 runner 的旧 20 人保护上限代替系统容量结论。
-- 约束：不关闭 rate limit、不修改产品规则或 schema、不使用 service role 执行业务、不用 raw SQL 制造或清理业务状态；只有持续错误、资源危险、数据一致性破坏、Realtime 系统性失败或影响真实用户时才停止。当前没有形成 `LOGIN VALIDATED CAPACITY`、`MATCHING VALIDATED CAPACITY` 或 `STATEFUL VALIDATED CAPACITY` 结论。
+- 约束：不关闭 rate limit、不修改产品规则或 schema、不使用 service role 执行业务、不用 raw SQL 制造或清理业务状态；只有持续错误、资源危险、数据一致性破坏、Realtime 系统性失败或影响真实用户时才停止。当前没有形成 `LOGIN VALIDATED CAPACITY`、`MATCHING VALIDATED CAPACITY` 或 `STATEFUL VALIDATED CAPACITY` 结论。测试账号数量超过现有 500 个时，按 DEC-013 继续 provisioning，不把账号数量上限误作系统容量上限。
+
+## DEC-013 — 测试账号优先复用 500 个专用身份
+
+- 状态：ACTIVE
+- 决策：所有后续容量验证、定向回归和演练优先从现有 500 个专用普通测试账号中分配身份；只有实际测试规模超过现有 500 个账号且确有需要时，ENG-00 才可继续创建新的专用普通测试账号。
+- 原因：避免重复创建账号、减少账号治理分散，并保持测试身份与业务数据的可追溯性。
+- 约束：新增账号必须使用明确的内部测试命名和独立 `user_id`，权限与普通玩家一致，不得授予管理员权限；service role 仅可用于受控 Auth/profile provisioning，不得作为普通 Actor 执行 Matching、Room、Chat、Goodbye、Leave、Feedback 或其他业务动作。账号 provisioning 不等于容量测试授权；每次 Production 测试仍须遵循既定 run_id、preflight、停止条件和逐级授权规则。凭据、access token 和 service role 不得进入 Git、manifest、日志或证据。
