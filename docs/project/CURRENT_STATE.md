@@ -31,6 +31,16 @@
 > 均未执行。本次不产生新的 room/session/Realtime/Presence capacity evidence，也不改变 5-user
 > 已验证结论。
 
+> Auth / breaking-point 最新事实：`BP056` 的第 31 个 429 已通过源码与 Production runtime
+> 归因到 `/api/auth/login` 应用层 `30 / source IP / 15 min` 固定限流。`0df1454` 已部署，默认
+> `AUTH_LOGIN_IP_LIMIT=300 / 15 min`，单账号 `10 / 15 min` 与 Supabase Auth 安全保护保留。
+> Runner `ff553b4` 改为逐 stage 登录、`4d8a5b2` 将 state-read/Realtime I/O 限制为受控并发。
+> 40-user 首次重跑的单个 `ECONNRESET` 判为 Runner/network artifact；修正后第二次 40-user
+> login 与普通 Supabase sign-in 均为 `40/40`，但 120 秒内只形成 3 个 pair、2 个完整 group，
+> 未达到 36 个 active sessions，判定 `40-USER STATEFUL=INCONCLUSIVE / MATCHMAKING
+> DEGRADATION`。本轮未采集 DB CPU；未进入 Realtime/Chat/Goodbye/Feedback，75 及以上停止。
+> 失败批次已通过普通用户 API 收敛，`finalActive=0`。
+
 ## 1. 当前阶段
 
 - 当前阶段：Final Private Pilot Gate（`PENDING / NO-GO`）。
@@ -39,14 +49,14 @@
 - 已确认关闭的 P0：`LEGACY_ROOM_DUAL_RENDER_PATH`、`ROOM_SESSION_TERMINAL_LIFECYCLE_GHOST`、`REFRESH_PAGEHIDE_FALSE_EXIT`。
 - 当前唯一任务：由 03 审核并补齐 Final Private Pilot Gate 剩余 evidence；不得把已关闭 P0 误写成 Final Gate PASS，也不得自动替代 03 给出最终 Gate 结论。
 - 本阶段不扩大产品、测试或审计范围；P0 Active Room regression 已完成并通过，后续仅执行 03 明确要求的剩余 Gate 证据。
-- 容量验证策略已改为渐进式容量探顶：`5 → 10 → 20 → 30 → 40 → 50 → 75 → 100 → 125 → 150 → 200 → 300 → 400 → 500`；当前工具支持至 `500`。本轮 `capstate500-terminalized-20260825` 的功能路径与 lifecycle 收敛为 `PASS`，DB CPU peak=`11%`，但 baseline/final、rollback/reservation counters 仍缺失，reservation storm 结论仍 `PENDING LOAD VERIFICATION`，不得进入 10-user。
+- 容量验证工具支持至 `500`，并支持按授权选择 accelerated checkpoints；本轮实际验证为 40-user 单档。`capstate500-terminalized-20260825` 的 5-user 功能路径与 lifecycle 收敛为 `PASS`，DB CPU peak=`11%`；本轮按用户要求未采集 DB CPU，40-user Matching 未完成，75 及以上不执行。
 
 ## 2. Git 与源码基线
 
 - 仓库：`/Users/jasonhu/Documents/ChatGPT/project/JY_source`
 - Canonical engineering branch：`main`。
-- Git 当前应用基线：`220b9939903b5ee6200fd794129aa526c84da15f`；该 commit 已按正式腾讯云 Docker Compose 流程部署 Production。此前 `1454bd4`、`2e269f2`、`892d61e`、`875bb97` 与 `923bf47` 的产品修复继续保留在当前主线。
-- 本次 `main` 应用基线为 `220b993`；Production runtime 与 Git 应用基线分别记录，不把后续 docs-only commit 混同为已部署应用字节版本。
+- Git 当前应用基线：`0df1454`；该 commit 已按正式腾讯云 Docker Compose 流程部署 Production。此前 `220b993`、`1454bd4`、`2e269f2`、`892d61e`、`875bb97` 与 `923bf47` 的产品修复继续保留在当前主线。
+- 本次 Production runtime health version 为 `0df1454`；Runner 后续修复 `ff553b4`、`4d8a5b2` 已推送 `origin/main`，但不属于 Production 应用 runtime 部署。
 - Project source tracked files：clean；仓库根下既有未跟踪 `output/` 证据目录保留，不能将其误写为不存在。
 - `agent/ui-shell-production` 已完成 fast-forward 收敛并保留，不删除该 branch。
 - Runtime source baseline、tests/tooling、project docs 与 migration provenance 均已进入 Git。

@@ -2,6 +2,15 @@
 
 > 只记录已经影响 Production、或已完成 Production 验收的事件。测试中的本地改动、未部署方案和未授权修复不写入本表。
 
+## 2026-08-25 — Auth bottleneck correction and 40-user stateful checkpoint
+
+- 根因确认：此前 `BP056` 的第 31 个 `HTTP 429` 来自 Production `/api/auth/login` 的应用层内存限流 `30 次 / source IP / 15 分钟`，不是 Supabase Auth、数据库或 Production 基础设施。Production 已部署 `0df1454`，将集中正常用户 IP 容量改为可配置 `AUTH_LOGIN_IP_LIMIT`，默认 `300 / 15 分钟`；单账号 `10 / 15 分钟` 保护、Supabase Auth 与防暴力破解保护均保留，未关闭 rate limit。Supabase 项目级 Auth Management API 配置未取得管理 token，未修改。
+- Stateful Runner 已由 `ff553b4` 改为逐档登录，不再预登录未来 stage；由 `4d8a5b2` 增加 state-read/Realtime 受控并发，避免 Runner socket 并发伪影。两项均已推送 `origin/main`，不属于 Production 应用 runtime 部署。
+- `breakpoint-authfix-20260825` 首次 40-user checkpoint 的 40/40 app login 与 40/40 普通 Supabase sign-in 成功；随后单个 `/api/state` 连接 `ECONNRESET`，判定为 Runner/network artifact。该批次通过普通用户 `/exit`、`/cancel`、`/offline` 收敛，40/40 final active=0。
+- `breakpoint-authfix-rerun40-20260825` 使用修正后的 Runner 重跑：40/40 login、40/40 Supabase sign-in，无 5xx/429/业务请求错误；但 120 秒内只形成 3 个 pair 和 2 个完整 group，未达到预期 36 个 active sessions，stage 40 `INCONCLUSIVE / MATCHMAKING DEGRADATION`。未进入 Realtime、Chat、Goodbye/Leave、Feedback；不进入 75。失败批次随后通过正常 API 收敛，40/40 final active=0。
+- 按用户要求本轮未采集 DB CPU；因此 DB CPU curve、Realtime breaking point、真实基础设施容量仍 `NOT ASSESSED`。当前 `MAX VERIFIED FULL-CHAIN USERS=5`；`FIRST REAL DEGRADATION=40`（Matching formation），`FIRST REAL FAILURE=40`（stateful checkpoint timeout），40-user headroom 未建立。
+- Evidence：`output/capacity-validation/breakpoint-authfix-20260825/`、`output/capacity-validation/breakpoint-authfix-rerun40-20260825/`。未执行 migration；仅部署应用限流配置代码；测试账号临时凭据已清理。
+
 ## 2026-08-25 — accelerated breaking-point preflight hard stop
 
 - 按授权准备 `cap_stateful_500_026`–`225` 共 200 个普通 synthetic identities；只读核验确认该选择集无 active matching request、无 active room_member、无非终态 room residue。
