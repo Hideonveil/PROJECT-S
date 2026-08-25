@@ -8,7 +8,7 @@
 - Stateful Runner 已由 `ff553b4` 改为逐档登录，不再预登录未来 stage；由 `4d8a5b2` 增加 state-read/Realtime 受控并发，避免 Runner socket 并发伪影。两项均已推送 `origin/main`，不属于 Production 应用 runtime 部署。
 - `breakpoint-authfix-20260825` 首次 40-user checkpoint 的 40/40 app login 与 40/40 普通 Supabase sign-in 成功；随后单个 `/api/state` 连接 `ECONNRESET`，判定为 Runner/network artifact。该批次通过普通用户 `/exit`、`/cancel`、`/offline` 收敛，40/40 final active=0。
 - `breakpoint-authfix-rerun40-20260825` 使用修正后的 Runner 重跑：40/40 login、40/40 Supabase sign-in，无 5xx/429/业务请求错误；但 120 秒内只形成 3 个 pair 和 2 个完整 group，未达到预期 36 个 active sessions，stage 40 `INCONCLUSIVE / MATCHMAKING DEGRADATION`。未进入 Realtime、Chat、Goodbye/Leave、Feedback；不进入 75。失败批次随后通过正常 API 收敛，40/40 final active=0。
-- 按用户要求本轮未采集 DB CPU；因此 DB CPU curve、Realtime breaking point、真实基础设施容量仍 `NOT ASSESSED`。当前 `MAX VERIFIED FULL-CHAIN USERS=5`；`FIRST REAL DEGRADATION=40`（Matching formation），`FIRST REAL FAILURE=40`（stateful checkpoint timeout），40-user headroom 未建立。
+- 用户补充的 Supabase Observability 窗口（`2026-08-25T07:08:37.486Z–07:18:37.486Z`）记录本次 40-user checkpoint 的 DB CPU peak=`16%`；DB CPU baseline/final、RAM/connections 仍未取得，因此仍不能形成完整 DB CPU curve。Realtime breaking point、真实基础设施容量仍 `NOT ASSESSED`。当前 `MAX VERIFIED FULL-CHAIN USERS=5`；`FIRST REAL DEGRADATION=40`（Matching formation），`FIRST REAL FAILURE=40`（stateful checkpoint timeout），40-user headroom 未建立。
 - Evidence：`output/capacity-validation/breakpoint-authfix-20260825/`、`output/capacity-validation/breakpoint-authfix-rerun40-20260825/`。未执行 migration；仅部署应用限流配置代码；测试账号临时凭据已清理。
 
 ## 2026-08-25 — accelerated breaking-point preflight hard stop

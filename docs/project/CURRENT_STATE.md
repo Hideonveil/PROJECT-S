@@ -38,7 +38,9 @@
 > 40-user 首次重跑的单个 `ECONNRESET` 判为 Runner/network artifact；修正后第二次 40-user
 > login 与普通 Supabase sign-in 均为 `40/40`，但 120 秒内只形成 3 个 pair、2 个完整 group，
 > 未达到 36 个 active sessions，判定 `40-USER STATEFUL=INCONCLUSIVE / MATCHMAKING
-> DEGRADATION`。本轮未采集 DB CPU；未进入 Realtime/Chat/Goodbye/Feedback，75 及以上停止。
+> DEGRADATION`。用户补充 Supabase Observability 窗口 `07:08:37–07:18:37Z` 的 DB CPU
+> peak=`16%`；baseline/final、RAM/connections 仍未取得。未进入 Realtime/Chat/Goodbye/Feedback，
+> 75 及以上停止。
 > 失败批次已通过普通用户 API 收敛，`finalActive=0`。
 
 ## 1. 当前阶段
@@ -78,7 +80,7 @@
 - `capstate500-stage5-0824` 超时后的只读健康检查：`status=ready`、`online=0`、`matching=0`、`playing=0`、`users=531`、`databaseLatencyMs=123857`；检查时间 `2026-08-24T10:38:53.169Z`。该阶段后 app/gateway 容器均无 restart，`OOMKilled=false`；这只是失败后的安全收尾快照，不是 Stateful capacity PASS。
 - 先前 `2026-08-24T05:10:45.191Z` 的健康检查仍作为历史快照保留；不同时间点的 `online/users` 数字不得混写。
 - Production 应用容器 `china-hk-app-1` 为 `healthy`，Caddy gateway 正常运行；部署构建仅出现 Docker Buildx 未安装警告，未导致失败。
-- 当前 Production DB CPU：最近 stateful Observability 窗口 peak=`11%`；此前 idle/read-only 快照约 `2%`。DB CPU baseline/final 与 rollback/reservation counters 仍缺失，因此 `MATCHMAKING_RESERVATION_ROLLBACK_STORM` 保持 `FIX DEPLOYED / PENDING LOAD VERIFICATION`，stateful matching workload 下的根行为仍未完全验证。
+- 当前 Production DB CPU：5-user stateful Observability 窗口 peak=`11%`；本次 40-user checkpoint 用户补充窗口 peak=`16%`；此前 idle/read-only 快照约 `2%`。DB CPU baseline/final 与 rollback/reservation counters 仍缺失，因此 `MATCHMAKING_RESERVATION_ROLLBACK_STORM` 保持 `FIX DEPLOYED / PENDING LOAD VERIFICATION`，stateful matching workload 下的根行为仍未完全验证。
 - `40c138c` 发布新增 `/api/health/live` liveness endpoint，monitor 改为每分钟读取 liveness；`/api/health` 改为只读 Presence probe、可 abort 的依赖检查，并由带 7.5 秒短缓存的 `poolSummary()` 支撑 `/api/state`，未改变 Matching、Room/Session lifecycle、Presence heartbeat/TTL/grace、RLS、Realtime 或 migration。
 - 本次发布后已完成 13 个低频公开观察样本（约 `2026-08-24T14:22:18Z`–`14:36:43Z`，观察按用户要求中止，未完成完整 15–30 分钟窗口）：`/api/health/live` 全部 HTTP `200`；`/api/health` 全部有界返回 HTTP `503`，约 `4.04–4.21s`，presence/database 均明确记录 `HEALTH_CHECK_TIMEOUT`；`/api/config` HTTP `200`；`/api/pool-summary` 全部 HTTP `200` 但约 `6.27–7.23s`。Caddy error/upstream/504 日志行 `0`（当前 Caddy 配置无 access-log 总量，因此仅记录可观察错误）；app/gateway restart `0`、`OOMKilled=false`，Docker 应用资源未显示瓶颈。
 - 本次未取得 A/B/C authenticated browser session；最终低频未认证读取为 `/api/state=401`、`/api/session=200`，不能替代 3/3 authenticated `/api/state`、`/api/session` smoke，后者保持 `NOT VERIFIED`。5-user stateful Observability 窗口已记录 DB CPU peak=`11%`，但 rollback/reservation delta 仍缺失，因此不得把 storm 写成已修复或 P0 CLOSED。
