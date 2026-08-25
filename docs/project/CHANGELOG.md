@@ -2,6 +2,13 @@
 
 > 只记录已经影响 Production、或已完成 Production 验收的事件。测试中的本地改动、未部署方案和未授权修复不写入本表。
 
+## 2026-08-25 — accelerated breaking-point preflight hard stop
+
+- 按授权准备 `cap_stateful_500_026`–`225` 共 200 个普通 synthetic identities；只读核验确认该选择集无 active matching request、无 active room_member、无非终态 room residue。
+- `breakpoint-accelerated-20260825` 在正式业务阶段前停止：30 个普通 Auth + `/api/state` smoke 成功，第 31 个身份 `BP056` 的 `/api/auth/login` 返回 `HTTP 429`。这是 Runner/Auth preflight rate-limit bottleneck，按 Hard Stop 规则停止；未执行 `/api/online`、Matching、Room/Session、Realtime、Chat、Goodbye、Leave、Feedback 或业务 mutation。
+- 10/20/40/75/100/150/200 均 `NOT EXECUTED`；因此本次没有新的 DB CPU stage peak、容量 degradation 或 breaking-point 结论。收尾 health 为 `200 ready`，app/gateway restart `0`、未观察到 OOM。
+- 证据：`output/capacity-validation/breakpoint-accelerated-20260825/summary.json`；本次不修改代码、不部署、不执行 migration。
+
 ## 2026-08-25 — terminal room_members fix + 5-user stateful rerun
 
 - 新增 forward-only migration `20260825160000_terminalize_room_members_on_terminal.sql`，并以 `220b993` 部署 Production。Session/Room 进入 terminal 时，所有仍为 `active` 的 `room_members` 一起变为 `exited`，写入 `exited_at`；不做历史 backfill、不执行 raw SQL 清理。

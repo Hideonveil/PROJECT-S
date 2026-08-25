@@ -25,6 +25,12 @@
 > app 采样峰值约 `29.50%`、gateway 约 `1.29%`，未观察到 restart/OOM。故功能与 lifecycle 收敛通过，但
 > `RESERVATION STORM FIX` 仍为 `PENDING LOAD VERIFICATION`，不自动进入 10-user。
 
+> Accelerated breaking-point preflight（`breakpoint-accelerated-20260825`）未进入业务阶段：
+> 200-account pool 选择集无既有 active matching/room residue，但第 31 个普通 Auth login
+>（`BP056`）收到 `HTTP 429`。按 Runner/Auth bottleneck Hard Stop 停止；10/20/40/75/100/150/200
+> 均未执行。本次不产生新的 room/session/Realtime/Presence capacity evidence，也不改变 5-user
+> 已验证结论。
+
 ## 1. 当前阶段
 
 - 当前阶段：Final Private Pilot Gate（`PENDING / NO-GO`）。
