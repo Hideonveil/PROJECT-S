@@ -59,14 +59,17 @@ function stageDefinition(name) {
   return stage;
 }
 
-export function buildStatefulPlan({ actors, runId, maxUsers = STATEFUL_MAX_USERS }) {
+export function buildStatefulPlan({ actors, runId, maxUsers = STATEFUL_MAX_USERS, stages: requestedStages = null }) {
   if (!Array.isArray(actors) || actors.length < maxUsers) {
     throw new Error(`CAPACITY_STATEFUL: manifest must contain at least ${maxUsers} dedicated actors`);
   }
   if (maxUsers < 5 || maxUsers > STATEFUL_MAX_USERS || !STAGES.some((stage) => stage.count === maxUsers)) {
     throw new Error(`CAPACITY_STATEFUL: maxUsers must be one of the progressive levels up to ${STATEFUL_MAX_USERS}`);
   }
-  const stages = STAGES.filter((stage) => stage.count <= maxUsers).map((stage) => {
+  const stageCounts = requestedStages?.length ? requestedStages : STAGES.filter((stage) => stage.count <= maxUsers).map((stage) => stage.count);
+  const stages = stageCounts.map((stageCount) => {
+    const stage = STAGES.find((candidate) => candidate.count === Number(stageCount));
+    if (!stage || stage.count > maxUsers) throw new Error(`CAPACITY_STATEFUL: unsupported stage ${stageCount} for maxUsers ${maxUsers}`);
     const selected = actors.slice(0, stage.count);
     if (selected.length !== stage.count) throw new Error(`CAPACITY_STATEFUL: stage ${stage.name} lacks actors`);
     const counts = selected.reduce((acc, actor) => {
@@ -82,8 +85,8 @@ export function buildStatefulPlan({ actors, runId, maxUsers = STATEFUL_MAX_USERS
   return { runId, mode: "stateful", maxUsers, stages, allowedPostPaths: STATEFUL_PATHS.map((pattern) => pattern.toString()) };
 }
 
-export function statefulDryRunPlan({ actors = [], runId, maxUsers = STATEFUL_MAX_USERS }) {
-  const plan = buildStatefulPlan({ actors, runId, maxUsers });
+export function statefulDryRunPlan({ actors = [], runId, maxUsers = STATEFUL_MAX_USERS, stages = null }) {
+  const plan = buildStatefulPlan({ actors, runId, maxUsers, stages });
   return {
     ...plan,
     networkExecuted: false,
@@ -775,7 +778,7 @@ async function runStage({ stage, runtimes, options, ledger, messageLedger }) {
 }
 
 export async function runStatefulRehearsal({ options, manifest, credentials }) {
-  const plan = buildStatefulPlan({ actors: manifest.actors, runId: options.runId, maxUsers: options.maxUsers });
+  const plan = buildStatefulPlan({ actors: manifest.actors, runId: options.runId, maxUsers: options.maxUsers, stages: options.stages });
   const evidenceDirectory = options.evidenceDir || path.join(process.cwd(), "output", "capacity-validation", options.runId);
   const writer = await createAppendOnlyLedger({ directory: evidenceDirectory });
   const ledger = { runId: options.runId, requestCount: 0, events: [], writer, mutationBlocked: false, stageDeadline: 0 };
@@ -788,53 +791,62 @@ export async function runStatefulRehearsal({ options, manifest, credentials }) {
     ledger,
   });
   const credentialsById = new Map(credentials.map((credential) => [credential.identity, credential]));
-  const runtimes = new Map();
+  let activeRuntimes = new Map();
   const messageLedger = [];
   const presenceLedger = [];
   const realtimeLedger = [];
   const startedAt = new Date().toISOString();
   try {
-    for (const actor of manifest.actors.slice(0, plan.maxUsers)) {
-      const credential = credentialsById.get(actor.actorId);
-      if (!credential) throw new Error(`CAPACITY_AUTH: no stateful credential for ${actor.actorId}`);
-      const session = await authenticateIdentity({ baseUrl: options.baseUrl, credential, config, ledger, runId: options.runId, actorId: actor.actorId });
-      const runtime = {
-        actor,
-        actorId: actor.actorId,
-        role: String(actor.role || actor.mode || "").toLowerCase(),
-        userId: actor.userId !== "UNKNOWN" ? actor.userId : null,
-        accessToken: session.accessToken,
-        refreshToken: session.refreshToken,
-        tokenExpiry: session.tokenExpiry,
-        config,
-        client: null,
-        heartbeat: null,
-        roomChannels: new Set(),
-        state: null,
-        ids: {},
-        events: ledger.events,
-        realtime: [],
-        realtimeLedger,
-        presence: presenceLedger,
-        ledger,
-        cleanupTimeoutMs: options.cleanupTimeoutMs || 30_000,
-      };
-      const state = await statefulRequest({ runtime, options, stage: "preflight", action: "state.smoke", requestPath: "/api/state", ledger });
-      runtime.state = state.data;
-      runtime.userId = state.data?.user?.id || runtime.userId;
-      if (!runtime.userId) throw new Error(`CAPACITY_AUTH: ${actor.actorId} state has no user id`);
-      actor.userId = runtime.userId;
-      runtimes.set(actor.actorId, runtime);
-    }
-    const userIds = new Set([...runtimes.values()].map((runtime) => runtime.userId));
-    if (userIds.size !== runtimes.size) throw new Error("CAPACITY_AUTH: stateful identity isolation failed");
     const stages = [];
     for (const stage of plan.stages) {
-      const selected = new Map([...runtimes.entries()].filter(([actorId]) => stage.actorIds.includes(actorId)));
       ledger.stage = stage.name;
       ledger.stageDeadline = Date.now() + (options.stageTimeoutMs || Math.max(300_000, (options.durationSec || 60) * 4_000));
-      const result = await runStage({ stage, runtimes: selected, options, ledger, messageLedger });
-      stages.push(result);
+      const stageRuntimes = new Map();
+      activeRuntimes = stageRuntimes;
+      try {
+        for (const actor of manifest.actors.filter((candidate) => stage.actorIds.includes(candidate.actorId))) {
+          const credential = credentialsById.get(actor.actorId);
+          if (!credential) throw new Error(`CAPACITY_AUTH: no stateful credential for ${actor.actorId}`);
+          const session = await authenticateIdentity({ baseUrl: options.baseUrl, credential, config, ledger, runId: options.runId, actorId: actor.actorId });
+          const runtime = {
+            actor,
+            actorId: actor.actorId,
+            role: String(actor.role || actor.mode || "").toLowerCase(),
+            userId: actor.userId !== "UNKNOWN" ? actor.userId : null,
+            accessToken: session.accessToken,
+            refreshToken: session.refreshToken,
+            tokenExpiry: session.tokenExpiry,
+            config,
+            client: null,
+            heartbeat: null,
+            roomChannels: new Set(),
+            state: null,
+            ids: {},
+            events: ledger.events,
+            realtime: [],
+            realtimeLedger,
+            presence: presenceLedger,
+            ledger,
+            cleanupTimeoutMs: options.cleanupTimeoutMs || 30_000,
+          };
+          stageRuntimes.set(actor.actorId, runtime);
+          const state = await statefulRequest({ runtime, options, stage: stage.name, action: "state.smoke", requestPath: "/api/state", ledger });
+          runtime.state = state.data;
+          runtime.userId = state.data?.user?.id || runtime.userId;
+          if (!runtime.userId) throw new Error(`CAPACITY_AUTH: ${actor.actorId} state has no user id`);
+          actor.userId = runtime.userId;
+        }
+        const userIds = new Set([...stageRuntimes.values()].map((runtime) => runtime.userId));
+        if (userIds.size !== stageRuntimes.size) throw new Error(`CAPACITY_AUTH: stage ${stage.name} identity isolation failed`);
+        const result = await runStage({ stage, runtimes: stageRuntimes, options, ledger, messageLedger });
+        stages.push(result);
+      } finally {
+        await Promise.all([...stageRuntimes.values()].map((runtime) => closeClient(runtime).catch(async (error) => {
+          await recordEvent(runtime, { action: "cleanup", endpoint: "client://realtime", error, stage: ledger.stage }, ledger).catch(() => {});
+        })));
+        clearActorTokens([...stageRuntimes.values()]);
+        activeRuntimes = new Map();
+      }
     }
     await writer.flush();
     return { runId: options.runId, mode: "stateful", startedAt, endedAt: new Date().toISOString(), stages, requests: ledger.events, messages: messageLedger, presence: presenceLedger, realtime: realtimeLedger, identityIsolation: true, productionMutation: true, plan, ledgerFile: writer.file };
@@ -858,11 +870,11 @@ export async function runStatefulRehearsal({ options, manifest, credentials }) {
     error.capacityEvidence = { runId: options.runId, ledgerFile: writer.file, stage: ledger.stage || "preflight", eventCount: ledger.events.length };
     throw error;
   } finally {
-    await Promise.all([...runtimes.values()].map((runtime) => closeClient(runtime).catch(async (error) => {
+    await Promise.all([...activeRuntimes.values()].map((runtime) => closeClient(runtime).catch(async (error) => {
       await recordEvent(runtime, { action: "cleanup", endpoint: "client://realtime", error, stage: ledger.stage }, ledger).catch(() => {});
     })));
     await writer.flush();
-    clearActorTokens([...runtimes.values()]);
+    clearActorTokens([...activeRuntimes.values()]);
   }
 }
 

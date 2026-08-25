@@ -51,6 +51,7 @@ export const DEFAULT_OPTIONS = Object.freeze({
   baseUrlExplicit: false,
   runId: "",
   maxUsers: 0,
+  stages: null,
   maxRps: 10,
   maxRequests: 0,
   durationSec: 60,
@@ -121,6 +122,12 @@ export function parseArgs(argv = []) {
       index += 1;
     } else if (flag === "--max-users") {
       options.maxUsers = integer(takeValue(argv, index, flag), flag, { max: STATEFUL_MAX_USERS });
+      index += 1;
+    } else if (flag === "--stages") {
+      const rawStages = takeValue(argv, index, flag);
+      const stages = rawStages.split(",").map((value) => integer(value.trim(), flag, { min: 5, max: STATEFUL_MAX_USERS }));
+      if (!stages.length || new Set(stages).size !== stages.length) usageError(`${flag} must contain distinct stage sizes`);
+      options.stages = stages;
       index += 1;
     } else if (flag === "--max-rps") {
       options.maxRps = integer(takeValue(argv, index, flag), flag, { min: 1, max: 30 });
@@ -641,7 +648,11 @@ export async function authenticateIdentity({ baseUrl, credential, config, ledger
   if (error || !data.session?.access_token || !data.user?.id) {
     if (error?.name === "TimeoutError") throw error;
     const authError = new Error(`CAPACITY_AUTH: identity ${credential.identity} Supabase sign-in failed`, { cause: error || undefined });
-    authError.name = "AuthError";
+    const authStatus = Number(error?.status || error?.context?.status || 0) || null;
+    const authCode = String(error?.code || "").trim() || null;
+    authError.name = authStatus === 429 || authCode === "over_request_rate_limit" ? "AuthRateLimitError" : "AuthError";
+    authError.code = authCode || (authStatus === 429 ? "over_request_rate_limit" : "CAPACITY_AUTH_FAILED");
+    authError.status = authStatus;
     throw authError;
   }
   return {
@@ -942,7 +953,7 @@ export async function writeEvidence({ directory, manifest, plan, result }) {
 }
 
 export function helpText() {
-  return `Usage:\n  pnpm capacity:run -- --dry-run --run-id <id>\n  pnpm capacity:run -- --prepare-auth --base-url <url> --run-id <id> --auth-secret-file <0600-file> --manifest-out <safe-file> --allow-production --production-ack <id>\n  pnpm capacity:run -- --execute-read-only --base-url <url> --run-id <id> --manifest <file> --auth-secret-file <0600-file> --max-users <n> --max-rps <n> --max-requests <n> --allow-production --production-ack <id>\n\nSafety:\n  dry-run is the default and performs no network request. Auth preparation accepts credentials only through hidden TTY stdin or a 0600 JSON file; credentials and access tokens never enter manifests, evidence, logs, or command arguments. Auth preparation uses the normal /api/auth/login plus Supabase password sign-in path and only performs authenticated GET smoke reads. Read-only execution only permits GET/HEAD on the fixed allowlist. Production execution requires --allow-production and --production-ack=<run-id>. Stateful mode requires --stateful-approval=<run-id> and supports the progressive 5 -> 10 -> 20 -> 30 -> 40 -> 50 -> 75 -> 100 -> 125 -> 150 -> 200 -> 300 -> 400 -> 500 plan.\n`;
+  return `Usage:\n  pnpm capacity:run -- --dry-run --run-id <id>\n  pnpm capacity:run -- --prepare-auth --base-url <url> --run-id <id> --auth-secret-file <0600-file> --manifest-out <safe-file> --allow-production --production-ack <id>\n  pnpm capacity:run -- --execute-read-only --base-url <url> --run-id <id> --manifest <file> --auth-secret-file <0600-file> --max-users <n> --max-rps <n> --max-requests <n> --allow-production --production-ack <id>\n\nSafety:\n  dry-run is the default and performs no network request. Auth preparation accepts credentials only through hidden TTY stdin or a 0600 JSON file; credentials and access tokens never enter manifests, evidence, logs, or command arguments. Auth preparation uses the normal /api/auth/login plus Supabase password sign-in path and only performs authenticated GET smoke reads. Read-only execution only permits GET/HEAD on the fixed allowlist. Production execution requires --allow-production and --production-ack=<run-id>. Stateful mode requires --stateful-approval=<run-id> and supports --stages 40,75,100,150,200 for accelerated checkpoints.\n`;
 }
 
 async function main() {
@@ -960,12 +971,12 @@ async function main() {
     const { buildStatefulPlan, runStatefulRehearsal, statefulDryRunPlan, writeStatefulEvidence, writeStatefulFailureEvidence } = await import("./stateful-adapter.mjs");
     const manifest = await loadManifest(options.manifest);
     if (options.scenario === "dry-run") {
-      console.log(JSON.stringify(statefulDryRunPlan({ actors: manifest.actors, runId: options.runId, maxUsers: options.maxUsers }), null, 2));
+      console.log(JSON.stringify(statefulDryRunPlan({ actors: manifest.actors, runId: options.runId, maxUsers: options.maxUsers, stages: options.stages }), null, 2));
       return;
     }
     const statefulAuth = await readStatefulCredentials(options);
     try {
-      buildStatefulPlan({ actors: manifest.actors, runId: options.runId, maxUsers: options.maxUsers });
+      buildStatefulPlan({ actors: manifest.actors, runId: options.runId, maxUsers: options.maxUsers, stages: options.stages });
       const directory = options.evidenceDir || path.join(process.cwd(), "output", "capacity-validation", options.runId);
       try {
         const result = await runStatefulRehearsal({ options, manifest, credentials: statefulAuth.credentials });
