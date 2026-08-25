@@ -12,7 +12,9 @@ import {
 } from "../tools/capacity/evidence.mjs";
 import {
   closeClient,
+  refreshState,
   statefulRequest,
+  startHeartbeat,
   subscribeChannel,
   waitForTerminal,
   waitForRooms,
@@ -35,6 +37,8 @@ function runtime() {
     ids: {},
     realtimeTimeoutMs: 5,
     cleanupTimeoutMs: 5,
+    presence: [],
+    roomChannels: new Set(),
   };
 }
 
@@ -133,6 +137,46 @@ describe("stateful evidence ledger", () => {
 });
 
 describe("stateful request timeout safety", () => {
+  it("coalesces concurrent state hydration for one actor", async () => {
+    const { directory, ledger } = await ledgerFixture();
+    const actor = runtime();
+    let release;
+    globalThis.fetch = vi.fn(() => new Promise((resolve) => {
+      release = () => resolve(new Response(JSON.stringify({ user: { id: actor.userId }, matchmaking: {} }), { status: 200 }));
+    }));
+    try {
+      const first = refreshState(actor, options(), "5", ledger, "state.poll.1");
+      const second = refreshState(actor, options(), "5", ledger, "state.poll.2");
+      release();
+      await Promise.all([first, second]);
+      expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+      expect(ledger.events.some((event) => event.action === "state.poll.2.deduplicated")).toBe(true);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("does not overlap heartbeat requests when a tick is still in flight", async () => {
+    const { directory, ledger } = await ledgerFixture();
+    const actor = runtime();
+    let resolveRequest;
+    globalThis.fetch = vi.fn(() => new Promise((resolve) => {
+      resolveRequest = () => resolve(new Response(JSON.stringify({ online: true }), { status: 200 }));
+    }));
+    try {
+      startHeartbeat(actor, options({ heartbeatIntervalMs: 5, requestTimeoutMs: 100 }), "5", ledger);
+      await new Promise((resolve) => setTimeout(resolve, 8));
+      await new Promise((resolve) => setTimeout(resolve, 8));
+      expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+      resolveRequest();
+      await new Promise((resolve) => setTimeout(resolve, 1));
+      await closeClient(actor);
+    } finally {
+      await closeClient(actor).catch(() => {});
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
   it("records request timeout, reconciles read-only, and never retries the mutation", async () => {
     const { directory, ledger } = await ledgerFixture();
     const actor = runtime();

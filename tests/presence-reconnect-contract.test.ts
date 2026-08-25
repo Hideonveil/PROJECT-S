@@ -37,6 +37,16 @@ describe("Presence reconnect lifecycle", () => {
     expect(sql).toContain("disconnected_at = null");
   });
 
+  it("keeps stale reconciliation out of the heartbeat path", () => {
+    const migration = read(`${root}/supabase/migrations/20260825150000_separate_presence_heartbeat_from_reconcile.sql`);
+    const heartbeatBody = migration.slice(migration.indexOf("create or replace function public.presence_heartbeat"));
+    expect(migration).toContain("create or replace function public.presence_heartbeat");
+    expect(migration).toContain("jiyuan-presence-reconcile pg_cron job remains the single stale-sweep owner");
+    expect(heartbeatBody).not.toContain("perform public.presence_reconcile_stale");
+    expect(heartbeatBody).toContain("interval '180 seconds'");
+    expect(heartbeatBody).toContain("phase1_timeout_leave");
+  });
+
   it("runs a browser heartbeat without binding lifecycle events to Leave", () => {
     const app = read(`${root}/public/js/app.js`);
     expect(app).toContain("presenceHeartbeatHandle");

@@ -33,6 +33,9 @@ const STAGES = Object.freeze([
 
 const ACTIVE_SESSION_STATES = new Set(["active", "playing", "matched"]);
 const TERMINAL_SESSION_STATES = new Set(["completed", "cancelled"]);
+export const STATE_POLL_INTERVAL_MS = 2_000;
+export const STATE_POLL_JITTER_MS = 250;
+export const HEARTBEAT_INTERVAL_MS = 10_000;
 
 function safeError(error) {
   return String(error?.message || error || "unknown error")
@@ -42,6 +45,12 @@ function safeError(error) {
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function statePollDelay(options) {
+  const intervalMs = Math.max(0, Number(options.statePollIntervalMs ?? STATE_POLL_INTERVAL_MS));
+  const jitterMs = Math.max(0, Number(options.statePollJitterMs ?? STATE_POLL_JITTER_MS));
+  return intervalMs + (jitterMs ? Math.floor(Math.random() * jitterMs) : 0);
 }
 
 function stageDefinition(name) {
@@ -405,17 +414,30 @@ async function subscribeRoom(runtime, stage, roomId) {
   runtime.roomChannels.add(roomId);
 }
 
-function startHeartbeat(runtime, options, stage, ledger) {
+export function startHeartbeat(runtime, options, stage, ledger) {
   if (runtime.heartbeat) return;
   const beat = async () => {
+    if (runtime.heartbeatInFlight) {
+      runtime.presence.push({
+        stage,
+        actor_id: runtime.actorId,
+        timestamp: new Date().toISOString(),
+        online: true,
+        skipped: "heartbeat_in_flight",
+      });
+      return;
+    }
+    runtime.heartbeatInFlight = true;
     try {
       await statefulRequest({ runtime, options, stage, action: "presence.heartbeat", method: "POST", requestPath: "/api/online", body: {}, ledger });
       runtime.presence.push({ stage, actor_id: runtime.actorId, timestamp: new Date().toISOString(), online: true });
     } catch (error) {
       runtime.presence.push({ stage, actor_id: runtime.actorId, timestamp: new Date().toISOString(), online: false, error: safeError(error) });
+    } finally {
+      runtime.heartbeatInFlight = false;
     }
   };
-  runtime.heartbeat = setInterval(beat, 10_000);
+  runtime.heartbeat = setInterval(beat, options.heartbeatIntervalMs ?? HEARTBEAT_INTERVAL_MS);
 }
 
 function stopHeartbeat(runtime) {
@@ -445,12 +467,32 @@ function snapshotIds(runtime) {
   };
 }
 
-async function refreshState(runtime, options, stage, ledger, action = "state.read") {
-  const result = await statefulRequest({ runtime, options, stage, action, requestPath: "/api/state", ledger });
-  runtime.state = result.data;
-  runtime.ids = { ...runtime.ids, ...snapshotIds(runtime) };
-  if (runtime.ids.room_id) await subscribeRoom(runtime, stage, runtime.ids.room_id);
-  return result.data;
+export async function refreshState(runtime, options, stage, ledger, action = "state.read") {
+  if (runtime.stateReadInFlight) {
+    await recordEvent(runtime, {
+      stage,
+      action: `${action}.deduplicated`,
+      endpoint: "runner://state-poll",
+      expected_state: "reuse in-flight state read",
+      actual_state: snapshotState(runtime.state),
+      deduplicated: true,
+    }, ledger);
+    return runtime.stateReadInFlight;
+  }
+
+  const request = (async () => {
+    const result = await statefulRequest({ runtime, options, stage, action, requestPath: "/api/state", ledger });
+    runtime.state = result.data;
+    runtime.ids = { ...runtime.ids, ...snapshotIds(runtime) };
+    if (runtime.ids.room_id) await subscribeRoom(runtime, stage, runtime.ids.room_id);
+    return result.data;
+  })();
+  runtime.stateReadInFlight = request;
+  try {
+    return await request;
+  } finally {
+    if (runtime.stateReadInFlight === request) runtime.stateReadInFlight = null;
+  }
 }
 
 async function startActor(runtime, options, stage, ledger) {
@@ -492,7 +534,7 @@ export async function waitForRooms(runtimes, expectedCount, options, stage, ledg
       const stable = active.filter((runtime) => ACTIVE_SESSION_STATES.has(runtime.state?.session?.status) && runtime.state?.room);
       if (stable.length >= expectedCount) return;
     }
-    await sleep(1000);
+    await sleep(statePollDelay(options));
   }
   throw timeoutError("matching_wait", `stage ${stage} did not form ${expectedCount} active sessions`);
 }
@@ -671,7 +713,7 @@ export async function waitForTerminal(runtimes, options, stage, ledger, timeoutM
     await Promise.all([...runtimes.values()].map((runtime) => refreshState(runtime, options, stage, ledger, "state.reconcile")));
     const active = [...runtimes.values()].filter((runtime) => runtime.state?.room && ACTIVE_SESSION_STATES.has(runtime.state?.session?.status));
     if (!active.length) return;
-    await sleep(1000);
+    await sleep(statePollDelay(options));
   }
   throw timeoutError("stage", `stage ${stage} lifecycle did not converge`);
 }
