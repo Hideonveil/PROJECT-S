@@ -1,0 +1,18 @@
+{
+  "run_id": "capstate500-terminalized-20260825",
+  "source": "Supabase Observability database dashboard",
+  "window_start": "2026-08-25T06:15:27.477Z",
+  "window_end": "2026-08-25T06:25:27.477Z",
+  "stateful_run_start": "2026-08-25T06:19:18.034Z",
+  "stateful_run_end": "2026-08-25T06:21:43.030Z",
+  "db_cpu_percent": {
+    "peak": 11,
+    "baseline": "NOT_CAPTURED",
+    "final": "NOT_CAPTURED"
+  },
+  "db_ram": "NOT_CAPTURED",
+  "db_connections": "NOT_CAPTURED",
+  "rollback_rate": "NOT_CAPTURED",
+  "reservation_conflict_rate": "NOT_CAPTURED",
+  "notes": "The dashboard CPU peak of 11% covers the complete stateful run window."
+}
