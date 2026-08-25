@@ -3,6 +3,14 @@ type Bucket = { count: number; resetAt: number };
 const buckets = new Map<string, Bucket>();
 const MAX_BUCKETS = 10_000;
 
+export function configuredRateLimit(name: string, fallback: number, minimum: number, maximum: number): number {
+  const raw = process.env[name];
+  if (!raw) return fallback;
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(maximum, Math.max(minimum, parsed));
+}
+
 export function clientAddress(request: Request): string {
   const forwarded = request.headers.get("x-forwarded-for")?.split(",", 1)[0]?.trim();
   return forwarded || request.headers.get("x-real-ip")?.trim() || "unknown";
@@ -35,4 +43,3 @@ export function takeRateLimit(key: string, limit: number, windowMs: number, now 
     retryAfterSeconds: Math.max(1, Math.ceil((current.resetAt - now) / 1000)),
   };
 }
-

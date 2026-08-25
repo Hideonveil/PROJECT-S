@@ -2,12 +2,15 @@ import { NextResponse } from "next/server";
 import { anonClient, supabaseAdmin } from "@/lib/supabase";
 import { normalizeUsername } from "@/lib/username";
 import { AppError, errorResponse, jsonBody, requestId } from "@/lib/http";
-import { clientAddress, takeRateLimit } from "@/lib/rate-limit";
+import { clientAddress, configuredRateLimit, takeRateLimit } from "@/lib/rate-limit";
+
+const AUTH_LOGIN_IP_LIMIT = configuredRateLimit("AUTH_LOGIN_IP_LIMIT", 300, 30, 1000);
+const AUTH_LOGIN_WINDOW_MS = 15 * 60 * 1000;
 
 export async function POST(request: Request) {
   const rid = requestId(request);
   try {
-    const ipLimit = takeRateLimit(`auth-login-ip:${clientAddress(request)}`, 30, 15 * 60 * 1000);
+    const ipLimit = takeRateLimit(`auth-login-ip:${clientAddress(request)}`, AUTH_LOGIN_IP_LIMIT, AUTH_LOGIN_WINDOW_MS);
     if (!ipLimit.allowed) {
       return NextResponse.json(
         { error: "尝试次数过多，请稍后再试", meta: { requestId: rid } },
@@ -39,7 +42,7 @@ export async function POST(request: Request) {
       }
     }
 
-    const accountLimit = takeRateLimit(`auth-login-account:${clientAddress(request)}:${normalizedIdentifier}`, 10, 15 * 60 * 1000);
+    const accountLimit = takeRateLimit(`auth-login-account:${clientAddress(request)}:${normalizedIdentifier}`, 10, AUTH_LOGIN_WINDOW_MS);
     if (!accountLimit.allowed) {
       return NextResponse.json(
         { error: "尝试次数过多，请稍后再试", meta: { requestId: rid } },
