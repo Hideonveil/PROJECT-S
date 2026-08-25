@@ -87,3 +87,10 @@
 - 决策：所有后续容量验证、定向回归和演练优先从现有 500 个专用普通测试账号中分配身份；只有实际测试规模超过现有 500 个账号且确有需要时，ENG-00 才可继续创建新的专用普通测试账号。
 - 原因：避免重复创建账号、减少账号治理分散，并保持测试身份与业务数据的可追溯性。
 - 约束：新增账号必须使用明确的内部测试命名和独立 `user_id`，权限与普通玩家一致，不得授予管理员权限；service role 仅可用于受控 Auth/profile provisioning，不得作为普通 Actor 执行 Matching、Room、Chat、Goodbye、Leave、Feedback 或其他业务动作。账号 provisioning 不等于容量测试授权；每次 Production 测试仍须遵循既定 run_id、preflight、停止条件和逐级授权规则。凭据、access token 和 service role 不得进入 Git、manifest、日志或证据。
+
+## DEC-014 — ENG-00 synthetic test account autonomy and registry
+
+- 状态：ACTIVE
+- 决策：ENG-00 可按容量测试实际需要自行创建、管理和复用明确标记为 `synthetic_test` / `capacity` 的普通测试账号，不因账号数量向 00 请求人工输入。账号可以长期保留为 capacity pool。
+- 约束：账号必须走与真实用户相同的 Auth / RLS / API / RPC 路径；service/admin 权限仅用于 provisioning，实际玩家行为必须使用普通用户 session；不关闭邮箱、Auth 或 rate limit 保护；测试账号不得与真实用户 matching；业务实体只能通过正常 lifecycle/reconciliation 收敛。
+- Registry：`docs/project/SYNTHETIC_ACCOUNT_REGISTRY.md` 只记录 `synthetic_id`、匿名 `user_id`（如已取得）、purpose、created_at、status、last_run_id 等无秘密事实；严禁记录 password、access token、refresh token、service role 或 Authorization header。当前身份映射不完整时，允许建立新的可追踪 pool，不得把缺少旧 manifest 当作继续索取账号的理由。

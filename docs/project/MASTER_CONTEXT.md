@@ -4,6 +4,8 @@
 > 
 > 事实优先级：当前源码与已验证生产事实 > 当前 migration / 配置 > 已确认产品决策 > 历史交接材料 > 推测。
 
+> 当前 canonical repository：`/Users/jasonhu/Documents/ChatGPT/project/JY_source`。`PROJECT-S` 仅是历史产品名/GitHub remote 名，不是第二本地事实源。当前 `REAL PRODUCTION USERS=0`；synthetic capacity account 规则见 `DECISIONS.md` 与 `SYNTHETIC_ACCOUNT_REGISTRY.md`。
+
 ## 1. 机缘是什么
 
 “机缘”（Jiyuan，历史工程名为 PROJECT-S）是面向 PC 游戏玩家的实时找队友 Web MVP。用户选择游戏和匹配条件，系统寻找当前也想以相近方式游玩的真实玩家；匹配成功后进入 Room / Session，交换当前对局所需信息、聊天、正常结束并提交反馈，最后沉淀 Recent Connections。

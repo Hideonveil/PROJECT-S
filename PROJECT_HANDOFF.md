@@ -1,10 +1,12 @@
 # PROJECT-S / “机”缘 — Project Handoff
 
 > 交接对象：没有参与过历史对话的新 AI / 工程师  
-> 生成日期：2026-08-20（Asia/Shanghai）  
+> 生成日期：2026-08-20（Asia/Shanghai）；当前治理更新：2026-08-25（Asia/Shanghai）
 > 事实优先级：**当前代码 > 当前数据库迁移与配置 > 已确认需求 > 历史讨论/视觉稿 > 推测**  
-> 当前仓库：`/Users/jasonhu/Documents/Codex/2026-08-15/project-s-product-specification-v0-1-2/work/project-s-source`  
-> 当前分支：`agent/ui-shell-production`，HEAD：`7bee0a2 refine medium viewport card layout`  
+> 当前 canonical 仓库：`/Users/jasonhu/Documents/ChatGPT/project/JY_source`
+> 当前分支：`main`，HEAD：`e7a0194cdb84f155cb7c086a5a9b4b089469ff74`；Production runtime：`1454bd4`
+
+> 本文件保留历史交接内容，但不再定义第二个 PROJECT-S 工作区。源码、Backend、UI、Migration、Runner、Deploy、Docs 的唯一当前根目录是上面的 `JY_source`；当前治理事实和测试状态以 `docs/project/CURRENT_STATE.md`、`docs/project/ISSUES.md`、`docs/project/SYNTHETIC_ACCOUNT_REGISTRY.md` 为准。
 
 这是一份工程交接文档，不是聊天记录。文中状态使用以下含义：
 
@@ -47,7 +49,7 @@
 ### 1.4 本地运行
 
 ```bash
-cd /Users/jasonhu/Documents/Codex/2026-08-15/project-s-product-specification-v0-1-2/work/project-s-source
+cd /Users/jasonhu/Documents/ChatGPT/project/JY_source
 pnpm install
 cp .env.example .env.local
 # 填写环境变量后：
@@ -199,7 +201,7 @@ Supabase PostgreSQL + Auth + Realtime + RLS
 ## 4. PROJECT DIRECTORY
 
 ```text
-project-s-source/
+JY_source/
 ├── public/
 │   ├── index.html                 # 主用户入口；默认 hash=hero
 │   ├── js/

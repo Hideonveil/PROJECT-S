@@ -2,8 +2,16 @@
 
 目标：把当前 MVP 部署到 Vercel，使用 Supabase 做真实数据库与实时通道，Resend 发送反馈邮件，最终得到公网地址。
 
-当前生产环境：https://project-s-iota.vercel.app
+当前 Production 正式入口：https://www.jiyuan.online
+Vercel 备用入口：https://project-s-iota.vercel.app
 当前代码仓库：https://github.com/Hideonveil/PROJECT-S.git
+
+当前唯一 canonical 本地源码根目录：
+`/Users/jasonhu/Documents/ChatGPT/project/JY_source`
+
+`PROJECT-S` 是 GitHub remote / 历史产品名，不代表第二个本地源码副本。不要从旧的
+`output/jiyuan-computer-handoff-2026-08-22/project-s-source` 或已归档的
+`PROJECT-S` 目录部署。
 
 中国用户验证阶段采用“双环境”方式：Vercel 保留作为回滚入口，腾讯云中国香港
 轻量服务器承载网页、API 与 Supabase 同域代理。香港部署说明见
@@ -25,6 +33,11 @@
    - `supabase/migrations/0007_profiles_age_range.sql`
    - `supabase/migrations/0008_restrict_auth_helpers.sql`
    创建并升级账号、匹配、房间、Session、最近连接、产品事件等数据结构，同时启用 RLS、索引与 Realtime 发布。
+
+   上述 `0001`–`0008` 仅是历史 bootstrap 列表，不是当前 Production replay 指令。当前
+   canonical source 包含 34 个 migration；Production migration provenance 以
+   `docs/project/MIGRATION_PROVENANCE.md` 为准。不要为了“补齐历史”重放、改写或 repair
+   `schema_migrations`；新的数据库变化必须使用 forward-only migration。
 4. 进入 **Project Settings → API**，记录：
    - `Project URL` → `NEXT_PUBLIC_SUPABASE_URL`
    - `anon public` → `NEXT_PUBLIC_SUPABASE_ANON_KEY`
@@ -36,7 +49,7 @@ Realtime 表已由 migration 加入 `supabase_realtime` publication。若在 Das
 ## 2. 本地配置
 
 ```bash
-cd project-s
+cd /Users/jasonhu/Documents/ChatGPT/project/JY_source
 cp .env.example .env.local
 ```
 
@@ -57,10 +70,11 @@ pnpm dev
 
 ## 4. GitHub
 
-当前仓库已连接：https://github.com/Hideonveil/PROJECT-S.git，分支 `main`。
+当前仓库已连接：https://github.com/Hideonveil/PROJECT-S.git，分支 `main`；本地 canonical root 为
+`/Users/jasonhu/Documents/ChatGPT/project/JY_source`。
 
 ```bash
-cd project-s
+cd /Users/jasonhu/Documents/ChatGPT/project/JY_source
 git add .
 git commit -m "update"
 git push origin main
@@ -82,7 +96,8 @@ git push origin main
 | `SUPABASE_SERVICE_ROLE_KEY` | Supabase service role key |
 
 5. 点击 **Deploy**。
-6. 当前生产地址为 https://project-s-iota.vercel.app；以后可绑定正式域名，不需要改代码。
+6. 当前 Production 地址为 https://www.jiyuan.online；Vercel
+   https://project-s-iota.vercel.app 仅作为备用入口，不改变 canonical source。
 
 ## 6. 公网测试方法
 

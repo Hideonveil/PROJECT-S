@@ -2,6 +2,13 @@
 
 > 只记录已经影响 Production、或已完成 Production 验收的事件。测试中的本地改动、未部署方案和未授权修复不写入本表。
 
+## 2026-08-25 — Repository consolidation and current production fact correction
+
+- 唯一 canonical repository 已收敛到 `/Users/jasonhu/Documents/ChatGPT/project/JY_source`；旧 `PROJECT-S` 工作区已移除，旧 UI/spec 通过 archive ref 保留，未 merge legacy API/JS/room implementation。
+- 建立无秘密 synthetic account registry：`docs/project/SYNTHETIC_ACCOUNT_REGISTRY.md`。账号 provisioning 与普通用户身份的业务行为分离；registry 不保存 password、access token、refresh token、service role 或 Authorization header。
+- 当前事实修正为 `REAL PRODUCTION USERS=0`。`matching=3` / `playing=2` 对应 `CAP001`–`CAP005` synthetic capacity identities，归类为 `SYNTHETIC RESIDUE / TEST GHOST CANDIDATE`；历史实体 ID 冻结，不执行 SQL 删除或更新。
+- 当前 DB CPU 为 `NORMAL`（idle/read-only snapshot）；`MATCHMAKING_RESERVATION_ROLLBACK_STORM` 更新为 `FIX DEPLOYED / PENDING LOAD VERIFICATION`，stateful matching 根行为仍未验证，P0 不关闭。
+
 ## 2026-08-25 — Stateful Runner load-amplification fix deployed; 5-user preflight held
 
 - Git application baseline `1454bd49a91b70fb592c97ff1c4675dd8f046625` 已 fast-forward 推送到 `origin/main`，并按腾讯云中国香港 Docker Compose 正式流程部署；Production `/api/health/live` 返回 `200`、`/api/health` 返回 `200 ready`，runtime health version 为 `1454bd4`，app healthy、gateway running、restart `0`、未观察到 OOM。

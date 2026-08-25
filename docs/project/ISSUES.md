@@ -6,13 +6,15 @@
 
 ## Register Metadata
 
-- Canonical repository: `project-s-source`
+- Canonical repository: `/Users/jasonhu/Documents/ChatGPT/project/JY_source`
 - Canonical branch: `main`
 - Created: `2026-08-23`
 - Register status: ACTIVE
 - Evidence rule: 只登记有明确项目证据支持的问题、风险或 Gate 缺口；缺失证据不得写成已确认缺陷。
 - Scope rule: `ISSUES.md` 记录已发现的问题、风险和验证缺口；未来功能、优化、产品需求和技术债规划继续记录在 `BACKLOG.md`。
 - Production rule: 默认不修改 Production；任何 Production write、migration、cleanup 或历史数据修改都需要明确授权。
+- Current user fact: `REAL PRODUCTION USERS = 0`；health 的 `users=531` 是 profiles/account 总数，不得当作真实用户数。
+- Current entity fact: `matching=3`、`playing=2` 对应 `CAP001`–`CAP005` synthetic capacity identities；在生命周期证据完成前分类为 `SYNTHETIC RESIDUE / TEST GHOST CANDIDATE`，不执行 raw SQL 清理。
 - Migration rule: 已提交 migration 不改写；新数据库变化必须 forward-only；未登记或不可 replay 的 migration 不自动执行、不 repair history。
 
 ## Ownership and Decision Rights
@@ -72,14 +74,14 @@ Gate Evidence 额外允许：`PENDING` · `PASS` · `FAIL`。
 - **Owner:** ENG-00｜机缘主工程；03｜QA 与上线负责人审核 Production closure evidence
 - **Found date:** 2026-08-25
 - **Affected area:** Production matchmaking reservation；`src/lib/matchmaking/service.ts`、`matchmaking_reserve_pair`、`matchmaking_reserve_group_member`
-- **Impact:** 同窗口出现 DB CPU 约 `91%`、PostgREST transaction setup `528,970 / 5min`、rollback `528,989 / 5min`（约 `1,690/sec`），并伴随 Pair/Group reservation conflict；阻塞 Stateful 5-user rerun。
-- **Pilot impact:** BLOCKING；在 rollback/CPU 根因未收敛、Production active matching/playing 未清空前，不得启动 5-user rehearsal。
+- **Impact:** 历史窗口出现 DB CPU 约 `91%`、PostgREST transaction setup `528,970 / 5min`、rollback `528,989 / 5min`（约 `1,690/sec`），并伴随 Pair/Group reservation conflict；该行为仍需 stateful 5-user workload 验证。
+- **Pilot impact:** P0 仍未关闭；当前 idle CPU 已恢复正常，但在 stateful load 下 CPU/rollback/conflict/latency/convergence 未验证前，不得把本问题标记为 RESOLVED。
 - **Evidence:** 既有 Production 日志/统计窗口；原始部署前 runtime 为 `40c138c`。此前 `pg_stat_statements` 约 60 秒窗口 Pair reserve `612,505 → 612,505`、Group reserve `643,304 → 643,304`，但 `pg_stat_database.xact_rollback` `314,779,825 → 314,890,889`（约 `1,775/sec`）；Supabase Dashboard CPU/connection/IO 图表曾返回 `Unable to load data`。本次 `8972b1e` 部署后 health smoke 为 live `5/5=200`、readiness `3/3=200 ready`，但尚未取得新的 DB CPU/rollback delta。
-- **Root cause:** Reservation conflict storm 的应用放大机制已确认；本轮进一步确认 5-user Runner 还有独立的读取/Presence 放大链：5 个 Actor 并发启动，成团等待阶段每秒并发轮询 `/api/state`，而当前 `presence_heartbeat()` 还会调用 `presence_reconcile_stale(p_now, 200)`。全库 rollback/CPU 的最终 Production 来源仍 `UNKNOWN`；历史失败 run 缺少同窗口逐请求和 DB 指标，不能把该链条写成已完成的 Production 归因。
+- **Root cause:** Reservation conflict storm 的应用放大机制已确认；5-user Runner 曾有独立的读取/Presence 放大链。forward-only migration 已将 stale reconciliation 从 heartbeat 移出，但全库 rollback/CPU 在 stateful workload 下的最终 Production 归因仍 `UNKNOWN`；历史失败 run 缺少同窗口逐请求和 DB 指标。
 - **Fix / Decision:** `8972b1e` 保留 reservation conflict 结构化返回。新增本地修复 commit `2e269f2` 并由 `1454bd4` 固化事实：Runner 增加同 Actor state-read in-flight 合并、约 2 秒轮询间隔+jitter、heartbeat in-flight guard；forward-only migration `20260825150000_separate_presence_heartbeat_from_reconcile.sql` 已执行，使 stale reconcile 只由现有 `pg_cron` 执行。未改变 Matching、Room/Session、TTL/grace 规则或历史数据。
 - **Verification:** 定向 `2 files / 25 tests PASS`；完整 `47 files / 245 tests PASS`；TypeScript PASS；Next build PASS（38/38 static pages）；`git diff --check` PASS。Production `1454bd4` smoke：`/api/health/live=200`、`/api/health=200 ready`、app healthy、gateway running、restart `0`、未观察到 OOM；Supabase Dashboard 快照为 Project Healthy、CPU `2%`、RAM `33%`、connections `6/100`。5-user 未执行：既有 active records 对应 `CAP001`–`CAP005` 专用账号，但本地五个 stateful credential Auth smoke 均为 `HTTP 401`。
 - **Production status:** `FIX_IN_PROGRESS`；runtime health version `1454bd4`，Git full SHA `1454bd49a91b70fb592c97ff1c4675dd8f046625`。Production business data manually modified `NO`；本轮 migration executed `YES`（仅 forward-only function replacement）；历史 migration history modified `NO`。
-- **Next action:** 先补齐/重新验证五个专用 stateful 身份凭据，并通过正常 `cancel/leave/goodbye` API 收敛 `CAP001`–`CAP005` 既有 active records；完成 preflight 后才允许重新启动 5-user。不得把本次 idle snapshot 或部署 smoke 写成 5-user capacity PASS；由 03 决定 P0 closure。
+- **Next action:** 保持旧实体 ID 冻结；补齐/重新验证五个专用 stateful 身份凭据，通过正常 `cancel/leave/goodbye` API 或 reconciliation 收敛 `CAP001`–`CAP005` 既有 active records；完成 preflight 后启动 5-user stateful rerun，并记录 CPU baseline/peak、rollback、reservation conflicts、latency、CPU/rollback recovery 和 entity convergence。不得把本次 idle snapshot 或部署 smoke 写成 5-user capacity PASS；由 03 决定 P0 closure。
 - **Closed date:** UNKNOWN
 
 ### JIY-P0-001 — `LEGACY_ROOM_DUAL_RENDER_PATH`

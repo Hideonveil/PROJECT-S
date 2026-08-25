@@ -33,10 +33,15 @@
 
 备用环境：https://project-s-iota.vercel.app
 
+当前唯一 canonical 本地源码根目录：
+`/Users/jasonhu/Documents/ChatGPT/project/JY_source`
+
+`PROJECT-S` 仅保留为历史产品名/GitHub remote 名；不要建立或使用第二个完整本地副本。
+
 ## 项目结构
 
 ```text
-project-s/
+JY_source/
 ├── public/                  # 前端页面、JS、样式
 │   ├── index.html
 │   ├── js/api.js            # API 客户端 + Supabase 用户名/密码会话
