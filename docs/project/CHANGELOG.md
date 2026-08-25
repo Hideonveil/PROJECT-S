@@ -2,6 +2,15 @@
 
 > 只记录已经影响 Production、或已完成 Production 验收的事件。测试中的本地改动、未部署方案和未授权修复不写入本表。
 
+## 2026-08-25 — terminal room_members fix + 5-user stateful rerun
+
+- 新增 forward-only migration `20260825160000_terminalize_room_members_on_terminal.sql`，并以 `220b993` 部署 Production。Session/Room 进入 terminal 时，所有仍为 `active` 的 `room_members` 一起变为 `exited`，写入 `exited_at`；不做历史 backfill、不执行 raw SQL 清理。
+- `capstate500-terminalized-20260825` 从既有 `capstate500-0824` pool 复用 5 个普通 synthetic identities，完成 `2 Ranked + 3 Casual` 的 Login、Presence、Matching、Pair/Group、Room/Session、Realtime、Chat、Refresh、Reconnect、Goodbye、Feedback 与 lifecycle convergence。Runner stage 5 PASS，identity isolation PASS。
+- Production 只读核验：2 rooms、2 sessions 均 `completed`；5/5 新建 `room_members` 均 `status=exited`，5/5 `exited_at` 非空，`active_member_rows=0`。`NEW GHOST=0`、`NEW ACTIVE RESIDUE=0`、`NEW DUPLICATE=0`。旧 completed room 中的历史 active residue 未清理，继续冻结。
+- lifecycle ledger 共 125 条，error/HTTP 5xx/timeout/conflict/rollback action 均为 0；4 条消息均送达预期收件人。期间 app CPU 采样峰值约 `29.50%`、gateway 约 `1.29%`，未观察到 restart/OOM。
+- Supabase DB CPU/RAM/connections 图表仍无法加载，DB CPU baseline/peak/final、rollback rate、reservation conflict rate 未取得。因此 terminalization fix 与 5-user lifecycle 收敛为 PASS，但 `RESERVATION STORM FIX=FIX DEPLOYED / PENDING LOAD VERIFICATION`，`10-USER READINESS=NOT READY`。
+- Evidence：`output/capacity-validation/capstate500-terminalized-20260825/`。Registry 仍不保存密码、token 或 service role。
+
 ## 2026-08-25 — capstate500 reuse 5-user stateful verification
 
 - 从已识别的 `capstate500-0824` 500-account pool 复用 5 个普通 synthetic identities；5 个

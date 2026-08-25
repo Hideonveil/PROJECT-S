@@ -26,11 +26,11 @@
 | `CAP003` | `NOT RECORDED IN CURRENT REPOSITORY` | `capacity` | `NOT RECORDED` | `synthetic; active ticket residue; prior Auth smoke HTTP 401` | `UNKNOWN` |
 | `CAP004` | `NOT RECORDED IN CURRENT REPOSITORY` | `capacity` | `NOT RECORDED` | `synthetic; active ticket residue; prior Auth smoke HTTP 401` | `UNKNOWN` |
 | `CAP005` | `NOT RECORDED IN CURRENT REPOSITORY` | `capacity` | `NOT RECORDED` | `synthetic; active ticket residue; prior Auth smoke HTTP 401` | `UNKNOWN` |
-| `CAPSTATE500-R01` | `2b4c582d-0679-48e7-a15d-756b61b8d6cc` | `capacity` | `2026-08-24` | `synthetic_test; reused from capstate500-0824; ordinary Auth session verified; no preflight active state; 5-user run produced 1 active room_member residue in completed room` | `capstate500-reuse-20260825` |
-| `CAPSTATE500-R02` | `c8dbbb47-0e1b-4027-a06c-ac12fb14f2c3` | `capacity` | `2026-08-24` | `synthetic_test; reused from capstate500-0824; ordinary Auth session verified; no preflight active state; 5-user run produced 1 active room_member residue in completed room` | `capstate500-reuse-20260825` |
-| `CAPSTATE500-C01` | `9d9b9eaf-2bbf-437b-ae58-c9ded1a6d3ec` | `capacity` | `2026-08-24` | `synthetic_test; reused from capstate500-0824; ordinary Auth session verified; no preflight active state; 5-user run produced 1 active room_member residue in completed room` | `capstate500-reuse-20260825` |
-| `CAPSTATE500-C02` | `cf015f77-388c-42a8-976c-46ef5d813b11` | `capacity` | `2026-08-24` | `synthetic_test; reused from capstate500-0824; ordinary Auth session verified; no preflight active state; 5-user run produced 1 active room_member residue in completed room` | `capstate500-reuse-20260825` |
-| `CAPSTATE500-C03` | `58678e49-a6b4-42df-8a49-b9baac61114e` | `capacity` | `2026-08-24` | `synthetic_test; reused from capstate500-0824; ordinary Auth session verified; no preflight active state; 5-user run produced 1 active room_member residue in completed room` | `capstate500-reuse-20260825` |
+| `CAPSTATE500-R01` | `2b4c582d-0679-48e7-a15d-756b61b8d6cc` | `capacity` | `2026-08-24` | `synthetic_test; reused from capstate500-0824; ordinary Auth session verified; prior completed-room residue frozen; terminalization rerun PASS` | `capstate500-terminalized-20260825` |
+| `CAPSTATE500-R02` | `c8dbbb47-0e1b-4027-a06c-ac12fb14f2c3` | `capacity` | `2026-08-24` | `synthetic_test; reused from capstate500-0824; ordinary Auth session verified; prior completed-room residue frozen; terminalization rerun PASS` | `capstate500-terminalized-20260825` |
+| `CAPSTATE500-C01` | `9d9b9eaf-2bbf-437b-ae58-c9ded1a6d3ec` | `capacity` | `2026-08-24` | `synthetic_test; reused from capstate500-0824; ordinary Auth session verified; prior completed-room residue frozen; terminalization rerun PASS` | `capstate500-terminalized-20260825` |
+| `CAPSTATE500-C02` | `cf015f77-388c-42a8-976c-46ef5d813b11` | `capacity` | `2026-08-24` | `synthetic_test; reused from capstate500-0824; ordinary Auth session verified; prior completed-room residue frozen; terminalization rerun PASS` | `capstate500-terminalized-20260825` |
+| `CAPSTATE500-C03` | `58678e49-a6b4-42df-8a49-b9baac61114e` | `capacity` | `2026-08-24` | `synthetic_test; reused from capstate500-0824; ordinary Auth session verified; prior completed-room residue frozen; terminalization rerun PASS` | `capstate500-terminalized-20260825` |
 | `CAPACITY-500-POOL` | `480 exact capacity_run_id rows + 20 legacy cap_stateful_824d rows; no credentials recorded` | `capacity` | `2026-08-24` | `identified by Auth metadata, naming convention, confirmed email, and creation window; five members safely reused` | `capstate500-reuse-20260825` |
 | `CAP-REUSE-0825-R01A` | `a631516e-d339-430b-b044-cb4b53248279` | `capacity` | `2026-08-25` | `synthetic_test; fallback registration probe; email unverified; not used in business behavior` | `none` |
 
@@ -61,3 +61,13 @@
   performed.
 - The fallback registration probe above was never authenticated for business behavior and
   remains a synthetic account only; no password or token is recorded here.
+
+## capstate500-terminalized-20260825
+
+- The same five identities were safely reused after ordinary Auth provisioning; identity
+  isolation passed and no credentials were written to the registry or evidence.
+- The stateful runner completed `2 Ranked + 3 Casual`. The two new rooms and two sessions
+  reached `completed`; read-only Production verification found all five new `room_members`
+  rows at `status=exited` with non-null `exited_at` and zero active member rows.
+- Existing active rows under older completed rooms were not modified. They remain frozen
+  historical synthetic residue and are excluded from this run's `NEW ACTIVE RESIDUE` count.

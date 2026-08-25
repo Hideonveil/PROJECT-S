@@ -11,15 +11,19 @@
 > 但其实体生命周期尚未完成正常 API 收敛核验，因此暂分类为 `SYNTHETIC RESIDUE / TEST
 > GHOST CANDIDATE`，不执行 raw SQL 清理。
 
-> 最新 5-user stateful 事实（`capstate500-reuse-20260825`）：从 `capstate500-0824` pool
-> 复用 5 个普通 synthetic identities，`2 Ranked + 3 Casual` 完成登录、Presence、Matching、
-> Pair/Group、Room/Session、Realtime、Chat、Refresh、Reconnect、Goodbye、Feedback 与最终
-> state 检查；5 个 user_id distinct、identity isolation PASS、runner stage 5 PASS。两间房和
-> 两个 session 均达到 `completed`，但只读 DB 核对发现本轮新建的 5 条 `room_members` 仍为
-> `status=active`（均挂在 completed room 下），因此 `NEW ACTIVE RESIDUE=5`，本轮整体
-> `5-USER STATEFUL=FAIL/INCONCLUSIVE`，不进入 10-user。Supabase Observability 本轮 CPU/RAM/
-> connections 图表均 `Unable to load data`；主机/app/gateway 采样未见危险峰值，但不能替代 DB
-> CPU/rollback evidence。
+> 最新 5-user stateful 事实（`capstate500-terminalized-20260825`）：从 `capstate500-0824` pool
+> 复用 5 个普通 synthetic identities，`2 Ranked + 3 Casual` 完成完整 lifecycle；5 个身份
+> distinct、identity isolation PASS、runner stage 5 PASS。两间房和两个 session 均达到
+> `completed`；Production 只读核验确认 5 条新建 `room_members` 全部为 `status=exited`、
+> `exited_at` 全部非空，`active_member_rows=0`。本轮 `NEW GHOST=0`、`NEW ACTIVE RESIDUE=0`、
+> `NEW DUPLICATE=0`。终态收敛修复由 `220b993` + forward-only migration
+> `20260825160000_terminalize_room_members_on_terminal.sql` 提供；旧 completed room 中的
+> 历史 active residue 未做 raw SQL 清理，继续冻结为历史基线。
+
+> 本轮 Supabase DB CPU/RAM/connections 图表仍无法加载，因此 DB CPU baseline/peak/final、
+> rollback rate 与 reservation conflict rate 未取得；远端 app 采样峰值约 `29.50%`、gateway
+> 约 `1.29%`，未观察到 restart/OOM。故功能与 lifecycle 收敛通过，但
+> `RESERVATION STORM FIX` 仍为 `PENDING LOAD VERIFICATION`，不自动进入 10-user。
 
 ## 1. 当前阶段
 
@@ -29,28 +33,29 @@
 - 已确认关闭的 P0：`LEGACY_ROOM_DUAL_RENDER_PATH`、`ROOM_SESSION_TERMINAL_LIFECYCLE_GHOST`、`REFRESH_PAGEHIDE_FALSE_EXIT`。
 - 当前唯一任务：由 03 审核并补齐 Final Private Pilot Gate 剩余 evidence；不得把已关闭 P0 误写成 Final Gate PASS，也不得自动替代 03 给出最终 Gate 结论。
 - 本阶段不扩大产品、测试或审计范围；P0 Active Room regression 已完成并通过，后续仅执行 03 明确要求的剩余 Gate 证据。
-- 容量验证策略已改为渐进式容量探顶：`5 → 10 → 20 → 30 → 40 → 50 → 75 → 100 → 125 → 150 → 200 → 300 → 400 → 500`；当前工具支持至 `500`。本轮 `capstate500-reuse-20260825` 的功能路径 runner stage 5 为 `PASS`，但因 `NEW ACTIVE RESIDUE=5` 且 DB CPU/RAM/connections 图表不可观测，整体容量结论为 `INCONCLUSIVE`，不得进入 10-user。
+- 容量验证策略已改为渐进式容量探顶：`5 → 10 → 20 → 30 → 40 → 50 → 75 → 100 → 125 → 150 → 200 → 300 → 400 → 500`；当前工具支持至 `500`。本轮 `capstate500-terminalized-20260825` 的功能路径与 lifecycle 收敛为 `PASS`，但 DB CPU/RAM/connections 图表不可观测，reservation storm 结论仍 `PENDING LOAD VERIFICATION`，不得进入 10-user。
 
 ## 2. Git 与源码基线
 
 - 仓库：`/Users/jasonhu/Documents/ChatGPT/project/JY_source`
 - Canonical engineering branch：`main`。
-- Git 当前可信工程基线：`1454bd49a91b70fb592c97ff1c4675dd8f046625`；该 commit 已推送 `origin/main` 并按正式腾讯云 Docker Compose 流程部署 Production。此前 `2e269f2`、`892d61e`、`875bb97` 与 `923bf47` 的产品修复继续保留在当前主线。
-- 本次 `main` 应用基线 `8972b1e` 已推送 `origin/main` 并完成 Production 发布；Production runtime 与 Git 应用基线分别记录，不把后续 docs-only commit 混同为已部署应用字节版本。
+- Git 当前应用基线：`220b9939903b5ee6200fd794129aa526c84da15f`；该 commit 已按正式腾讯云 Docker Compose 流程部署 Production。此前 `1454bd4`、`2e269f2`、`892d61e`、`875bb97` 与 `923bf47` 的产品修复继续保留在当前主线。
+- 本次 `main` 应用基线为 `220b993`；Production runtime 与 Git 应用基线分别记录，不把后续 docs-only commit 混同为已部署应用字节版本。
 - Project source tracked files：clean；仓库根下既有未跟踪 `output/` 证据目录保留，不能将其误写为不存在。
 - `agent/ui-shell-production` 已完成 fast-forward 收敛并保留，不删除该 branch。
 - Runtime source baseline、tests/tooling、project docs 与 migration provenance 均已进入 Git。
 - `0009_realtime_matchmaking.sql` 已恢复为历史原始版本；当前 migration provenance 规则保持有效：`NOT_RECORDED` 不得解释为未执行，不得 replay 或 repair production migration history，后续数据库变化必须使用 forward-only migration。
 - `v0.1` / `v1` / `v2` 仅作为 historical archive，不承担当前项目事实源职责。
-- 当前源码 migration 文件数：34。新增 `20260824100000_session_member_likes.sql`、`20260825110000_optimize_rls_initplan.sql`、`20260825130000_return_reservation_conflicts.sql` 与 `20260825150000_separate_presence_heartbeat_from_reconcile.sql` 均为 forward-only migration；此前审计中使用的“27 个 migration”属于更早时间点，不能继续作为当前仓库总数。
+- 当前源码 migration 文件数：35。新增 `20260824100000_session_member_likes.sql`、`20260825110000_optimize_rls_initplan.sql`、`20260825130000_return_reservation_conflicts.sql`、`20260825150000_separate_presence_heartbeat_from_reconcile.sql` 与 `20260825160000_terminalize_room_members_on_terminal.sql` 均为 forward-only migration；此前审计中使用的“27 个 migration”属于更早时间点，不能继续作为当前仓库总数。
 - 本轮新增工程修复 commit：`2e269f2c6e1c580afe0b3c0a4fe013a95fcd1b52`，并由 docs-only commit `1454bd4` 固化事实。它将 Stateful Runner 的同一 Actor `/api/state` 读取做 in-flight 合并、将等待轮询默认间隔从 1 秒调整为约 2 秒并加入轻微 jitter，同时防止 heartbeat 请求重叠；该修复已随 `1454bd4` 部署 Production。
 - 本轮新增 forward-only migration：`20260825150000_separate_presence_heartbeat_from_reconcile.sql`，SHA-256 为 `d3014accb511b75a53a1f94e0c93423b328e393dc80abe576def2eb88b5b7fd8`。已在 Production Supabase SQL Editor 成功执行一次；它只移除 `presence_heartbeat()` 内对 `presence_reconcile_stale()` 的调用，保留 heartbeat、30 秒 effective-online、180 秒 reconnect grace 及 `pg_cron` stale sweep；未 replay/repair migration history。
+- 本轮新增 forward-only migration：`20260825160000_terminalize_room_members_on_terminal.sql`，SHA-256 为 `1b834906140b24165b6c37fc8274eab04191b4a63c9fd0c64866b46cba08c13a`。已在 Production Supabase SQL Editor 成功执行一次；Session/Room 进入 terminal 时只将仍为 `active` 的成员更新为 `exited` 并写入 `exited_at`，不做历史 backfill、不删除数据；session/room trigger 与函数已只读确认存在。
 
 ## 3. Production 当前事实
 
 - 公网入口：`https://www.jiyuan.online`
 - 部署方式：腾讯云中国香港节点上的 Docker Compose，Caddy 对外提供 HTTPS 和代理。
-- 最近 Production application source commit：`1454bd49a91b70fb592c97ff1c4675dd8f046625`；Production runtime health version：`1454bd4`。此前 `8972b1e`、`347c0bb`、`8631311`、`40c138c`、`47f3a11`、`923bf47`、`875bb97`、`892d61e`、`cd51a83` 与 `7bee0a2-dirty-presence-2c0143f4` 作为历史部署版本/标签保留。
+- 最近 Production application source commit：`220b9939903b5ee6200fd794129aa526c84da15f`；Production runtime health version：`220b993`。此前 `1454bd4`、`8972b1e`、`347c0bb`、`8631311`、`40c138c`、`47f3a11`、`923bf47`、`875bb97`、`892d61e`、`cd51a83` 与 `7bee0a2-dirty-presence-2c0143f4` 作为历史部署版本/标签保留。
 - Git 应用源码基线与 Production runtime version / deployment label 仍是两个不同概念；本次具备源码同步、容器 build、health、HTTP 与容器状态证据，但不把单独的 health 字段解释为任意容器文件的字节级证明。
 - 此前 `875bb97` 发布后的健康检查曾确认：`HTTP 200`、`ok=true`、`status=ready`、`version=875bb9786b5c4c5684de87358cb0289236adc869`、`online=0`、`matching=0`、`playing=0`、`users=531`；检查时间 `2026-08-24T10:17:41.166Z`。这是历史安全收尾快照，不覆盖当前 `40c138c` 发布后的 degraded 诊断证据。
 - `923bf47` Health diagnostics 修复发布后的连续 5 次公开烟测均在 `4.046–4.466s` 内返回结构化 `HTTP 503`、`ok=false`、`status=degraded`、`version=923bf470938cd5ab721a0b37a6e39e56fff97395`；`presence` 与 `database` 各自明确记录 `HEALTH_CHECK_TIMEOUT`（单项边界 `2000ms`），不再出现 20 秒无响应。该历史结果只证明 response bound 与 diagnostics 的设计已生效；此前 `40c138c` 观察到的底层依赖异常和本次 `8631311` 的 rollback 证据分别按各自时间窗口记录，5-user rerun 保持 `NOT READY`。
@@ -62,13 +67,15 @@
 - 本次发布后已完成 13 个低频公开观察样本（约 `2026-08-24T14:22:18Z`–`14:36:43Z`，观察按用户要求中止，未完成完整 15–30 分钟窗口）：`/api/health/live` 全部 HTTP `200`；`/api/health` 全部有界返回 HTTP `503`，约 `4.04–4.21s`，presence/database 均明确记录 `HEALTH_CHECK_TIMEOUT`；`/api/config` HTTP `200`；`/api/pool-summary` 全部 HTTP `200` 但约 `6.27–7.23s`。Caddy error/upstream/504 日志行 `0`（当前 Caddy 配置无 access-log 总量，因此仅记录可观察错误）；app/gateway restart `0`、`OOMKilled=false`，Docker 应用资源未显示瓶颈。
 - 本次未取得 A/B/C authenticated browser session；最终低频未认证读取为 `/api/state=401`、`/api/session=200`，不能替代 3/3 authenticated `/api/state`、`/api/session` smoke，后者保持 `NOT VERIFIED`。Production health/idle 快照显示 CPU 已恢复正常，但没有 stateful load 下的 DB CPU/rollback delta，因此不得把 storm 写成已修复或 P0 CLOSED。
 - `20260824100000_session_member_likes.sql` 已按授权在 Production 执行；表、3 个索引、3 个 RLS policy 与 RLS enabled 已只读确认，表内点赞行数为 `0`；未修改历史点赞、旧 `session_responses`、旧 tags 或 migration history。
-- `20260825110000_optimize_rls_initplan.sql` 已按授权在 Production 执行并随 `347c0bb` 部署；四条 RLS policy 已只读确认改为 `(select auth.uid())`，roles/commands/USING/WITH CHECK 与 participant visibility 保持不变。Production identity isolation read-only verification：own profile `1`、other profile `0`、participant session `1`、non-participant session `0`。Performance Advisor 重跑为 `0 errors / 0 warnings / 38 suggestions`，但 DB CPU after 尚未取得，不能据此宣称 CPU incident 已解决。部署后 liveness/readiness/config 均为 `200`，app healthy、gateway running、restart/OOM 为 `0`；当前 matching/playing 为 `3/2`，5-user rerun 仍未启动。
+- `20260825110000_optimize_rls_initplan.sql` 已按授权在 Production 执行并随 `347c0bb` 部署；四条 RLS policy 已只读确认改为 `(select auth.uid())`，roles/commands/USING/WITH CHECK 与 participant visibility 保持不变。Production identity isolation read-only verification：own profile `1`、other profile `0`、participant session `1`、non-participant session `0`。Performance Advisor 重跑为 `0 errors / 0 warnings / 38 suggestions`，但 DB CPU after 尚未取得，不能据此宣称 CPU incident 已解决。该条是历史部署快照；后续 `220b993` 5-user rerun 已完成。
 - `8972b1e` 已按腾讯云中国香港 Docker Compose 正式流程发布；Production smoke：`/api/health/live` 连续 `5/5` 为 `200`，`/api/health` 连续 `3/3` 为 `200 ready`，`/api/config=200`，根路径既有 `307` 重定向；health version 为完整 `8972b1e`，presence/database checks 均成功。观察时 health 显示 `matching=3`、`playing=2`，这些既有 Production 活动未被本次 smoke 修改或清理。
 - `20260825130000_return_reservation_conflicts.sql` 已在 Production Supabase SQL Editor 执行一次；只读核对确认 Pair/Group reservation 函数均支持结构化业务冲突返回，且不再主动以业务冲突抛出 SQLSTATE `40001`；routine 执行权限仅保留 `postgres` / `service_role`。未 replay/repair migration history，未修改历史业务数据。
-- 本次发布只读 smoke 未执行 Matching、Room/Session、Chat、Goodbye、Leave、Feedback 或容量负载。历史事故窗口曾出现 Supabase high CPU usage banner；最近 idle/read-only 快照为 CPU `2%`，但尚未取得 stateful load 下 DB CPU/rollback delta，因此 `MATCHMAKING_RESERVATION_ROLLBACK_STORM` 为 `FIX DEPLOYED / PENDING LOAD VERIFICATION`，不得写成 P0 CLOSED，5-user rerun 仍 `NOT READY`。
+- 该历史发布只读 smoke 未执行 Matching、Room/Session、Chat、Goodbye、Leave、Feedback 或容量负载。后续 `220b993` 已完成 5-user stateful lifecycle rerun 并通过新 room_members terminalization 核验；历史事故窗口曾出现 Supabase high CPU usage banner，当前仍未取得 stateful load 下 DB CPU/rollback delta，因此 `MATCHMAKING_RESERVATION_ROLLBACK_STORM` 为 `FIX DEPLOYED / PENDING LOAD VERIFICATION`，不得写成 P0 CLOSED。
 - `1454bd4` 部署后公开 smoke：`/api/health/live=200`、`/api/health=200 ready`，health version 为 `1454bd4`；health 当时返回 `matching=3`、`playing=2`、`users=531`，这 5 个 active ticket 对应的 profiles 昵称为 `CAP001`–`CAP005`，已确认属于专用测试账号而非未知真实玩家。`REAL PRODUCTION USERS=0`；因此当前实体的 real-user collision risk 暂按 `NONE` 处理，但历史测试实体的生命周期原因仍需正常 API/reconciliation 证据确认。腾讯云 app 容器 `healthy`、gateway `running`、restart `0`、OOM 未观察到；远端 host snapshot load average `0.08/0.40/0.24`、CPU idle `90.9%`，容器 app `0.00%` / gateway `1.00%`。Supabase Dashboard 同窗口显示 Project Healthy、compute `micro / t3a.micro`、CPU `2%`、RAM `33%`、connections `6/100`；该快照不是 5-user capacity evidence。
-- 最新公开只读 health（`2026-08-25T05:07:16.730Z`）仍为 `/api/health/live=200`、`/api/health=200 ready`，runtime `1454bd4`，`online=0`、`matching=3`、`playing=2`、`users=531`；presence/database checks 均成功。该 endpoint 不返回逐实体 identity inventory，也不返回 DB CPU；最近已保存的 idle/read-only DB CPU `2%` 仍不是 stateful capacity evidence。
-- Presence migration 与应用修复已部署，但新的 5-user 尚未启动：现有 `CAP001`–`CAP005` active records 仍未通过正常 API 收敛，且现有本地 5 个 stateful credential 在低频 Auth smoke 中均返回 `HTTP 401`。账号数量不是 blocker；本轮实际 blocker 是无法用已失效 session 安全执行正常 lifecycle 收敛，因此 5-user preflight 仍为 `NOT READY`，未执行 Matching/Room/Chat/Goodbye/Leave/Feedback。
+- `220b993` 部署后公开 health：`/api/health=200 ready`，health version 为 `220b993`，presence/database checks 成功；5-user `capstate500-terminalized-20260825` 完成后，Production 只读 inventory 确认新建 2 rooms + 2 sessions 均 `completed`，5/5 `room_members` 为 `exited` 且 5/5 `exited_at` 非空，active member rows `0`。旧 `matching=3` / `playing=2` 历史 synthetic residue 未被清理。
+- `220b993` 5-user 期间远端只读 Docker 采样：app CPU peak `29.50%`、gateway CPU peak 约 `1.29%`，app/gateway 未观察到 restart/OOM；这不能替代 Supabase DB CPU/rollback/reservation counters。
+- 最新公开只读 health（`2026-08-25T06:12:21.355Z`）为 `/api/health=200 ready`、runtime `220b993`，`online=0`、`matching=3`、`playing=2`、`users=532`；presence/database checks 均成功。该 endpoint 不返回逐实体 identity inventory，也不返回 DB CPU；Supabase stateful load 下 DB CPU/rollback/reservation counters 仍未取得。
+- Presence migration 与应用修复已部署；此前 `1454bd4` 快照中的失效 credential / preflight `NOT READY` 已由 `220b993` 本轮重新 provisioning 并完成 5-user stateful rerun 取代。现有 `CAP001`–`CAP005` active records 仍是旧 synthetic residue，未执行 raw SQL 清理。
 - 生产前端静态 bundle 已确认包含 Presence heartbeat 客户端标记，说明 Presence 客户端代码已随网站发布。
 - 生产数据库 project ref：`chqxaqibegpdjtedrxwx`。
 - 历史生产数据库快照曾确认：`pg_cron` 可用；Presence migration 所需字段、函数、trigger、cron job 已存在；当时 active ticket `0`、active Session `0`，原始 active Room `1` 与 terminal Session + playing Room `1` 均对应已登记历史 baseline `F1A64`，排除历史 5 个 ghost Room 后 New Active Room `0`、New Ghost `0`、New Active Ticket Residue `0`、New Active Session Residue `0`。本次新部署观察时 health 显示 `matching=3`、`playing=2`，不能沿用该历史零值作为当前 preflight。
@@ -122,10 +129,10 @@
 
 ### 非阻断但必须保留的事实
 
-- 历史 Production health 曾返回 runtime label `8631311`；当前最近已验证的 Production runtime 为 `8972b1e`。这些 deployment label 来自部署环境 release metadata，仍与 Git 当前工程基线的完整 SHA 分开记录。
+- 历史 Production health 曾返回 runtime label `8631311`；当前最近已验证的 Production runtime 为 `220b993`。这些 deployment label 来自部署环境 release metadata，仍与 Git 当前工程基线的完整 SHA 分开记录。
 - 本次无法取得 A/B/C 三个同时受控的已登录 Production 身份，因此“两人/三人 Production 视觉 smoke、逐成员点赞刷新恢复、self/non-member 拒绝”保持 `NOT VERIFIED`；不以单一登录身份或本地 build 证据替代 Production smoke。
 - Project source tracked files 当前 clean；仓库根下既有未跟踪 `output/` 证据目录保留。Production deployment label 与 Git 基线分开记录，Production release provenance 仍需结合源码同步、容器 build、health 和静态 bundle 证据理解。
-- 三个历史 P0 均保持 `CLOSED`；新增 `MATCHMAKING_RESERVATION_ROLLBACK_STORM` 当前为 `FIX DEPLOYED / PENDING LOAD VERIFICATION`，不因 idle CPU 正常而关闭。下一次 5-user stateful rerun 是验证测试；不得把本次部署或低频 readiness 观察写成容量 PASS。
+- 三个历史 P0 均保持 `CLOSED`；新增 `MATCHMAKING_RESERVATION_ROLLBACK_STORM` 当前为 `FIX DEPLOYED / PENDING LOAD VERIFICATION`，不因 idle CPU 正常或本轮 app 资源正常而关闭。`220b993` 5-user stateful rerun 已验证 lifecycle 与 room_members terminal convergence，但 DB CPU/rollback/reservation 指标仍缺失，不得写成完整容量 PASS。
 - 历史 5 个 ghost Room 仍存在，属于已知历史基线，不是本轮新增问题。
 - 旧兼容代码和旧 API 仍可能存在；不能仅因为某个字段或 API 存在，就推断其为当前主产品路径。
 - Stateful capacity rehearsal 尚未取得有效容量结论：历史 20 人尝试曾分别因 runner 环境兼容错误、Production preflight `playing=2` 和认证阶段 HTTP `429` 停止；本次 `run_id=capstate500-stage5-0824` 在 5 人阶段因 `The operation was aborted due to timeout` 停止，未进入 10 人及以上档位。该阶段未生成结构化 evidence 文件，失败请求的 endpoint、底层 `error.cause` 与完整 mutation ledger 均 `NOT CAPTURED`；不能据此区分 Runner、网络或 App 根因，也不能把本次结果写成容量 FAIL 或 PASS。失败后的健康检查显示 `matching=0`、`playing=0`，但完整 DB integrity 查询与同批账号事后 state 复核未完成，Capacity 结论继续保持 `NOT ASSESSED`。
