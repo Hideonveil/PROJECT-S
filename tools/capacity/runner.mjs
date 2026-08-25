@@ -56,6 +56,8 @@ export const DEFAULT_OPTIONS = Object.freeze({
   maxRequests: 0,
   durationSec: 60,
   requestTimeoutMs: 10_000,
+  stateReadConcurrency: 8,
+  realtimeConcurrency: 8,
   abortOn5xx: true,
   abortOnTimeout: true,
   abortOn429: true,

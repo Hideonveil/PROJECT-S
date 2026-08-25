@@ -36,6 +36,7 @@ const TERMINAL_SESSION_STATES = new Set(["completed", "cancelled"]);
 export const STATE_POLL_INTERVAL_MS = 2_000;
 export const STATE_POLL_JITTER_MS = 250;
 export const HEARTBEAT_INTERVAL_MS = 10_000;
+export const RUNNER_IO_CONCURRENCY = 8;
 
 function safeError(error) {
   return String(error?.message || error || "unknown error")
@@ -45,6 +46,22 @@ function safeError(error) {
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function runWithConcurrency(items, concurrency, worker) {
+  const values = Array.from(items);
+  const results = new Array(values.length);
+  let nextIndex = 0;
+  const workerCount = Math.min(Math.max(1, Number(concurrency) || RUNNER_IO_CONCURRENCY), values.length);
+  await Promise.all(Array.from({ length: workerCount }, async () => {
+    while (true) {
+      const index = nextIndex;
+      nextIndex += 1;
+      if (index >= values.length) return;
+      results[index] = await worker(values[index], index);
+    }
+  }));
+  return results;
 }
 
 function statePollDelay(options) {
@@ -529,11 +546,11 @@ export async function waitForRooms(runtimes, expectedCount, options, stage, ledg
   const controls = { started: new Set(), confirmed: new Set() };
   const deadline = Date.now() + Math.min(120_000, options.durationSec * 1000);
   while (Date.now() < deadline) {
-    await Promise.all([...runtimes.values()].map((runtime) => refreshState(runtime, options, stage, ledger)));
+    await runWithConcurrency([...runtimes.values()], options.stateReadConcurrency, (runtime) => refreshState(runtime, options, stage, ledger));
     await controlGroups(runtimes, options, stage, ledger, controls);
     const active = [...runtimes.values()].filter((runtime) => ACTIVE_SESSION_STATES.has(runtime.state?.session?.status) && runtime.state?.room);
     if (active.length >= expectedCount) {
-      await Promise.all(active.map((runtime) => refreshState(runtime, options, stage, ledger)));
+      await runWithConcurrency(active, options.stateReadConcurrency, (runtime) => refreshState(runtime, options, stage, ledger));
       const stable = active.filter((runtime) => ACTIVE_SESSION_STATES.has(runtime.state?.session?.status) && runtime.state?.room);
       if (stable.length >= expectedCount) return;
     }
@@ -713,7 +730,7 @@ async function submitFeedback(runtime, options, stage, ledger) {
 export async function waitForTerminal(runtimes, options, stage, ledger, timeoutMs = 30_000) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
-    await Promise.all([...runtimes.values()].map((runtime) => refreshState(runtime, options, stage, ledger, "state.reconcile")));
+    await runWithConcurrency([...runtimes.values()], options.stateReadConcurrency, (runtime) => refreshState(runtime, options, stage, ledger, "state.reconcile"));
     const active = [...runtimes.values()].filter((runtime) => runtime.state?.room && ACTIVE_SESSION_STATES.has(runtime.state?.session?.status));
     if (!active.length) return;
     await sleep(statePollDelay(options));
@@ -735,7 +752,7 @@ async function runStage({ stage, runtimes, options, ledger, messageLedger }) {
   const expectedRooms = stage.ranked / 2 + stage.casual / 3;
   const activeRuntimes = new Map([...runtimes].filter(([, runtime]) => runtime.role !== "fragmented"));
   await Promise.all([...runtimes.values()].map((runtime) => closeClient(runtime)));
-  await Promise.all([...runtimes.values()].map((runtime) => subscribeActor(runtime, stage.name)));
+  await runWithConcurrency([...runtimes.values()], options.realtimeConcurrency, (runtime) => subscribeActor(runtime, stage.name));
   await Promise.all([...runtimes.values()].map((runtime) => startActor(runtime, options, stage.name, ledger)));
   await waitForRooms(runtimes, expectedActive, options, stage.name, ledger);
   const groups = roomGroups(activeRuntimes);
