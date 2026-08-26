@@ -1265,10 +1265,12 @@ function updateHomeFlowStepper() {
 
 function syncHomeStepperAccessibility() {
   const current = app.querySelector("[data-home-stepper]");
-  if (!current || current.hidden || !HOME_FILTER.goal) return;
-  const path = homeWizardPath();
-  const step = Math.max(0, Math.min(path.length - 1, Number(HOME_FILTER.step) || 0));
-  current.setAttribute("aria-label", `Deadlock 配置进度：第 ${step + 1} 步，共 ${path.length} 步`);
+  if (!current || current.hidden) return;
+  const markers = [...current.querySelectorAll(".match-wizard-marker")];
+  const total = markers.length;
+  if (!total) return;
+  const activeIndex = Math.max(0, markers.findIndex((marker) => marker.classList.contains("is-active")));
+  current.setAttribute("aria-label", `Deadlock 配置进度：第 ${activeIndex + 1} 步，共 ${total} 步`);
 }
 
 function toggleHomeChoice(actionEl, selected) {

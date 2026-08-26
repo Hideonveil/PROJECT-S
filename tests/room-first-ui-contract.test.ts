@@ -51,6 +51,7 @@ describe("room-first matching UI", () => {
   it("resyncs the stepper accessibility label after a full render", () => {
     expect(app).toContain("function syncHomeStepperAccessibility()");
     expect(app).toContain("syncHomeStepperAccessibility();");
+    expect(app).toContain("current.querySelectorAll(\".match-wizard-marker\")");
   });
 
   it("keeps the final start CTA wide enough to show its label", () => {
