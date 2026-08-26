@@ -1,0 +1,13 @@
+{
+  "runId": "breakpoint-authfix-rerun40-20260825",
+  "cleanupMethod": "ordinary-user sessions through normal /exit, /cancel, /offline APIs",
+  "selected": 40,
+  "login200": 40,
+  "initialRoom": 5,
+  "initialTicket": 33,
+  "exits": 5,
+  "cancels": 28,
+  "finalActive": 0,
+  "finalTerminalOrEmpty": 40,
+  "status": "CONVERGED"
+}

@@ -1,0 +1,105 @@
+{
+  "runId": "capstate500-terminalized-20260825",
+  "mode": "stateful",
+  "startedAt": "2026-08-25T06:19:18.034Z",
+  "endedAt": "2026-08-25T06:21:43.030Z",
+  "stages": [
+    {
+      "stage": "5",
+      "status": "PASS",
+      "users": 5,
+      "expectedRooms": 2,
+      "activeUsers": 5,
+      "actorIds": [
+        "R01",
+        "R02",
+        "C01",
+        "C02",
+        "C03"
+      ],
+      "realtimeSubscriptions": [
+        6,
+        2,
+        2,
+        2,
+        2
+      ],
+      "messages": [
+        {
+          "stage": "5",
+          "message_id": "265e97fd-7e04-4b05-819f-a098152370be",
+          "room_id": "c52478da-0753-44f9-9a49-9dc1b94bc1b3",
+          "session_id": "3cc01590-45eb-476c-8ffc-3ddf91d35e81",
+          "sender_user_id": "9d9b9eaf-2bbf-437b-ae58-c9ded1a6d3ec",
+          "sent_at": "2026-08-25T06:20:15.405Z",
+          "persisted_at": "2026-08-25T06:20:16.930626+00:00",
+          "expected_recipients": [
+            "9d9b9eaf-2bbf-437b-ae58-c9ded1a6d3ec",
+            "cf015f77-388c-42a8-976c-46ef5d813b11",
+            "58678e49-a6b4-42df-8a49-b9baac61114e"
+          ],
+          "received_by": [
+            "9d9b9eaf-2bbf-437b-ae58-c9ded1a6d3ec",
+            "cf015f77-388c-42a8-976c-46ef5d813b11",
+            "58678e49-a6b4-42df-8a49-b9baac61114e"
+          ]
+        },
+        {
+          "stage": "5",
+          "message_id": "7e149fe4-5e50-49a4-afd4-5ffb6b2dfef8",
+          "room_id": "ae1de463-a22a-4d0b-84b4-635d9f5d9636",
+          "session_id": "13bc5662-1b3d-45dc-b8fd-363fcb50fce9",
+          "sender_user_id": "2b4c582d-0679-48e7-a15d-756b61b8d6cc",
+          "sent_at": "2026-08-25T06:20:15.402Z",
+          "persisted_at": "2026-08-25T06:20:16.95546+00:00",
+          "expected_recipients": [
+            "2b4c582d-0679-48e7-a15d-756b61b8d6cc",
+            "c8dbbb47-0e1b-4027-a06c-ac12fb14f2c3"
+          ],
+          "received_by": [
+            "2b4c582d-0679-48e7-a15d-756b61b8d6cc",
+            "c8dbbb47-0e1b-4027-a06c-ac12fb14f2c3"
+          ]
+        },
+        {
+          "stage": "5",
+          "message_id": "e0114ea9-79ee-495c-8a65-7f7f27c970f2",
+          "room_id": "c52478da-0753-44f9-9a49-9dc1b94bc1b3",
+          "session_id": "3cc01590-45eb-476c-8ffc-3ddf91d35e81",
+          "sender_user_id": "9d9b9eaf-2bbf-437b-ae58-c9ded1a6d3ec",
+          "sent_at": "2026-08-25T06:20:16.793Z",
+          "persisted_at": "2026-08-25T06:20:17.458126+00:00",
+          "expected_recipients": [
+            "9d9b9eaf-2bbf-437b-ae58-c9ded1a6d3ec",
+            "cf015f77-388c-42a8-976c-46ef5d813b11",
+            "58678e49-a6b4-42df-8a49-b9baac61114e"
+          ],
+          "received_by": [
+            "9d9b9eaf-2bbf-437b-ae58-c9ded1a6d3ec",
+            "cf015f77-388c-42a8-976c-46ef5d813b11",
+            "58678e49-a6b4-42df-8a49-b9baac61114e"
+          ]
+        },
+        {
+          "stage": "5",
+          "message_id": "a679fcfc-3a15-4d5b-93a2-7101951a7609",
+          "room_id": "ae1de463-a22a-4d0b-84b4-635d9f5d9636",
+          "session_id": "13bc5662-1b3d-45dc-b8fd-363fcb50fce9",
+          "sender_user_id": "2b4c582d-0679-48e7-a15d-756b61b8d6cc",
+          "sent_at": "2026-08-25T06:20:16.799Z",
+          "persisted_at": "2026-08-25T06:20:17.475289+00:00",
+          "expected_recipients": [
+            "2b4c582d-0679-48e7-a15d-756b61b8d6cc",
+            "c8dbbb47-0e1b-4027-a06c-ac12fb14f2c3"
+          ],
+          "received_by": [
+            "2b4c582d-0679-48e7-a15d-756b61b8d6cc",
+            "c8dbbb47-0e1b-4027-a06c-ac12fb14f2c3"
+          ]
+        }
+      ]
+    }
+  ],
+  "identityIsolation": true,
+  "productionMutation": true
+}

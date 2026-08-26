@@ -66,6 +66,10 @@ export interface Room {
   formationState?: "forming" | "backfilling" | "locked" | "formal" | null;
   formationGroupId?: string | null;
   isForming?: boolean;
+  /** True only for the intentionally minimal first paint returned by start. */
+  shell?: boolean;
+  /** Monotonic database version used to discard delayed Room snapshots. */
+  realtimeVersion?: number;
   resumeEligible?: boolean;
   goodbyeRequests: Array<{ userId: string; requestedAt: string }>;
   currentMemberCount?: number;

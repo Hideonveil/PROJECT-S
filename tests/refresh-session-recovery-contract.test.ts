@@ -24,7 +24,7 @@ describe("active Session refresh recovery", () => {
 
   it("restores active rooms from the server snapshot on resume", () => {
     expect(app).toContain('const snapshot = await api.getState();');
-    expect(app).toContain('if (restoreRoute && isActiveSessionRoom(snapshot.room)');
+    expect(app).toContain('if (restoreRoute && !isRecruitmentExitRoom(snapshot.room) && isActiveSessionRoom(snapshot.room)');
     expect(app).toContain('["home", "auth", "welcome", "matching"].includes(parseRoute().name)');
     expect(app).toContain('replaceCanonicalRoute("#/room")');
     expect(app).toContain("history.replaceState");

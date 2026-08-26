@@ -1,0 +1,19 @@
+{
+  "runId": "bp-lite-rerun-20260826",
+  "mode": "stateful",
+  "status": "INCONCLUSIVE",
+  "failure": {
+    "name": "Error",
+    "message": "CAPACITY_AUTH: identity BP026 login returned HTTP 401",
+    "cause": null,
+    "cause_code": null,
+    "timeout_source": null,
+    "code": null
+  },
+  "evidence": {
+    "runId": "bp-lite-rerun-20260826",
+    "ledgerFile": "output/capacity-validation/bp-lite-rerun-20260826/lifecycle-ledger.ndjson",
+    "stage": "40",
+    "eventCount": 3
+  }
+}

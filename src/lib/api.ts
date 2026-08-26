@@ -342,6 +342,7 @@ export async function enrichRoom(room: Record<string, unknown>, options: { conte
     code: room.code as string,
     need: (room.need as Record<string, unknown>) || {},
     status: room.status as string,
+    realtimeVersion: Number(room.realtime_version || 0),
     started_at: (room.started_at as string | null) || null,
     startedAt: (room.started_at as string | null) || null,
     players: memberViews.filter((m) => m.memberStatus === "active"),
@@ -464,6 +465,54 @@ export async function activeRoomFor(profileId: string, context?: StateReadContex
   const candidate = await resolveActiveRoom(profileId, context);
   if (!candidate.room) return null;
   return enrichRoom(candidate.room, { context, session: candidate.session, resumeEligible: true });
+}
+
+/**
+ * Return only the data needed to paint the Room-first shell. The resolver is
+ * still the authority here, so an active historical member or orphaned ticket
+ * can never be promoted into a resumable Room just because this is a fast
+ * path. Profiles, ticket conditions, group members and chat history are
+ * deliberately left to the asynchronous state hydration that follows.
+ */
+export async function activeRoomShellFor(profileId: string, context?: StateReadContext): Promise<Room | null> {
+  const candidate = await resolveActiveRoom(profileId, context);
+  if (!candidate.room) return null;
+
+  const room = candidate.room;
+  const roomNeed = (room.need as Record<string, any>) || {};
+  const roomStatus = String(room.status || "").toLowerCase();
+  const sessionStatus = String(candidate.session?.status || "").toLowerCase();
+  const hasFormalSession = ["ready", "playing", "completed", "cancelled"].includes(sessionStatus);
+  const formationState = (room.formation_state as Room["formationState"]) || null;
+  const recruitmentLocked = hasFormalSession || ["locked", "formal"].includes(String(formationState || "").toLowerCase());
+  const recruiting = roomStatus === "connecting" && !recruitmentLocked;
+  const member = { id: profileId, memberStatus: "active", exitedAt: null } as unknown as Room["members"][number];
+  const activeCount = 1;
+
+  return {
+    id: room.id as string,
+    code: room.code as string,
+    need: roomNeed,
+    status: room.status as string,
+    realtimeVersion: Number(room.realtime_version || 0),
+    started_at: (room.started_at as string | null) || null,
+    startedAt: (room.started_at as string | null) || null,
+    players: [member],
+    members: [member],
+    sessionId: candidate.session?.id || null,
+    sessionStatus: candidate.session?.status || null,
+    recruiting,
+    recruitmentState: recruiting ? "recruiting" : recruitmentLocked ? "locked" : null,
+    formationState,
+    formationGroupId: null,
+    isForming: ["forming", "backfilling", "locked"].includes(String(formationState || "").toLowerCase()),
+    shell: true,
+    resumeEligible: true,
+    goodbyeRequests: [],
+    currentMemberCount: activeCount,
+    activeMemberCount: activeCount,
+    targetTotalPlayers: Number(roomNeed.target) || (roomStatus === "connecting" ? 2 : 1),
+  };
 }
 
 export async function recentConnectionsFor(profileId: string, context?: ReadContext): Promise<EnrichedRecentConnection[]> {

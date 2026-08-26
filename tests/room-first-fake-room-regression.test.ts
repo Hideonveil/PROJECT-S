@@ -34,7 +34,8 @@ describe("Room-first fake Room regression contract", () => {
 
   it("does not grant resume eligibility from enrichRoom alone", () => {
     expect(api).toContain("resumeEligible: options.resumeEligible === true");
-    expect(api).not.toContain("resumeEligible: true,");
+    const enrichRoomSource = api.slice(api.indexOf("export async function enrichRoom"), api.indexOf("type ActiveRoomCandidate"));
+    expect(enrichRoomSource).not.toContain("resumeEligible: true,");
   });
 
   it("does not reuse an orphaned live ticket", () => {

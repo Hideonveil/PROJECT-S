@@ -7,7 +7,6 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { performance } from "node:perf_hooks";
 import { createInterface } from "node:readline/promises";
-import { createClient } from "@supabase/supabase-js";
 import { randomUUID } from "node:crypto";
 import { buildActionEvent, CapacityTimeoutError, timeoutError, withTimeout } from "./evidence.mjs";
 
@@ -56,6 +55,7 @@ export const DEFAULT_OPTIONS = Object.freeze({
   maxRequests: 0,
   durationSec: 60,
   requestTimeoutMs: 10_000,
+  authDelayMs: 10_000,
   stateReadConcurrency: 8,
   realtimeConcurrency: 8,
   abortOn5xx: true,
@@ -142,6 +142,9 @@ export function parseArgs(argv = []) {
       index += 1;
     } else if (flag === "--request-timeout-ms") {
       options.requestTimeoutMs = integer(takeValue(argv, index, flag), flag, { min: 100, max: 10_000 });
+      index += 1;
+    } else if (flag === "--auth-delay-ms") {
+      options.authDelayMs = integer(takeValue(argv, index, flag), flag, { min: 1_000, max: 60_000 });
       index += 1;
     } else if (flag === "--manifest") {
       options.manifest = takeValue(argv, index, flag);
@@ -599,7 +602,7 @@ export async function loadAuthConfig(baseUrl, requestOptions = {}) {
   return { supabaseUrl: data.supabaseUrl, supabaseAnonKey: data.supabaseAnonKey };
 }
 
-export async function authenticateIdentity({ baseUrl, credential, config, ledger = null, runId = "", actorId = credential?.identity || "__system__" }) {
+export async function authenticateIdentity({ baseUrl, credential, ledger = null, runId = "", actorId = credential?.identity || "__system__" }) {
   const loginBody = JSON.stringify({ identifier: credential.identifier, password: credential.password });
   const login = await fetchJson({
     url: new URL("/api/auth/login", baseUrl).toString(),
@@ -610,52 +613,28 @@ export async function authenticateIdentity({ baseUrl, credential, config, ledger
     requestContext: { runId, actorId, action: "auth.login" },
     ledger,
   });
-  if (login.response.status !== 200 || !login.data?.email) {
+  if (login.response.status !== 200 || !login.data?.email || !login.data?.user_id || !login.data?.session?.access_token || !login.data?.session?.refresh_token) {
     throw new Error(`CAPACITY_AUTH: identity ${credential.identity} login returned HTTP ${login.response.status}`);
   }
 
-  const client = createClient(config.supabaseUrl, config.supabaseAnonKey, {
-    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
-  });
-  const signInStarted = performance.now();
-  const signInStartedAt = new Date().toISOString();
-  let signInError = null;
-  let data;
-  try {
-    ({ data, error: signInError } = await withTimeout(
-      client.auth.signInWithPassword({ email: login.data.email, password: credential.password }),
-      10_000,
-      "auth",
-      `identity ${credential.identity} Supabase sign-in timed out`,
-    ));
-  } catch (error) {
-    signInError = error;
-  }
+  const data = {
+    user: { id: login.data.user_id },
+    session: login.data.session,
+  };
   if (ledger) {
     await ledger.append(buildActionEvent({
       runId,
       actorId,
-      action: "auth.supabase_sign_in",
-      endpoint: "supabase.auth.signInWithPassword",
+      action: "auth.session_from_login",
+      endpoint: "/api/auth/login",
       requestId: randomUUID(),
-      startedAt: signInStartedAt,
+      startedAt: new Date().toISOString(),
       finishedAt: new Date().toISOString(),
-      latencyMs: performance.now() - signInStarted,
-      httpStatus: signInError ? null : 200,
-      error: signInError,
+      latencyMs: 0,
+      httpStatus: 200,
+      error: null,
       actualState: null,
     }));
-  }
-  const error = signInError;
-  if (error || !data.session?.access_token || !data.user?.id) {
-    if (error?.name === "TimeoutError") throw error;
-    const authError = new Error(`CAPACITY_AUTH: identity ${credential.identity} Supabase sign-in failed`, { cause: error || undefined });
-    const authStatus = Number(error?.status || error?.context?.status || 0) || null;
-    const authCode = String(error?.code || "").trim() || null;
-    authError.name = authStatus === 429 || authCode === "over_request_rate_limit" ? "AuthRateLimitError" : "AuthError";
-    authError.code = authCode || (authStatus === 429 ? "over_request_rate_limit" : "CAPACITY_AUTH_FAILED");
-    authError.status = authStatus;
-    throw authError;
   }
   return {
     identity: credential.identity,
@@ -675,14 +654,14 @@ async function authenticatedGet({ baseUrl, path: requestPath, token }) {
   return { status: response.status, data };
 }
 
-export async function authenticateActors({ baseUrl, actors, credentials, runId }) {
+export async function authenticateActors({ baseUrl, actors, credentials, runId, authDelayMs = 10_000 }) {
   const credentialsByIdentity = new Map(credentials.map((credential) => [credential.identity, credential]));
-  const config = await loadAuthConfig(baseUrl);
   const smoke = [];
-  for (const actor of actors) {
+  for (const [index, actor] of actors.entries()) {
     const credential = credentialsByIdentity.get(actor.actorId.toUpperCase());
     if (!credential) throw new Error(`CAPACITY_AUTH: no credential for identity ${actor.actorId}`);
-    const session = await authenticateIdentity({ baseUrl, credential, config });
+    if (index > 0) await sleep(Math.max(1_000, Number(authDelayMs) || 10_000));
+    const session = await authenticateIdentity({ baseUrl, credential });
     Object.defineProperty(actor, "accessToken", { configurable: true, enumerable: false, writable: true, value: session.accessToken });
     const state = await authenticatedGet({ baseUrl, path: "/api/state", token: session.accessToken });
     if (state.status !== 200 || !state.data?.user?.id) {
@@ -955,7 +934,7 @@ export async function writeEvidence({ directory, manifest, plan, result }) {
 }
 
 export function helpText() {
-  return `Usage:\n  pnpm capacity:run -- --dry-run --run-id <id>\n  pnpm capacity:run -- --prepare-auth --base-url <url> --run-id <id> --auth-secret-file <0600-file> --manifest-out <safe-file> --allow-production --production-ack <id>\n  pnpm capacity:run -- --execute-read-only --base-url <url> --run-id <id> --manifest <file> --auth-secret-file <0600-file> --max-users <n> --max-rps <n> --max-requests <n> --allow-production --production-ack <id>\n\nSafety:\n  dry-run is the default and performs no network request. Auth preparation accepts credentials only through hidden TTY stdin or a 0600 JSON file; credentials and access tokens never enter manifests, evidence, logs, or command arguments. Auth preparation uses the normal /api/auth/login plus Supabase password sign-in path and only performs authenticated GET smoke reads. Read-only execution only permits GET/HEAD on the fixed allowlist. Production execution requires --allow-production and --production-ack=<run-id>. Stateful mode requires --stateful-approval=<run-id> and supports --stages 40,75,100,150,200 for accelerated checkpoints.\n`;
+  return `Usage:\n  pnpm capacity:run -- --dry-run --run-id <id>\n  pnpm capacity:run -- --prepare-auth --base-url <url> --run-id <id> --auth-secret-file <0600-file> --manifest-out <safe-file> --allow-production --production-ack <id>\n  pnpm capacity:run -- --execute-read-only --base-url <url> --run-id <id> --manifest <file> --auth-secret-file <0600-file> --max-users <n> --max-rps <n> --max-requests <n> --allow-production --production-ack <id>\n\nSafety:\n  dry-run is the default and performs no network request. Auth preparation accepts credentials only through hidden TTY stdin or a 0600 JSON file; credentials and access tokens never enter manifests, evidence, logs, or command arguments. Auth uses one normal /api/auth/login request per identity and reuses the returned session; identity logins are paced by --auth-delay-ms (default 10000ms). Read-only execution only permits GET/HEAD on the fixed allowlist. Production execution requires --allow-production and --production-ack=<run-id>. Stateful mode requires --stateful-approval=<run-id> and supports --stages 40,75,100,150,200 for accelerated checkpoints.\n`;
 }
 
 async function main() {
@@ -1000,7 +979,7 @@ async function main() {
     authInput = await readAuthCredentials(options);
     if (options.mode === "auth-prepare") {
       manifest = { actors: AUTH_IDENTITIES.map((identity) => ({ actorId: identity, userId: "UNKNOWN", mode: "authenticated-read", profile: "synthetic" })) };
-      const authResult = await authenticateActors({ baseUrl: options.baseUrl, actors: manifest.actors, credentials: authInput.credentials, runId: options.runId });
+      const authResult = await authenticateActors({ baseUrl: options.baseUrl, actors: manifest.actors, credentials: authInput.credentials, runId: options.runId, authDelayMs: options.authDelayMs });
       const safeManifest = buildAuthManifest({ runId: options.runId, smoke: authResult.smoke });
       await writeAuthManifest(options.manifestOut, safeManifest);
       console.log(JSON.stringify({
@@ -1015,7 +994,7 @@ async function main() {
       return;
     }
     manifest = await loadManifest(options.manifest);
-    const authResult = await authenticateActors({ baseUrl: options.baseUrl, actors: manifest.actors, credentials: authInput.credentials, runId: options.runId });
+    const authResult = await authenticateActors({ baseUrl: options.baseUrl, actors: manifest.actors, credentials: authInput.credentials, runId: options.runId, authDelayMs: options.authDelayMs });
     const plan = buildReadOnlyPlan({ actors: manifest.actors, maxUsers: options.maxUsers, maxRequests: options.maxRequests, runId: options.runId, readerAllocation: manifest.readerAllocation });
     const result = await runReadOnlyBurst({ options, manifest, plan });
     const directory = options.evidenceDir || path.join(process.cwd(), "output", "capacity-validation", options.runId);

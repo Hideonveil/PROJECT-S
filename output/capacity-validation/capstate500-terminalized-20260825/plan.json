@@ -1,0 +1,34 @@
+{
+  "runId": "capstate500-terminalized-20260825",
+  "mode": "stateful",
+  "maxUsers": 5,
+  "stages": [
+    {
+      "name": "5",
+      "count": 5,
+      "ranked": 2,
+      "casual": 3,
+      "fragmented": 0,
+      "actorIds": [
+        "R01",
+        "R02",
+        "C01",
+        "C02",
+        "C03"
+      ]
+    }
+  ],
+  "allowedPostPaths": [
+    "/^\\/api\\/auth\\/login$/",
+    "/^\\/api\\/online$/",
+    "/^\\/api\\/offline$/",
+    "/^\\/api\\/matchmaking\\/start$/",
+    "/^\\/api\\/matchmaking\\/join$/",
+    "/^\\/api\\/matchmaking\\/status$/",
+    "/^\\/api\\/matchmaking\\/cancel$/",
+    "/^\\/api\\/matchmaking\\/confirm$/",
+    "/^\\/api\\/matchmaking\\/group\\/start$/",
+    "/^\\/api\\/room\\/[^/]+\\/(?:goodbye|exit|feedback)$/",
+    "/^\\/api\\/events$/"
+  ]
+}

@@ -119,6 +119,18 @@ export async function loginByIdentifier(identifier, password) {
 
 export const loginByUsername = loginByIdentifier;
 
+export async function setSession(session) {
+  if (!session?.access_token || !session?.refresh_token) throw new Error("登录状态失效，请重试");
+  const sb = await getSupabase();
+  const { data, error } = await sb.auth.setSession({
+    access_token: session.access_token,
+    refresh_token: session.refresh_token,
+  });
+  if (error) throw error;
+  cachedAccessToken = data.session?.access_token || session.access_token;
+  return data.session;
+}
+
 export async function resendVerification(email) {
   return request("/api/auth/resend", { email });
 }
@@ -199,6 +211,7 @@ export const goOffline = async ({ reason = "explicit_logout" } = {}) => {
 };
 export const goOnline = () => authedRequest("/api/online", {});
 export const roomAction = (code, action) => authedRequest(`/api/room/${code}/${action}`, {});
+export const getRoomSnapshot = (code) => authedRequest(`/api/room/${encodeURIComponent(code)}/snapshot`);
 export const requestRoomGoodbye = (code, requested) => authedRequest(`/api/room/${code}/goodbye`, { requested });
 export const roomFeedback = (code, payload) => authedRequest(`/api/room/${code}/feedback`, payload);
 export const searchFriend = (code) => authedRequest("/api/friends/search", { code });
@@ -218,16 +231,21 @@ export async function fetchRoomMessages(roomId) {
     .from("messages")
     .select("*")
     .eq("room_id", roomId)
-    .order("created_at", { ascending: true })
+    .order("created_at", { ascending: false })
     .limit(100);
   if (error) throw error;
-  return data || [];
+  return (data || []).reverse();
 }
 
 export async function sendRoomMessage(roomId, content, senderId) {
   const sb = await getSupabase();
-  const { error } = await sb.from("messages").insert({ room_id: roomId, sender_id: senderId, content });
+  const { data, error } = await sb
+    .from("messages")
+    .insert({ room_id: roomId, sender_id: senderId, content })
+    .select("*")
+    .single();
   if (error) throw error;
+  return data;
 }
 
 export function openEvents(handlers) {

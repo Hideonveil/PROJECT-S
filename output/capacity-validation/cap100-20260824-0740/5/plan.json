@@ -1,0 +1,178 @@
+{
+  "runId": "cap100-20260824-0740-5",
+  "mode": "read-only",
+  "maxUsers": 5,
+  "maxRequests": 600,
+  "requests": [
+    {
+      "actorId": "A",
+      "readerId": "A-reader-001",
+      "path": "/",
+      "authenticated": false
+    },
+    {
+      "actorId": "A",
+      "readerId": "A-reader-001",
+      "path": "/api/config",
+      "authenticated": false
+    },
+    {
+      "actorId": "A",
+      "readerId": "A-reader-001",
+      "path": "/api/state",
+      "authenticated": true
+    },
+    {
+      "actorId": "A",
+      "readerId": "A-reader-001",
+      "path": "/api/session",
+      "authenticated": true
+    },
+    {
+      "actorId": "A",
+      "readerId": "A-reader-001",
+      "path": "/js/app.js",
+      "authenticated": false
+    },
+    {
+      "actorId": "A",
+      "readerId": "A-reader-002",
+      "path": "/",
+      "authenticated": false
+    },
+    {
+      "actorId": "A",
+      "readerId": "A-reader-002",
+      "path": "/api/config",
+      "authenticated": false
+    },
+    {
+      "actorId": "A",
+      "readerId": "A-reader-002",
+      "path": "/api/state",
+      "authenticated": true
+    },
+    {
+      "actorId": "A",
+      "readerId": "A-reader-002",
+      "path": "/api/session",
+      "authenticated": true
+    },
+    {
+      "actorId": "A",
+      "readerId": "A-reader-002",
+      "path": "/js/app.js",
+      "authenticated": false
+    },
+    {
+      "actorId": "B",
+      "readerId": "B-reader-001",
+      "path": "/",
+      "authenticated": false
+    },
+    {
+      "actorId": "B",
+      "readerId": "B-reader-001",
+      "path": "/api/config",
+      "authenticated": false
+    },
+    {
+      "actorId": "B",
+      "readerId": "B-reader-001",
+      "path": "/api/state",
+      "authenticated": true
+    },
+    {
+      "actorId": "B",
+      "readerId": "B-reader-001",
+      "path": "/api/session",
+      "authenticated": true
+    },
+    {
+      "actorId": "B",
+      "readerId": "B-reader-001",
+      "path": "/js/app.js",
+      "authenticated": false
+    },
+    {
+      "actorId": "B",
+      "readerId": "B-reader-002",
+      "path": "/",
+      "authenticated": false
+    },
+    {
+      "actorId": "B",
+      "readerId": "B-reader-002",
+      "path": "/api/config",
+      "authenticated": false
+    },
+    {
+      "actorId": "B",
+      "readerId": "B-reader-002",
+      "path": "/api/state",
+      "authenticated": true
+    },
+    {
+      "actorId": "B",
+      "readerId": "B-reader-002",
+      "path": "/api/session",
+      "authenticated": true
+    },
+    {
+      "actorId": "B",
+      "readerId": "B-reader-002",
+      "path": "/js/app.js",
+      "authenticated": false
+    },
+    {
+      "actorId": "C",
+      "readerId": "C-reader-001",
+      "path": "/",
+      "authenticated": false
+    },
+    {
+      "actorId": "C",
+      "readerId": "C-reader-001",
+      "path": "/api/config",
+      "authenticated": false
+    },
+    {
+      "actorId": "C",
+      "readerId": "C-reader-001",
+      "path": "/api/state",
+      "authenticated": true
+    },
+    {
+      "actorId": "C",
+      "readerId": "C-reader-001",
+      "path": "/api/session",
+      "authenticated": true
+    },
+    {
+      "actorId": "C",
+      "readerId": "C-reader-001",
+      "path": "/js/app.js",
+      "authenticated": false
+    },
+    {
+      "actorId": "__shared__",
+      "readerId": "__shared__",
+      "path": "/styles/product-shell.css",
+      "authenticated": false
+    },
+    {
+      "actorId": "__shared__",
+      "readerId": "__shared__",
+      "path": "/api/health",
+      "authenticated": false
+    }
+  ],
+  "readerAllocation": {
+    "A": 2,
+    "B": 2,
+    "C": 1
+  },
+  "healthRequests": 1,
+  "healthRatio": 0.037037037037037035,
+  "perReaderMaximum": 5
+}

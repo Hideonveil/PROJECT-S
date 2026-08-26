@@ -1,0 +1,14 @@
+{
+  "total": 27,
+  "success": 27,
+  "five_xx": 0,
+  "four_xx": 0,
+  "rate_limited": 0,
+  "timeout": 0,
+  "network_error": 0,
+  "p50Ms": 1230.48,
+  "p95Ms": 2591.3,
+  "p99Ms": 3059.43,
+  "aborted": false,
+  "abortReason": null
+}

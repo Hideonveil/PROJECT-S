@@ -9,7 +9,7 @@ describe("Session fit connector contract", () => {
     const styles = read("public/styles/product-shell.css");
     expect(preview).toContain("session-fit-line");
     expect(preview).toContain("session-fit-member");
-    expect(preview).toContain("fitGridStyle(model.players.length)");
+    expect(preview).toContain("fitGridStyle(memberCount)");
     expect(preview).toContain("minmax(0, max-content)");
     expect(styles).toContain(".session-fit-line");
     expect(styles).toContain("text-align: center");

@@ -5,15 +5,15 @@ const service = readFileSync("src/lib/matchmaking/service.ts", "utf8");
 
 describe("reservation conflict guard", () => {
   it("bounds candidate reservation conflicts instead of walking the full candidate list", () => {
-    expect(service).toContain("const RESERVATION_CONFLICT_BUDGET = 2;");
+    expect(service).toContain("const RESERVATION_CONFLICT_BUDGET = 1;");
     expect(service).toContain("if (conflictCount >= RESERVATION_CONFLICT_BUDGET) break;");
     expect(service).toContain("if (conflictCount >= RESERVATION_CONFLICT_BUDGET) return activeTicketRow(userId);");
   });
 
-  it("backs off between distinct candidates and does not blindly retry the same mutation", () => {
-    expect(service).toContain("function waitForReservationConflict(conflictNumber: number)");
-    expect(service).toContain("Math.random() * RESERVATION_CONFLICT_BACKOFF_JITTER_MS");
-    expect(service).toContain("await waitForReservationConflict(conflictCount)");
+  it("persists a cooldown instead of sleeping and retrying inside a matcher tick", () => {
+    expect(service).not.toContain("waitForReservationConflict");
+    expect(service).toContain("next_match_attempt_at: nextAttemptAt");
+    expect(service).toContain("MATCHER_ERROR_QUARANTINE_THRESHOLD");
     expect(service).toContain("continue;");
     expect(service).toContain('String(error?.code || "") !== "40001"');
     expect(service).toContain("hasReservationConflictReason(data");
@@ -30,8 +30,10 @@ describe("reservation conflict guard", () => {
     expect(service).toContain("withMatchmakingFlight(userId, () => cancelTicketInternal");
   });
 
-  it("does not re-run matching work when the idempotent start RPC reused an active ticket", () => {
-    expect(service).toContain("if (data?.reused) return matchmakingStatus(userId);");
+  it("does not start or wake a matcher from a user request", () => {
+    expect(service).toContain("if (data?.reused) return startTicketSnapshot(data);");
+    expect(service).not.toContain("wakePersistentMatcher");
+    expect(service).toContain("return startTicketSnapshot(data);");
   });
 
   it("emits bounded reserve attempt and conflict counters without writing a database event per conflict", () => {

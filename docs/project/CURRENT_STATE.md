@@ -34,6 +34,7 @@
 > Auth / breaking-point 最新事实：`BP056` 的第 31 个 429 已通过源码与 Production runtime
 > 归因到 `/api/auth/login` 应用层 `30 / source IP / 15 min` 固定限流。`0df1454` 已部署，默认
 > `AUTH_LOGIN_IP_LIMIT=300 / 15 min`，单账号 `10 / 15 min` 与 Supabase Auth 安全保护保留。
+> 登录成功响应现在复用同一次 Auth session，浏览器与容量 Runner 不再为同一身份重复执行密码登录；容量 Runner 默认按 10 秒间隔逐个登录，避免单出口突发撞击平台 IP 限流。
 > Runner `ff553b4` 改为逐 stage 登录、`4d8a5b2` 将 state-read/Realtime I/O 限制为受控并发。
 > 40-user 首次重跑的单个 `ECONNRESET` 判为 Runner/network artifact；修正后第二次 40-user
 > login 与普通 Supabase sign-in 均为 `40/40`，但 120 秒内只形成 3 个 pair、2 个完整 group，

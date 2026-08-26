@@ -48,8 +48,9 @@ describe("matching UI performance and recruiting polish", () => {
 
     expect(app).toContain("function roomRenderSignature(room)");
     expect(app).toContain("return roomRenderSignature(next) !== roomRenderSignature(prev);");
-    expect(room).toContain("const showRecruitmentProgress = recruiting && visiblePlayers.length > 1;");
-    expect(room).toContain("showRecruitmentProgress ? icon(\"check\", 15) : \"\"");
-    expect(room).toContain("showRecruitmentProgress ? `<div class=\"room-recruitment-indicator\"");
+    expect(app).toContain("function updateRecruitingRoomView(nextRoom, previousRoom = null)");
+    expect(app).toContain("if (!updateRecruitingRoomView(state.room, previousRoom)) render();");
+    expect(room).toContain('data-room-recruitment-loop');
+    expect(room).not.toContain("showRecruitmentProgress");
   });
 });

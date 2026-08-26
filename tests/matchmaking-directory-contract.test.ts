@@ -15,7 +15,7 @@ describe("matchmaking directory contract", () => {
   });
 
   it("keeps the lobby preview inside the match page and hides pool counts", () => {
-    expect(home).toContain('class="match-directory"');
+    expect(home).toContain('class="match-directory match-directory--signal-card"');
     expect(home).toContain("OTHER GAMES");
     expect(home).not.toContain("匹配池在线");
   });

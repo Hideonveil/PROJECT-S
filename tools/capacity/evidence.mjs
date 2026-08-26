@@ -76,9 +76,10 @@ export function withTimeout(operation, timeoutMs, source, message = `${source} t
 }
 
 export function snapshotState(state = {}) {
-  const matchmaking = state.matchmaking || {};
-  const session = state.session || {};
-  const room = state.room || {};
+  const safeState = state && typeof state === "object" ? state : {};
+  const matchmaking = safeState.matchmaking || {};
+  const session = safeState.session || {};
+  const room = safeState.room || {};
   return {
     ticket_id: matchmaking.ticket?.id || null,
     pair_id: matchmaking.pair?.id || null,
@@ -88,7 +89,7 @@ export function snapshotState(state = {}) {
     room_status: room.status || null,
     session_status: session.status || null,
     matchmaking_status: matchmaking.ticket?.status || matchmaking.group?.state || matchmaking.pair?.status || null,
-    user_id: state.user?.id || null,
+    user_id: safeState.user?.id || null,
   };
 }
 

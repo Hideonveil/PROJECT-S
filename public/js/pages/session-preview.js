@@ -70,10 +70,11 @@ function rolePairMatches(mineNeed, partnerNeed) {
 }
 
 function fitGridStyle(memberCount) {
+  if (memberCount <= 1) return "grid-template-columns:minmax(0, 1fr);";
   const columns = [];
   for (let index = 0; index < memberCount; index += 1) {
-    columns.push("minmax(0, max-content)");
-    if (index < memberCount - 1) columns.push("minmax(120px, 1fr)");
+    columns.push(memberCount > 3 ? "minmax(76px, 1fr)" : "minmax(0, max-content)");
+    if (index < memberCount - 1) columns.push(memberCount > 3 ? "minmax(24px, .35fr)" : "minmax(72px, 1fr)");
   }
   return `grid-template-columns:60px ${columns.join(" ")};`;
 }
@@ -112,11 +113,12 @@ function modelFor(state, preview = false) {
   const room = state.room || {};
   const recruiting = room.recruiting === true;
   const members = Array.isArray(room.members) ? room.members : [];
-  const me = members.find((member) => member.id === state.user.id) || state.user || {};
   const memberModel = sessionMembers(room, state.user.id);
-  const partner = memberModel.otherMembers[0] || members.find((member) => member.id !== state.user.id) || {};
+  const liveMembers = memberModel.activeMembers;
+  const me = memberModel.currentMember || state.user || {};
+  const partner = memberModel.otherMembers[0] || liveMembers.find((member) => member.id !== state.user.id) || {};
   const mine = me.need || state.need || room.need || {};
-  const sourcePlayers = memberModel.members.length ? memberModel.members : [me, partner];
+  const sourcePlayers = liveMembers.length ? liveMembers : [me, partner].filter(Boolean);
   const players = sourcePlayers.map((member, index) => ({
     id: member.id || `player-${index}`,
     label: member.username || member.handle || member.id || `player-${index}`,
@@ -144,6 +146,7 @@ function modelFor(state, preview = false) {
     recruiting,
     recruitmentState: room.recruitmentState || (recruiting ? "recruiting" : null),
     formationGroupId: room.formationGroupId || null,
+    shell: room.shell === true,
   };
 }
 
@@ -157,22 +160,24 @@ function fitRows(model) {
     { id: model.mineId, need: model.mine },
     { id: model.partnerId, need: model.partner },
   ];
+  const casual = members.every((member) => modeLabel(member.need || model.mine) === "休闲");
   const rows = [
     ["游戏", (member) => gameLabel(member.need)],
-    ["目的", (member) => member.need?.goal || modeLabel(member.need)],
-    ["段位", (member) => rankValue(member.need)],
-    ["位置", (member) => roleValue(member.need)],
-    ["开麦", (member) => voiceLabel(member.need)],
+    ["目的", (member) => modeLabel(member.need || model.mine)],
+    ...(casual ? [] : [["段位", (member) => rankValue(member.need)], ["位置", (member) => roleValue(member.need)]]),
+    ["麦克风", (member) => voiceLabel(member.need)],
   ];
-  if (members.length <= 2) {
+  if (members.length === 1) {
+    return rows.map(([label, valueFor]) => `<div class="session-fit-row session-fit-row--solo" role="row"><span class="session-fit-label" role="rowheader">${esc(label)}</span><strong class="session-fit-member" role="cell">${esc(valueFor(members[0]))}</strong></div>`).join("");
+  }
+  if (members.length === 2) {
     const mine = members[0] || { need: model.mine };
     const partner = members[1] || { need: model.partner };
     const pairRows = [
       ["游戏", gameLabel(mine.need), gameLabel(partner.need), gameLabel(mine.need) === gameLabel(partner.need)],
-      ["目的", mine.need?.goal || modeLabel(mine.need), partner.need?.goal || modeLabel(partner.need), (mine.need?.goal || modeLabel(mine.need)) === (partner.need?.goal || modeLabel(partner.need))],
-      ["段位", rankValue(mine.need), rankValue(partner.need), rankValue(mine.need) === rankValue(partner.need)],
-      ["位置", roleValue(mine.need), roleValue(partner.need), rolePairMatches(mine.need, partner.need)],
-      ["开麦", voiceLabel(mine.need), voiceLabel(partner.need), voiceLabel(mine.need) === voiceLabel(partner.need)],
+      ["目的", modeLabel(mine.need || model.mine), modeLabel(partner.need || model.mine), modeLabel(mine.need || model.mine) === modeLabel(partner.need || model.mine)],
+      ...(casual ? [] : [["段位", rankValue(mine.need), rankValue(partner.need), rankValue(mine.need) === rankValue(partner.need)], ["位置", roleValue(mine.need), roleValue(partner.need), rolePairMatches(mine.need, partner.need)]]),
+      ["麦克风", voiceLabel(mine.need), voiceLabel(partner.need), voiceLabel(mine.need) === voiceLabel(partner.need)],
     ];
     return pairRows.map(([label, mineValue, partnerValue, matches]) => `<div class="session-fit-row" role="row"><span class="session-fit-label" role="rowheader">${esc(label)}</span><div class="session-fit-conditions"><strong class="session-fit-member" role="cell">${esc(mineValue)}</strong>${fitLink(matches)}<strong class="session-fit-member" role="cell">${esc(partnerValue)}</strong></div></div>`).join("");
   }
@@ -186,14 +191,12 @@ function fitRows(model) {
 function playerRail(model) {
   const visiblePlayers = model.players.length ? model.players : PREVIEW_PLAYERS;
   const recruiting = model.recruiting === true;
-  const showRecruitmentProgress = recruiting && visiblePlayers.length > 1;
   return `<aside class="session-preview-rail" aria-label="用户栏">
-    <header class="session-preview-rail__head"><span class="session-preview-kicker"><i aria-hidden="true"></i>${recruiting ? "ROOM / 招募中" : "SESSION / 已连接"}</span><div><b>成员栏</b><small>${model.activeMemberCount || visiblePlayers.length} / ${model.target} ${recruiting ? "招募中" : "已满"}</small></div></header>
+    <header class="session-preview-rail__head"><div><b>成员</b><small data-room-member-count>${model.activeMemberCount || visiblePlayers.length} / ${model.target} ${recruiting ? "招募中" : "已满"}</small></div></header>
     <div class="session-preview-players">
-      ${visiblePlayers.map((player, index) => `<article class="session-preview-player ${player.tone}"><span class="session-preview-player__index">${String(index + 1).padStart(2, "0")}</span>${avatarWrap(player.avatarKey, 58, player.online)}<div><b>${esc(player.name)}</b><small>${esc(player.handle)}</small><span>${index === 0 ? "已进入 Session" : "已确认连接"}</span></div>${showRecruitmentProgress ? `<i aria-hidden="true">${showRecruitmentProgress ? icon("check", 15) : ""}</i>` : ""}</article>`).join("")}
+      ${visiblePlayers.map((player, index) => `<article class="session-preview-player ${player.tone}"><span class="session-preview-player__index">${String(index + 1).padStart(2, "0")}</span>${avatarWrap(player.avatarKey, 58, player.online)}<div><b>${esc(player.name)}</b><small>${esc(player.handle)}</small><span>${index === 0 ? "已进入房间" : "已加入房间"}</span></div></article>`).join("")}
     </div>
-    <div class="session-preview-rail__note"><span>${icon(recruiting ? "users" : "star", 16)}</span><p>${recruiting ? "还在摇人，兼容玩家会继续加入。<br />你可以先聊天，也可以现在就开局。" : "房间已满，匹配计时已停止。<br />接下来只保留交流与离开。"}</p></div>
-    ${showRecruitmentProgress ? `<div class="room-recruitment-indicator" role="status" aria-live="polite"><span>正在摇人…</span><i aria-hidden="true"></i></div>` : ""}
+    ${recruiting ? `<div class="room-recruitment-loop" data-room-recruitment-loop role="status" aria-live="polite"><span>正在寻找合适的队友</span><i aria-hidden="true"></i></div>` : ""}
     <div class="session-preview-rail__footer"><span>成员 ID</span><b title="${esc(visiblePlayers.map((player) => player.label || player.id).join(" / "))}">${esc(visiblePlayers.map((player) => player.label || player.id).join(" / "))}</b></div>
   </aside>`;
 }
@@ -211,16 +214,33 @@ function goodbyeSummary(model) {
   };
 }
 
+function fitTableMarkup(model) {
+  const memberCount = model.players.length;
+  return memberCount === 1
+    ? `<div class="session-fit-table session-fit-table--solo" data-room-fit-table data-member-count="1" role="table" aria-label="你的匹配条件"><div class="session-fit-row session-fit-row--solo-head" role="row"><b role="columnheader" title="${esc(model.players[0]?.label || model.players[0]?.name || "你")}">${esc(model.players[0]?.label || model.players[0]?.name || "你")}</b></div>${fitRows(model)}</div>`
+    : `<div class="session-fit-table" data-room-fit-table data-member-count="${memberCount}" role="table" aria-label="成员匹配条件" style="${fitGridStyle(memberCount)}"><div class="session-fit-row session-fit-row--head session-fit-row--group" role="row"><span class="session-fit-label session-fit-header-label" role="columnheader">条件</span><div class="session-fit-conditions session-fit-conditions--group">${groupFitCells(model.players, (player) => player.label || player.name, true, "b", { withLinks: false, withPlaceholders: true, cellRole: "columnheader" })}</div></div>${fitRows(model)}</div>`;
+}
+
+export function recruitingRoomFragments(state) {
+  const model = modelFor(state);
+  return { rail: playerRail(model), fitTable: fitTableMarkup(model), memberCount: model.activeMemberCount || model.players.length };
+}
+
 function chatPanel(model) {
   const quickReplies = ["怎么说，来一把？", "行", "我加你", "开麦吗？"];
-  const seedMessages = model.preview ? `<div class="session-preview-message session-preview-message--partner"><span>hideonhome</span><p>怎么说，来一把？</p><time>现在</time></div><div class="session-preview-message session-preview-message--me"><span>你</span><p>行，我加你。</p><time>现在</time></div>` : `<div class="chat-empty">还没有消息，打个招呼吧</div>`;
+  const seedMessages = model.shell
+    ? `<div class="chat-skeleton" role="status" aria-label="聊天记录加载中"><i></i><i></i><i></i></div>`
+    : model.preview
+      ? `<div class="session-preview-message session-preview-message--partner"><span>hideonhome</span><p>怎么说，来一把？</p><time>现在</time></div><div class="session-preview-message session-preview-message--me"><span>你</span><p>行，我加你。</p><time>现在</time></div>`
+      : `<div class="chat-empty">还没有消息，打个招呼吧</div>`;
   const recruiting = model.recruiting === true;
+  const fitTable = fitTableMarkup(model);
   return `<section class="session-preview-chat" aria-label="Room 聊天">
-    <header class="session-preview-chat__head"><div><span class="session-preview-kicker">${recruiting ? "ROOM / RECRUITING" : "成员的选择"}</span><h2>${recruiting ? "先聊起来" : "高度拟合"} <i aria-hidden="true">${icon(recruiting ? "users" : "star", 18)}</i></h2><p>${recruiting ? "房间会持续补位，达到上限后自动停止招募。" : "匹配条件已对齐，现在把这局玩起来。"}</p></div><span class="session-preview-live"><i aria-hidden="true"></i>LIVE</span></header>
-    <div class="session-fit-table" role="table" aria-label="成员匹配条件" style="${fitGridStyle(model.players.length)}"><div class="session-fit-row session-fit-row--head session-fit-row--group" role="row"><span class="session-fit-label session-fit-header-label" role="columnheader">条件</span><div class="session-fit-conditions session-fit-conditions--group">${groupFitCells(model.players, (player) => player.label || player.name, true, "b", { withLinks: false, withPlaceholders: true, cellRole: "columnheader" })}</div></div>${fitRows(model)}</div>
+    <header class="session-preview-chat__head"><div><span class="session-preview-kicker">${recruiting ? "正在匹配" : "成员的选择"}</span><h2>${recruiting ? "先聊起来" : "高度拟合"} <i aria-hidden="true">${icon(recruiting ? "users" : "star", 18)}</i></h2><p>${recruiting ? "新成员加入时会出现在左侧成员栏。" : "匹配条件已对齐，现在把这局玩起来。"}</p></div><span class="session-preview-live"><i aria-hidden="true"></i>LIVE</span></header>
+    ${fitTable}
     <div class="session-preview-chat__divider"><span>聊天</span><i aria-hidden="true"></i><small>实时同步</small></div>
     <div id="room-chat" class="session-preview-messages" role="log" aria-live="polite" aria-relevant="additions" aria-atomic="false" aria-label="聊天记录">${seedMessages}</div>
-    <div class="sr-only" data-session-live-announcer role="status" aria-live="polite" aria-atomic="true"></div>
+    <div class="sr-only" data-session-live-announcer role="status" aria-live="polite" aria-atomic="true"></div><div class="sr-only" data-chat-send-status role="status" aria-live="polite" aria-atomic="true"></div>
     <div class="session-preview-quick" aria-label="快捷回复">${quickReplies.map((reply) => `<button type="button" data-chat-quick-reply="${esc(reply)}">${esc(reply)}</button>`).join("")}</div>
     <form data-form="room-chat" class="session-preview-composer"><input type="text" id="chat-input" name="message" maxlength="500" placeholder="说点什么…" aria-label="输入消息" autocomplete="off" /><button type="submit" aria-label="发送">${icon("send", 17)}</button></form>
   </section>`;
@@ -231,10 +251,9 @@ function sessionMarkup(model) {
   const recruiting = model.recruiting === true;
   const goodbyeButtonLabel = goodbye.count > 0 ? `拜拜（${goodbye.count}/${goodbye.denominator}）` : "拜拜";
   return `<div class="matching-modal-page" role="dialog" aria-modal="true" aria-labelledby="session-title"><div class="matching-modal-backdrop" aria-hidden="true"></div><section class="matching-modal matching-session-modal" data-session-preview>
-    <header class="matching-modal-head"><div><span class="matching-modal-live"><i aria-hidden="true"></i>${recruiting ? "ROOM / LIVE" : "ROOM → SESSION / LIVE"}</span><p>${recruiting ? "同一个 Room 里继续招募兼容玩家" : "招募已停止，成员留在同一个 Room 中交流"}</p></div><span class="matching-session-state">${icon("radio", 14)}${recruiting ? "正在招募" : "已停止招募"}</span></header>
-    <div class="matching-session-title"><div class="match-eyebrow">${recruiting ? `ROOM / ${model.activeMemberCount || 1} → ${model.target}` : `SESSION READY / ${model.target}`}</div><h1 id="session-title">${recruiting ? "还在摇人。" : "这一局，开始了。"}</h1><p>${recruiting ? "可以先聊天；停止招募或达到人数上限后进入正式 Session。" : "匹配计时已关闭，成员栏保留；右侧变成聊天。"}</p></div>
+    <div class="matching-session-title"><div class="match-eyebrow">${recruiting ? `ROOM / ${model.activeMemberCount || 1} → ${model.target}` : `SESSION READY / ${model.target}`}</div><h1 id="session-title">${recruiting ? "招募中" : "这一局，开始了。"}</h1>${recruiting ? "" : "<p>匹配计时已关闭，成员栏保留；右侧变成聊天。</p>"}</div>
     <div class="matching-session-content">${playerRail(model)}<div class="matching-session-main">${chatPanel(model)}</div></div>
-    <footer class="matching-modal-footer matching-session-footer"><div class="matching-session-footer-left">${recruiting ? `<p data-session-goodbye-status role="status" aria-live="polite"><i aria-hidden="true"></i>成员可以继续加入，准备好后由任一成员停止招募。</p>` : `<button type="button" class="session-preview-goodbye" data-action="${goodbye.mine ? "withdraw-goodbye" : "say-goodbye"}" data-session-goodbye-button aria-label="${esc(`${goodbyeButtonLabel}${goodbye.mine ? "，再次点击撤回" : ""}`)}">${icon("handshake", 17)}<span data-session-goodbye-count>${esc(goodbyeButtonLabel)}</span></button><p data-session-goodbye-status role="status" aria-live="polite" aria-atomic="true"><i aria-hidden="true"></i>${goodbye.count}/${goodbye.denominator} 已确认，所有成员都确认后进入赛后反馈。</p>`}</div>${recruiting && model.formationGroupId ? `<button type="button" class="session-preview-goodbye" data-action="lock-forming-room" data-value="${esc(model.formationGroupId)}">${icon("check", 17)}<span>就这些人</span></button>` : ""}<button type="button" class="session-preview-leave" data-action="${recruiting ? "cancel-match" : "exit-room"}">${icon("logOut", 16)}<span>${recruiting ? "退出招募" : "离开"}</span></button></footer>
+    <footer class="matching-modal-footer matching-session-footer"><div class="matching-session-footer-left">${recruiting ? `<p data-session-goodbye-status role="status" aria-live="polite"><i aria-hidden="true"></i><span>正在为房间寻找新成员</span></p>` : `<button type="button" class="session-preview-goodbye" data-action="${goodbye.mine ? "withdraw-goodbye" : "say-goodbye"}" data-session-goodbye-button aria-label="${esc(`${goodbyeButtonLabel}${goodbye.mine ? "，再次点击撤回" : ""}`)}">${icon("handshake", 17)}<span data-session-goodbye-count>${esc(goodbyeButtonLabel)}</span></button><p data-session-goodbye-status role="status" aria-live="polite" aria-atomic="true"><i aria-hidden="true"></i>${goodbye.count}/${goodbye.denominator} 已确认，所有成员都确认后进入赛后反馈。</p>`}</div>${recruiting ? `<button type="button" class="session-preview-goodbye session-preview-stop" data-action="lock-forming-room" data-value="${esc(model.formationGroupId || "")}">${icon("square", 16)}<span>停止招募</span></button>` : ""}<button type="button" class="session-preview-leave" data-action="${recruiting ? "cancel-match" : "exit-room"}">${icon("logOut", 16)}<span>${recruiting ? "退出招募" : "离开"}</span></button></footer>
   </section></div>`;
 }
 

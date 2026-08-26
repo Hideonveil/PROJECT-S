@@ -1,0 +1,33 @@
+{
+  "run_id": "cap-auth-20260824-0732",
+  "release_candidate": "UNKNOWN",
+  "endpoint": "/api/state",
+  "reader_allocation": {
+    "A": 34,
+    "B": 33,
+    "C": 33
+  },
+  "actors": [
+    {
+      "actor_id": "A",
+      "user_id": "1c3268a2-db6f-43c5-9955-f5098690eb49",
+      "mode": "UNKNOWN",
+      "profile": "UNKNOWN",
+      "token_expiry": "2026-08-24T08:24:15.000Z"
+    },
+    {
+      "actor_id": "B",
+      "user_id": "dd4ff43e-9c1c-4fcc-9929-239ad0c2c846",
+      "mode": "UNKNOWN",
+      "profile": "UNKNOWN",
+      "token_expiry": "2026-08-24T08:24:21.000Z"
+    },
+    {
+      "actor_id": "C",
+      "user_id": "4130a908-39ec-454b-bb5c-a0b3fd956f04",
+      "mode": "UNKNOWN",
+      "profile": "UNKNOWN",
+      "token_expiry": "2026-08-24T08:24:28.000Z"
+    }
+  ]
+}

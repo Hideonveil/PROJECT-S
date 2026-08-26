@@ -6,19 +6,21 @@ import { button, esc, needSummary, setProductRailHeldOpen, toast } from "./ui.js
 import { state, update, resetState } from "./store.js";
 import { DEVICES, GAME_BY_ID, GAMES, GENRES } from "./data.js";
 import { FLOW } from "./flow.js";
-import * as api from "./api.js";
+import * as api from "./api.js?v=20260826-auth-session-01";
 import { authPage } from "./pages/auth.js";
 import { HERO_PREVIEW_DIRECTORY, heroDirectoryMarkup, heroDirectoryPersonMarkup, heroPreviewPage, landingPage } from "./pages/landing.js?v=20260822-directory-readonly-01";
 import { welcomePage } from "./pages/welcome.js";
-import { homeFlowStepper, homePage, matchingDirectoryMarkup, matchingDirectoryPersonMarkup } from "./pages/home.js?v=20260825-room-first-01";
+import { homeFlowStepper, homePage, matchingDirectoryMarkup, matchingDirectoryPersonMarkup } from "./pages/home.js?v=20260826-signal-card-01";
 import { communityPage } from "./pages/community.js";
 import { matchingPage, matchingPreviewPage } from "./pages/matching.js";
-import { sessionPage, sessionPreviewPage } from "./pages/session-preview.js?v=20260825-room-first-01";
+import { recruitingRoomFragments, sessionPage, sessionPreviewPage } from "./pages/session-preview.js?v=20260826-room-shell-01";
 import { gameoverPage } from "./pages/gameover.js";
 import { connectionsPage } from "./pages/connections.js";
 import { mePage } from "./pages/me.js";
 import { dismissHeroBoot, withProjectTransition } from "./transition.js";
 import { memberDisplayName, sessionMembers } from "./session-members.js";
+import { mergeRoomMessages } from "./chat-merge.js";
+import { rosterDelta } from "./room-roster.js";
 
 const app = document.getElementById("app");
 
@@ -82,6 +84,8 @@ let ONLINE = false;
 let eventSourceClose = null;
 let chatClose = null;
 let chatGeneration = 0;
+let roomHydrationRoomId = "";
+let roomHydrationPromise = null;
 let presenceHeartbeatHandle = 0;
 let chatSendPending = false;
 let goodbyeRequestPending = false;
@@ -93,6 +97,7 @@ let lastGoodbyeAnnouncementKey = "";
 let lastSessionAnnouncementKey = "";
 let chatAnnouncementRoomId = "";
 const announcedChatMessages = new Set();
+let roomChatMessages = [];
 let wizardAdvanceTimer = null;
 let roomExitReadyAt = 0;
 let matchStartObserver = null;
@@ -101,6 +106,11 @@ let heroWavesCleanup = null;
 let targetCursorCleanup = null;
 let matchRequestPending = false;
 let matchConfirmationPending = false;
+let recruitmentExitPending = false;
+// Keep the Room that the player explicitly exited tombstoned for the rest of
+// this client session. Late hydration/Realtime snapshots can arrive after the
+// route is already home; a short loading flag cannot safely guard that race.
+let recruitmentExitRoomId = "";
 let staggeredRailCleanup = null;
 let staggeredRailHoldOpen = false;
 let lastTrackedRoute = "";
@@ -119,6 +129,10 @@ let verificationPending = false;
 let verificationResendPending = false;
 let forgotPasswordPending = false;
 let passwordResetPending = false;
+
+function isRecruitmentExitRoom(room) {
+  return Boolean(recruitmentExitRoomId && room?.id === recruitmentExitRoomId);
+}
 
 function trackCurrentPage() {
   if (!state.authenticated) return;
@@ -859,9 +873,11 @@ function updateHomeDirectoryView(match = state.match, { force = false } = {}) {
   if (!force && signature === homeDirectorySignature) return;
   homeDirectorySignature = signature;
   homeDirectoryOffset = 0;
+  const countEl = document.querySelector("[data-directory-count]");
+  if (countEl) countEl.textContent = String(directory.length).padStart(2, "0");
   listEl.innerHTML = directory.length
     ? matchingDirectoryMarkup(directory)
-    : `<div class="match-directory-empty"><b>还没有公开的匹配请求</b><span>第一个开始摇人的人，会出现在这里。</span></div>`;
+    : `<div class="match-directory-empty"><span class="match-directory-empty-mark" aria-hidden="true">+</span><b>等待玩家中</b></div>`;
 }
 
 function rotateHomeDirectory() {
@@ -1165,6 +1181,7 @@ function render() {
   if (route.name === "room" && state.room?.status === "playing") startRoomTimer();
   if (route.name === "room" && state.room?.id) {
     initRoomChat();
+    if (state.room.shell === true) hydrateRoomAfterShell(state.room.id);
   }
 }
 
@@ -1503,20 +1520,26 @@ function syncDraftFromDom(page) {
 
 function normalizeServerRoom(room) {
   const rawMembers = room.members || (room.players || []).map((p) => ({ ...p, memberStatus: "active", exitedAt: null }));
-  const members = rawMembers.map((m) => ({
-    ...m,
-    id: m.id,
-    name: m.nickname || m.name || "玩家",
-    handle: m.handle || `${m.nickname || "玩家"}#${String(m.id || "").slice(-4)}`,
+  const members = rawMembers.map((m) => {
+    // The shell intentionally carries only the current user's id. Use the
+    // already-known local profile for that first paint; the server profile
+    // enrichment will replace it in the background.
+    const source = m.id === state.user.id ? { ...state.user, ...m } : m;
+    return ({
+    ...source,
+    id: source.id,
+    name: source.nickname || source.name || "玩家",
+    handle: source.handle || `${source.nickname || "玩家"}#${String(source.id || "").slice(-4)}`,
     kind: "player",
-    games: m.games || [],
-    genres: m.genres || [],
-    playStyle: m.playStyle || "",
-    need: m.need || room.need || state.need,
-    memberStatus: m.memberStatus || "active",
-    exitedAt: m.exitedAt || null,
-    gameAccounts: m.gameAccounts || {},
-  }));
+    games: source.games || [],
+    genres: source.genres || [],
+    playStyle: source.playStyle || "",
+    need: source.need || room.need || state.need,
+    memberStatus: source.memberStatus || "active",
+    exitedAt: source.exitedAt || null,
+    gameAccounts: source.gameAccounts || {},
+  });
+  });
   const memberModel = sessionMembers({
     members,
     target: room.target ?? room.targetTotalPlayers ?? room.need?.target,
@@ -1545,6 +1568,7 @@ function normalizeServerRoom(room) {
     activeMemberCount: memberModel.activeMemberCount,
     targetTotalPlayers: memberModel.targetTotalPlayers,
     status: room.status || "playing",
+    realtimeVersion: Number(room.realtimeVersion || 0),
     startedAt: room.startedAt ? new Date(room.startedAt).getTime() : Date.now(),
     need: room.need || state.need,
     sessionId: room.sessionId || null,
@@ -1554,6 +1578,7 @@ function normalizeServerRoom(room) {
     formationState: room.formationState || null,
     formationGroupId: room.formationGroupId || null,
     isForming: room.isForming === true || ["forming", "backfilling", "locked"].includes(String(room.formationState || "")),
+    shell: room.shell === true,
     resumeEligible: room.resumeEligible === true,
     goodbyeRequests: room.goodbyeRequests || [],
     target: memberModel.targetTotalPlayers,
@@ -1666,6 +1691,44 @@ function updateSessionView(nextRoom) {
       lastGoodbyeAnnouncementKey = nextAnnouncementKey;
     }
   }
+  return true;
+}
+
+function replaceRoomFragment(current, html) {
+  const template = document.createElement("template");
+  template.innerHTML = html.trim();
+  const next = template.content.firstElementChild;
+  if (!next) return;
+  next.classList.add("is-room-fragment-entering");
+  current.replaceWith(next);
+  window.requestAnimationFrame(() => next.classList.remove("is-room-fragment-entering"));
+}
+
+function updateRecruitingRoomView(nextRoom, previousRoom = null) {
+  const root = document.querySelector("[data-session-preview]");
+  if (!root || nextRoom?.recruiting !== true || state.room?.recruiting !== true) return false;
+  const { rail, fitTable, memberCount } = recruitingRoomFragments({ ...state, room: nextRoom });
+  const currentRail = root.querySelector(".session-preview-rail");
+  const currentFitTable = root.querySelector("[data-room-fit-table]");
+  if (!currentRail || !currentFitTable) return false;
+  replaceRoomFragment(currentRail, rail);
+  replaceRoomFragment(currentFitTable, fitTable);
+  const stopButton = root.querySelector('[data-action="lock-forming-room"]');
+  if (stopButton && nextRoom.formationGroupId) stopButton.dataset.value = nextRoom.formationGroupId;
+  const title = root.querySelector("#session-title");
+  if (title) title.textContent = "招募中";
+  const delta = rosterDelta(previousRoom?.members, nextRoom.members);
+  delta.joined.forEach((member) => {
+    const name = memberDisplayName(member);
+    toast(`${name} 已加入房间`);
+    announceSessionLive(`${name} 已加入房间`, `room-join:${nextRoom.id}:${member.id}`);
+  });
+  delta.left.forEach((member) => {
+    const name = memberDisplayName(member);
+    toast(`${name} 已离开房间`);
+    announceSessionLive(`${name} 已离开房间`, `room-leave:${nextRoom.id}:${member.id}`);
+  });
+  announceSessionLive(`房间成员已更新，当前 ${memberCount} 人，仍在招募。`, `recruiting-members:${nextRoom.id}:${memberCount}`);
   return true;
 }
 
@@ -1845,6 +1908,16 @@ function applyMatchmakingSnapshot(snapshot, options = {}) {
 
 function applyServerSnapshot(data) {
   const routeName = parseRoute().name;
+  const previousRoom = state.room;
+  // Snapshot endpoint responses carry the database's monotonic Room version.
+  // A delayed hydration must never replace the newer roster a Realtime event
+  // already placed on screen (the source of the former phantom-member flash).
+  if (data?.room && data?.snapshotVersion != null && previousRoom?.id === data.room.id) {
+    const incomingVersion = Number(data.snapshotVersion);
+    const currentVersion = Number(previousRoom.realtimeVersion || 0);
+    if (Number.isFinite(incomingVersion) && incomingVersion < currentVersion) return;
+    data = { ...data, room: { ...data.room, realtimeVersion: incomingVersion } };
+  }
   const previousMatchShape = matchmakingShape(state.match);
   const previousMatch = state.match;
   const previousFriendRequestShape = JSON.stringify(state.friendRequests || {});
@@ -1938,6 +2011,10 @@ function applyServerSnapshot(data) {
       partner: sessionPartnerFor(session),
     };
   }
+  // A successful recruitment exit is authoritative even after navigation has
+  // reached home. Ignore late snapshots for that exact Room instead of
+  // allowing the global active-Room redirect to reopen a stale one-person UI.
+  if (isRecruitmentExitRoom(patch.room)) delete patch.room;
   const roomChanged = patch.room ? roomShapeChanged(patch.room, state.room) : false;
   update(patch);
   if (routeName === "matching" && matchmakingHasTicketField && !matchmakingLiveTicket && !matchmakingPartial && !patch.room && !state.room) {
@@ -1957,9 +2034,9 @@ function applyServerSnapshot(data) {
   } else if (patch.room === null && routeName === "room") {
     render();
   } else if (patch.room && routeName === "room" && roomChanged) {
-    // Room membership/state really changed: rebuild once so joins/leaves are
-    // reflected, but never repaint on a polling snapshot with only metadata.
-    render();
+    // Recruiting joins/leaves update only the member rail and fit table, so the
+    // chat composer stays mounted and the Room never flashes like a new page.
+    if (!updateRecruitingRoomView(state.room, previousRoom)) render();
   } else if (patch.room && routeName === "room" && friendRequestsChanged) {
     updateSessionView(state.room);
   }
@@ -1999,10 +2076,37 @@ async function confirmMatch(decision) {
   }
 }
 
-async function startGroupMatch(groupId) {
-  if (!groupId || matchConfirmationPending) return;
+function setRecruitmentActionLoading(action, loading) {
+  const button = document.querySelector(`[data-action="${action}"]`);
+  if (!button) return;
+  const label = button.querySelector("span");
+  button.disabled = loading;
+  button.setAttribute("aria-busy", String(loading));
+  if (loading) {
+    button.dataset.originalLabel ||= label?.textContent || "";
+    if (label) label.textContent = action === "lock-forming-room" ? "正在停止招募…" : "正在退出招募…";
+    if (action === "lock-forming-room") button.querySelector(".icon")?.classList.add("is-spinning");
+  } else if (label && button.dataset.originalLabel) {
+    label.textContent = button.dataset.originalLabel;
+    delete button.dataset.originalLabel;
+    if (action === "lock-forming-room") button.querySelector(".icon")?.classList.remove("is-spinning");
+  }
+}
+
+async function startGroupMatch(groupId, { recruitmentAction = false } = {}) {
+  if (matchConfirmationPending) return;
   matchConfirmationPending = true;
+  if (recruitmentAction) setRecruitmentActionLoading("lock-forming-room", true);
   try {
+    // The fast Room shell intentionally arrives before the full group data.
+    // Resolve the authoritative group only when the user asks to lock, so the
+    // action is visible immediately without trusting a client-generated id.
+    if (!groupId && recruitmentAction) {
+      const snapshot = await api.getState();
+      if (snapshot?.room?.id === state.room?.id) applyServerSnapshot(snapshot);
+      groupId = snapshot?.room?.formationGroupId || "";
+    }
+    if (!groupId) throw new Error("房间招募信息仍在同步，请稍后重试");
     const snapshot = await api.startMatchGroup(groupId);
     applyMatchmakingSnapshot(snapshot);
     if (snapshot?.group?.roomCode || snapshot?.room) {
@@ -2015,6 +2119,7 @@ async function startGroupMatch(groupId) {
     toast(error.message);
   } finally {
     matchConfirmationPending = false;
+    if (recruitmentAction) setRecruitmentActionLoading("lock-forming-room", false);
   }
 }
 
@@ -2036,6 +2141,10 @@ async function confirmGroupMatch(groupId, decision) {
 }
 
 function handleServerRoom(room) {
+  // Once the player has chosen to leave recruitment, the local exit intent is
+  // authoritative until navigation completes. A late Realtime room event
+  // must not repaint the Room underneath the exit action.
+  if (isRecruitmentExitRoom(room)) return;
   const normalized = normalizeServerRoom(room);
   const isNewRoom = !state.room || state.room.code !== normalized.code;
   if (isNewRoom) roomExitReadyAt = 0;
@@ -2142,8 +2251,20 @@ function connectEvents() {
       if (parseRoute().name === "friends") render();
     },
     room: (data) => handleServerRoom(data.room),
+    roomEvent: () => refreshLiveRoomSnapshot(),
     "game-over": (data) => handleServerGameOver(data.session),
   });
+}
+
+async function refreshLiveRoomSnapshot() {
+  if (parseRoute().name !== "room" || !state.room?.code || recruitmentExitPending || isRecruitmentExitRoom(state.room)) return;
+  try {
+    const snapshot = await api.getRoomSnapshot(state.room.code);
+    if (snapshot?.room?.id === state.room.id) applyServerSnapshot(snapshot);
+  } catch {
+    // The global state reconciliation remains the fallback for a Room that
+    // has just transitioned to terminal state.
+  }
 }
 
 function markPresenceOnline() {
@@ -2173,7 +2294,7 @@ async function refreshAuthenticatedState({ restoreRoute = false } = {}) {
     const snapshot = await api.getState();
     if (snapshot.user) update({ user: snapshot.user });
     applyServerSnapshot(snapshot);
-    if (restoreRoute && isActiveSessionRoom(snapshot.room) && ["home", "auth", "welcome", "matching"].includes(parseRoute().name)) {
+    if (restoreRoute && !isRecruitmentExitRoom(snapshot.room) && isActiveSessionRoom(snapshot.room) && ["home", "auth", "welcome", "matching"].includes(parseRoute().name)) {
       replaceCanonicalRoute("#/room");
     }
   } catch {
@@ -2231,13 +2352,12 @@ async function initRoomChat() {
   if (!room?.id || !state.authenticated) return;
   const generation = chatGeneration;
   const isCurrent = () => generation === chatGeneration && ["room", "matching"].includes(parseRoute().name) && state.room?.id === room.id;
-  try {
+  const reconcileChatHistory = async () => {
     const messages = await api.fetchRoomMessages(room.id);
     if (!isCurrent()) return;
-    renderChatMessages(messages);
-  } catch {
-    // history load is best-effort
-  }
+    renderChatMessages(mergeRoomMessages(roomChatMessages, messages));
+  };
+  try { await reconcileChatHistory(); } catch { /* history recovery will retry after reconnect */ }
   try {
     const sb = await api.getSupabaseClient();
     if (!isCurrent()) return;
@@ -2246,7 +2366,18 @@ async function initRoomChat() {
       if (!isCurrent()) return;
       appendChatMessage(payload.new);
     });
-    await channel.subscribe();
+    let hasSubscribed = false;
+    channel.subscribe((status) => {
+      if (!isCurrent()) return;
+      if (status === "SUBSCRIBED") {
+        if (hasSubscribed) reconcileChatHistory().catch(() => {});
+        hasSubscribed = true;
+      }
+      if (["CHANNEL_ERROR", "TIMED_OUT", "CLOSED"].includes(status)) {
+        const statusEl = document.querySelector("[data-chat-send-status]");
+        if (statusEl) statusEl.textContent = "聊天连接正在恢复";
+      }
+    });
     if (!isCurrent()) {
       sb.removeChannel(channel);
       return;
@@ -2272,6 +2403,32 @@ async function initRoomChat() {
   });
 }
 
+function hydrateRoomAfterShell(roomId) {
+  if (!roomId) return null;
+  if (recruitmentExitPending || isRecruitmentExitRoom({ id: roomId })) return null;
+  if (roomHydrationPromise && roomHydrationRoomId === roomId) return roomHydrationPromise;
+  roomHydrationRoomId = roomId;
+  const request = api.getRoomSnapshot(state.room?.code || "")
+    .then((snapshot) => {
+      // A late full-state response must never replace a newer Room or turn a
+      // valid shell into home because of a transient/null snapshot.
+      if (recruitmentExitPending || isRecruitmentExitRoom(snapshot?.room) || parseRoute().name !== "room" || state.room?.id !== roomId || snapshot?.room?.id !== roomId) return;
+      applyServerSnapshot(snapshot);
+    })
+    .catch(() => {
+      // Shell entry remains usable when enrichment is slow or temporarily
+      // unavailable; Realtime/visibility refresh can retry the hydration.
+    })
+    .finally(() => {
+      if (roomHydrationRoomId === roomId) {
+        roomHydrationPromise = null;
+        roomHydrationRoomId = "";
+      }
+    });
+  roomHydrationPromise = request;
+  return request;
+}
+
 function setChatLoading(loading) {
   const form = document.querySelector('[data-form="room-chat"]');
   const input = document.getElementById("chat-input");
@@ -2281,11 +2438,14 @@ function setChatLoading(loading) {
   form.setAttribute("aria-busy", String(loading));
   submit.disabled = loading;
   submit.setAttribute("aria-busy", String(loading));
+  submit.setAttribute("aria-label", loading ? "消息发送中" : "发送");
   submit.innerHTML = loading ? icon("refreshCw", 17, "is-spinning") : icon("send", 17);
   if (input) input.disabled = loading;
   document.querySelectorAll("[data-chat-quick-reply]").forEach((quickReply) => {
     quickReply.disabled = loading;
   });
+  const status = document.querySelector("[data-chat-send-status]");
+  if (status) status.textContent = loading ? "消息发送中" : "";
 }
 
 function renderChatMessages(messages) {
@@ -2295,14 +2455,16 @@ function renderChatMessages(messages) {
   if (roomId !== chatAnnouncementRoomId) {
     chatAnnouncementRoomId = roomId;
     announcedChatMessages.clear();
+    roomChatMessages = [];
     lastSessionAnnouncementKey = "";
   }
-  messages.forEach((message) => announcedChatMessages.add(chatMessageKey(message)));
-  if (!messages.length) {
+  roomChatMessages = mergeRoomMessages([], messages);
+  roomChatMessages.forEach((message) => announcedChatMessages.add(chatMessageKey(message)));
+  if (!roomChatMessages.length) {
     el.innerHTML = '<div class="chat-empty">还没有消息，打个招呼吧</div>';
     return;
   }
-  el.innerHTML = messages.map(chatMessageHtml).join("");
+  el.innerHTML = roomChatMessages.map(chatMessageHtml).join("");
   el.scrollTop = el.scrollHeight;
 }
 
@@ -2329,6 +2491,7 @@ function appendChatMessage(m) {
   }
   const messageKey = chatMessageKey(m);
   if (announcedChatMessages.has(messageKey)) return;
+  roomChatMessages = mergeRoomMessages(roomChatMessages, [m]);
   const empty = el.querySelector(".chat-empty");
   if (empty) empty.remove();
   el.insertAdjacentHTML("beforeend", chatMessageHtml(m));
@@ -2346,8 +2509,10 @@ async function sendRoomChat(message = null) {
   chatSendPending = true;
   setChatLoading(true);
   try {
-    await api.sendRoomMessage(room.id, text, state.user.id);
+    const created = await api.sendRoomMessage(room.id, text, state.user.id);
+    appendChatMessage(created);
     if (input) input.value = "";
+    announceSessionLive("消息已发送", `chat-sent:${Date.now()}`);
   } catch (err) {
     toast(err.message || "消息发送失败");
   } finally {
@@ -2427,35 +2592,15 @@ function moveOnboardStep(direction) {
   render();
 }
 
-const ROOM_FIRST_RECONCILE_DELAYS_MS = [0, 250, 750];
-
 async function reconcileRoomFirstStart(startData) {
-  for (const delay of ROOM_FIRST_RECONCILE_DELAYS_MS) {
-    if (delay) await new Promise((resolve) => window.setTimeout(resolve, delay));
-    let stateReadHasRoom = false;
-    try {
-      const snapshot = await api.getState();
-      applyServerSnapshot(snapshot);
-      if (isActiveSessionRoom(state.room)) return true;
-      stateReadHasRoom = Boolean(snapshot.matchmaking?.ticket?.roomCode);
-    } catch {
-      // A committed start can race a transient state read. The status read
-      // below is the bounded, read-only fallback for that window.
-    }
-
-    // The start response and the status endpoint both carry the ticket's
-    // Room code. If the first state read races the Room enrichment query,
-    // refresh the read-only matchmaking snapshot before trying once more.
-    const hasRoomFirstTicket = Boolean(startData?.roomCode || startData?.ticket?.roomCode || stateReadHasRoom);
-    if (hasRoomFirstTicket) {
-      try {
-        const status = await api.getMatchmakingStatus();
-        applyMatchmakingSnapshot(status);
-        if (isActiveSessionRoom(state.room)) return true;
-      } catch {
-        // Keep the committed start local while the next bounded attempt runs.
-      }
-    }
+  if (startData?.room) {
+    applyServerSnapshot({ room: startData.room });
+    return isActiveSessionRoom(state.room);
+  }
+  // This read-only status fallback is only for an older server response. It
+  // never performs the broad state read that used to block navigation.
+  if (startData?.ticket) {
+    try { applyMatchmakingSnapshot(await api.getMatchmakingStatus()); } catch { /* Realtime will reconcile. */ }
   }
   return false;
 }
@@ -2519,35 +2664,36 @@ async function startMatch() {
     },
   });
   try {
-    await withProjectTransition(async () => {
-      const data = await api.startMatchmaking(matchInput);
+    const data = await withProjectTransition(async () => {
+      const response = await api.startMatchmaking(matchInput);
       serverAcceptedStart = true;
       update({
         match: {
           ...state.match,
-          online: data.online ?? state.match.online ?? 0,
+          online: response.online ?? state.match.online ?? 0,
           status: "active",
-          pool: data.matching ?? state.match.pool,
-          playing: data.playing ?? state.match.playing,
-          matchable: data.matchable ?? 0,
-          lifecycle: data.ticket || null,
-          pair: data.pair || null,
-          group: data.group || null,
-          candidate: data.candidate || null,
+          pool: response.matching ?? state.match.pool,
+          playing: response.playing ?? state.match.playing,
+          matchable: response.matchable ?? 0,
+          lifecycle: response.ticket || null,
+          pair: response.pair || null,
+          group: response.group || null,
+          candidate: response.candidate || null,
         },
       });
-      // Casual V2 may already have a forming Room after the first compatible
-      // reservation. Hydrate the shared Room UI immediately instead of
-      // rendering the legacy group-only waiting screen for one extra cycle.
-      if (await reconcileRoomFirstStart(data)) replaceCanonicalRoute("#/room");
+      // The route is committed while the overlay is still visible. This
+      // preserves the fast shell path without exposing a hard page cut.
+      if (await reconcileRoomFirstStart(response)) replaceCanonicalRoute("#/room");
       else {
         const error = new Error("ROOM_FIRST_SYNC_PENDING");
         error.code = "ROOM_FIRST_SYNC_PENDING";
         throw error;
       }
+      return response;
     }, {
-      label: "正在进入匹配池",
+      label: "正在进入招募",
       immediate: true,
+      minDuration: 360,
     });
   } catch (err) {
     // A browser timeout does not mean the server rolled back. Reconcile first
@@ -2557,7 +2703,6 @@ async function startMatch() {
         const snapshot = await api.getMatchmakingStatus();
         if (snapshot?.ticket) {
           applyMatchmakingSnapshot(snapshot);
-          applyServerSnapshot(await api.getState());
           if (isActiveSessionRoom(state.room)) replaceCanonicalRoute("#/room");
           toast("服务器已确认你在匹配池中");
           return;
@@ -2878,7 +3023,14 @@ async function returnToMatchingSetup() {
 }
 
 async function cancelMatch() {
-  clearTimers();
+  const roomRecruitment = parseRoute().name === "room" && state.room?.recruiting === true;
+  if (roomRecruitment && matchConfirmationPending) return;
+  if (roomRecruitment) {
+    matchConfirmationPending = true;
+    recruitmentExitPending = true;
+    recruitmentExitRoomId = state.room?.id || "";
+    setRecruitmentActionLoading("cancel-match", true);
+  }
   if (ONLINE) {
     try {
       await api.cancelMatchmaking();
@@ -2890,11 +3042,22 @@ async function cancelMatch() {
         // reconciliation are both unavailable.
       }
       toast(error?.message || "退出匹配失败，请稍后重试");
+      if (roomRecruitment) {
+        matchConfirmationPending = false;
+        recruitmentExitPending = false;
+        recruitmentExitRoomId = "";
+        setRecruitmentActionLoading("cancel-match", false);
+      }
       return;
     }
   }
-  update({ match: { ...state.match, status: "idle", lifecycle: null, pair: null, group: null, candidate: null } });
+  clearTimers();
+  update({ room: roomRecruitment ? null : state.room, match: { ...state.match, status: "idle", lifecycle: null, pair: null, group: null, candidate: null } });
   navigate("#/home");
+  if (roomRecruitment) {
+    matchConfirmationPending = false;
+    recruitmentExitPending = false;
+  }
 }
 
 function showSheet(html) {
@@ -3685,7 +3848,7 @@ document.addEventListener("click", (event) => {
     "confirm-match": () => confirmMatch("accepted"),
     "reject-match": () => confirmMatch("rejected"),
     "start-group-match": (id) => startGroupMatch(id),
-    "lock-forming-room": (id) => startGroupMatch(id),
+    "lock-forming-room": (id) => startGroupMatch(id, { recruitmentAction: true }),
     "confirm-group-match": (id) => confirmGroupMatch(id, "accepted"),
     "reject-group-match": (id) => confirmGroupMatch(id, "rejected"),
     "open-room": () => replaceCanonicalRoute("#/room"),
@@ -3934,7 +4097,7 @@ async function handleAuthSuccess() {
       const snapshot = await api.getState();
       update({ user: snapshot.user });
       applyServerSnapshot(snapshot);
-      hasActiveRoom = isActiveSessionRoom(snapshot.room);
+      hasActiveRoom = !isRecruitmentExitRoom(snapshot.room) && isActiveSessionRoom(snapshot.room);
       destination = hasActiveRoom
         ? "#/room"
         : snapshot.session?.status === "completed"
@@ -3988,7 +4151,7 @@ async function restoreSession() {
         const snapshot = await api.getState();
         update({ user: snapshot.user });
         applyServerSnapshot(snapshot);
-        if (isActiveSessionRoom(snapshot.room) && ["home", "auth", "welcome", "matching"].includes(parseRoute().name)) {
+        if (!isRecruitmentExitRoom(snapshot.room) && isActiveSessionRoom(snapshot.room) && ["home", "auth", "welcome", "matching"].includes(parseRoute().name)) {
           replaceCanonicalRoute("#/room");
         }
       } catch {
@@ -4070,7 +4233,7 @@ async function submitAuth() {
         return;
       }
       const data = await api.loginByIdentifier(identifier, password);
-      await api.signIn(data.email, password);
+      await api.setSession(data.session);
       await handleAuthSuccess();
     }, {
       label: isRegister ? "正在建立账号" : "正在验证玩家身份",

@@ -1,4 +1,5 @@
 import { requireRequestProfile } from "@/lib/auth";
+import { activeRoomShellFor } from "@/lib/api";
 import { AppError, errorResponse, idempotencyKey, jsonBody, jsonOk, requestId } from "@/lib/http";
 import { normalizeMatchmakingInput } from "@/lib/matchmaking/rules";
 import { startTicket } from "@/lib/matchmaking/service";
@@ -18,7 +19,9 @@ export async function POST(request: Request) {
     if (input.mode === "ranked" && !input.rankCode) {
       throw new AppError("RANK_REQUIRED", "天梯匹配必须选择当前段位", 422);
     }
-    return jsonOk(await startTicket(profile.id, input, idempotencyKey(request)), rid);
+    const matchmaking = await startTicket(profile.id, input, idempotencyKey(request));
+    const room = matchmaking.ticket ? await activeRoomShellFor(profile.id) : null;
+    return jsonOk({ ...matchmaking, room }, rid);
   } catch (error) {
     return errorResponse(error, rid, "进入匹配池失败，请稍后重试");
   }

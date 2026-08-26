@@ -78,10 +78,11 @@ function rulesFromRow(row: TicketRow): MatchmakingRuleSet {
   };
 }
 
-const RESERVATION_CONFLICT_BUDGET = 2;
-const CASUAL_BACKFILL_BUDGET = 4;
-const RESERVATION_CONFLICT_BACKOFF_BASE_MS = 100;
-const RESERVATION_CONFLICT_BACKOFF_JITTER_MS = 150;
+// A matcher tick gets one reservation attempt for a ticket. A normal
+// contention result is durable state, not a reason to spin on the same
+// candidate while other tickets are waiting.
+const RESERVATION_CONFLICT_BUDGET = 1;
+const CASUAL_BACKFILL_BUDGET = 1;
 
 type ReservationKind = "pair" | "group";
 
@@ -195,40 +196,45 @@ function isGroupReservationConflict(error: any, data?: any) {
     || (String(error?.code || "") !== "40001" && error?.message?.includes("GROUP_SIZE_CONFLICT"));
 }
 
-function waitForReservationConflict(conflictNumber: number) {
-  const delay = Math.min(30_000, RESERVATION_CONFLICT_BACKOFF_BASE_MS * (2 ** Math.max(0, conflictNumber - 1)))
-    + Math.floor(Math.random() * RESERVATION_CONFLICT_BACKOFF_JITTER_MS);
-  incrementRuntimeMetric("matcher_backoffs");
-  return new Promise<void>((resolve) => setTimeout(resolve, delay));
-}
-
 const matchmakingFlights = new Map<string, Promise<unknown>>();
 
-const MATCHER_INTERVAL_MS = 1000;
-const MATCHER_BATCH_SIZE = 32;
+const MATCHER_INTERVAL_MS = 2_000;
+const MATCHER_INTERVAL_JITTER_MS = 500;
+const MATCHER_FRESH_BATCH_SIZE = 4;
+const MATCHER_REGULAR_BATCH_SIZE = 4;
+const MATCHER_FRESH_WINDOW_MS = 20_000;
 const MATCHER_IDLE_COOLDOWN_MS = 5_000;
 const MATCHER_WAITING_COOLDOWN_MS = 15_000;
 const MATCHER_ERROR_COOLDOWN_MS = 30_000;
-let matcherHandle: ReturnType<typeof setInterval> | null = null;
+const MATCHER_ERROR_QUARANTINE_THRESHOLD = 3;
+const MATCHER_ERROR_QUARANTINE_MS = 5 * 60_000;
+let matcherHandle: ReturnType<typeof setTimeout> | null = null;
 let matcherTelemetryHandle: ReturnType<typeof setInterval> | null = null;
 let matcherBusy = false;
 let lastPoolGaugeAt = 0;
 
-function cooldownForAttempt(context: MatcherAttemptContext, previousConflicts: number) {
+function cooldownForAttempt(context: MatcherAttemptContext, previousConflicts: number, previousErrors: number) {
   if (context.outcome === "BUSINESS_CONFLICT") {
     const exponent = Math.min(5, Math.max(0, previousConflicts));
     return Math.min(30_000, 1_000 * (2 ** exponent)) + Math.floor(Math.random() * 500);
   }
   if (context.outcome === "WAITING") return MATCHER_WAITING_COOLDOWN_MS;
-  if (context.outcome === "DATABASE_ERROR") return MATCHER_ERROR_COOLDOWN_MS;
+  if (context.outcome === "DATABASE_ERROR") {
+    const errors = previousErrors + 1;
+    if (errors >= MATCHER_ERROR_QUARANTINE_THRESHOLD) return MATCHER_ERROR_QUARANTINE_MS;
+    return MATCHER_ERROR_COOLDOWN_MS * errors;
+  }
   return MATCHER_IDLE_COOLDOWN_MS + Math.floor(Math.random() * 1_000);
 }
 
 async function persistMatchAttemptState(sourceRow: TicketRow, context: MatcherAttemptContext) {
   if (!sourceRow.id || sourceRow.state !== "searching") return;
   const previousConflicts = Number(sourceRow.consecutive_conflicts || 0);
-  const cooldownMs = cooldownForAttempt(context, previousConflicts);
+  const previousErrors = Number(sourceRow.consecutive_match_errors || 0);
+  const cooldownMs = cooldownForAttempt(context, previousConflicts, previousErrors);
   const consecutiveConflicts = context.outcome === "BUSINESS_CONFLICT" ? previousConflicts + 1 : 0;
+  const consecutiveErrors = context.outcome === "DATABASE_ERROR" ? previousErrors + 1 : 0;
+  const quarantined = consecutiveErrors >= MATCHER_ERROR_QUARANTINE_THRESHOLD;
   const nextAttemptAt = new Date(Date.now() + cooldownMs).toISOString();
   const { error } = await supabaseAdmin()
     .from("matchmaking_tickets")
@@ -238,12 +244,15 @@ async function persistMatchAttemptState(sourceRow: TicketRow, context: MatcherAt
       last_match_outcome: context.outcome,
       last_match_target_id: context.targetId,
       consecutive_conflicts: consecutiveConflicts,
+      consecutive_match_errors: consecutiveErrors,
+      matcher_quarantined_at: quarantined ? new Date().toISOString() : null,
       updated_at: new Date().toISOString(),
     })
     .eq("id", sourceRow.id)
     .eq("state", "searching");
   if (error) throw error;
   if (context.outcome === "BUSINESS_CONFLICT") {
+    incrementRuntimeMetric("matcher_backoffs");
     recordMatcherEvent({
       tickId: context.tickId,
       ticketId: context.ticketId,
@@ -252,6 +261,17 @@ async function persistMatchAttemptState(sourceRow: TicketRow, context: MatcherAt
       outcome: "COOLDOWN",
       reasonCode: context.reasonCode,
       attemptNumber: consecutiveConflicts,
+      cooldownMs,
+    });
+  }
+  if (quarantined) {
+    recordMatcherEvent({
+      tickId: context.tickId,
+      ticketId: context.ticketId,
+      operation: "schedule_next_attempt",
+      outcome: "QUARANTINED",
+      reasonCode: context.reasonCode || "DATABASE_ERROR",
+      attemptNumber: consecutiveErrors,
       cooldownMs,
     });
   }
@@ -279,15 +299,28 @@ async function runMatchmakingSweep() {
     await refreshMatcherPoolGauges();
     if (matcherCircuitOpen()) return;
     const eligibleAt = new Date().toISOString();
-    const { data: rows, error } = await supabaseAdmin()
+    const freshSince = new Date(Date.now() - MATCHER_FRESH_WINDOW_MS).toISOString();
+    const select = "id,user_id,mode,state,next_match_attempt_at,consecutive_conflicts,consecutive_match_errors,matcher_wake_at";
+    const { data: freshRows, error: freshError } = await supabaseAdmin()
       .from("matchmaking_tickets")
-      .select("id,user_id,mode,state,next_match_attempt_at,consecutive_conflicts")
+      .select(select)
       .eq("state", "searching")
       .or(`next_match_attempt_at.is.null,next_match_attempt_at.lte.${eligibleAt}`)
+      .gte("matcher_wake_at", freshSince)
+      .order("matcher_wake_at", { ascending: false })
+      .limit(MATCHER_FRESH_BATCH_SIZE);
+    if (freshError) throw freshError;
+    const { data: regularRows, error: regularError } = await supabaseAdmin()
+      .from("matchmaking_tickets")
+      .select(select)
+      .eq("state", "searching")
+      .or(`next_match_attempt_at.is.null,next_match_attempt_at.lte.${eligibleAt}`)
+      .or(`matcher_wake_at.is.null,matcher_wake_at.lt.${freshSince}`)
       .order("search_started_at", { ascending: true })
-      .limit(MATCHER_BATCH_SIZE);
-    if (error) throw error;
-    setGauge("eligible_tickets", (rows || []).length);
+      .limit(MATCHER_REGULAR_BATCH_SIZE);
+    if (regularError) throw regularError;
+    const rows = [...(freshRows || []), ...(regularRows || [])];
+    setGauge("eligible_tickets", rows.length);
     for (const row of (rows || []) as TicketRow[]) {
       const context = createMatcherAttemptContext(tickId, row.id);
       recordTicketProcessed(row.id);
@@ -342,9 +375,15 @@ async function runMatchmakingSweep() {
  */
 export function startPersistentMatcher() {
   if (matcherHandle) return;
-  void runMatchmakingSweep();
-  matcherHandle = setInterval(() => { void runMatchmakingSweep(); }, MATCHER_INTERVAL_MS);
-  matcherHandle.unref?.();
+  const scheduleNextSweep = (delayMs: number) => {
+    matcherHandle = setTimeout(() => {
+      void runMatchmakingSweep().finally(() => {
+        scheduleNextSweep(MATCHER_INTERVAL_MS + Math.floor(Math.random() * MATCHER_INTERVAL_JITTER_MS));
+      });
+    }, delayMs);
+    matcherHandle.unref?.();
+  };
+  scheduleNextSweep(0);
   matcherTelemetryHandle = setInterval(() => { void flushMatcherTelemetry(); }, 10_000);
   matcherTelemetryHandle.unref?.();
 }
@@ -444,7 +483,6 @@ async function attemptMatch(userId: string, context?: MatcherAttemptContext) {
         conflictCount += 1;
         if (context) recordBusinessConflict(context, "MATCH_RESERVATION_CONFLICT", candidate.ticket.id);
         recordReservationConflict("pair");
-        if (conflictCount < RESERVATION_CONFLICT_BUDGET) await waitForReservationConflict(conflictCount);
         continue;
       }
       throw error;
@@ -611,7 +649,6 @@ async function attemptCasualGroup(userId: string, context?: MatcherAttemptContex
       conflictCount += 1;
       if (context) recordBusinessConflict(context, String(reservation?.reason || "GROUP_RESERVATION_CONFLICT"), groupRow.id);
       recordReservationConflict("group");
-      if (conflictCount < RESERVATION_CONFLICT_BUDGET) await waitForReservationConflict(conflictCount);
     }
 
     if (conflictCount >= RESERVATION_CONFLICT_BUDGET) return activeTicketRow(userId);
@@ -680,13 +717,11 @@ async function attemptCasualGroup(userId: string, context?: MatcherAttemptContex
     conflictCount += 1;
     if (context) recordBusinessConflict(context, String(reservation?.reason || "GROUP_RESERVATION_CONFLICT"), candidate.ticket.id);
     recordReservationConflict("group");
-    if (conflictCount < RESERVATION_CONFLICT_BUDGET) await waitForReservationConflict(conflictCount);
   }
   return activeTicketRow(userId);
 }
 
 async function startTicketInternal(userId: string, input: MatchmakingInput, requestId: string | null) {
-  startPersistentMatcher();
   const admin = supabaseAdmin();
   const { data, error } = await admin.rpc("matchmaking_start_ticket", {
     p_user_id: userId,
@@ -694,7 +729,11 @@ async function startTicketInternal(userId: string, input: MatchmakingInput, requ
     p_request_id: requestId,
   });
   if (error) throw error;
-  if (data?.reused) return matchmakingStatus(userId);
+  // Starting a ticket is a Room-entry mutation, not a synchronous matching
+  // request. The RPC has already created/resolved the waiting Room; return its
+  // ticket envelope now and let the persistent matcher own candidate attempts
+  // in the background.
+  if (data?.reused) return startTicketSnapshot(data);
   if (data?.id) {
     const currentMetadata = data.metadata && typeof data.metadata === "object" ? data.metadata : {};
     const { error: metadataError } = await admin
@@ -712,9 +751,17 @@ async function startTicketInternal(userId: string, input: MatchmakingInput, requ
       .eq("id", data.id);
     if (metadataError) throw metadataError;
   }
-  if (input.mode === "casual") await attemptCasualGroup(userId);
-  else await attemptMatch(userId);
-  return matchmakingStatus(userId);
+  return startTicketSnapshot(data);
+}
+
+function startTicketSnapshot(data: TicketRow) {
+  const { roomCode, reused, ...ticket } = data || {};
+  return {
+    ticket: { ...ticket, roomCode: roomCode || ticket.roomCode || null },
+    pair: null,
+    group: null,
+    candidate: null,
+  };
 }
 
 export function startTicket(userId: string, input: MatchmakingInput, requestId: string | null) {

@@ -1,0 +1,314 @@
+[
+  {
+    "stage": "5",
+    "actor_id": "R01",
+    "timestamp": "2026-08-25T05:31:43.219Z",
+    "online": true
+  },
+  {
+    "stage": "5",
+    "actor_id": "C03",
+    "timestamp": "2026-08-25T05:31:43.462Z",
+    "online": true
+  },
+  {
+    "stage": "5",
+    "actor_id": "R02",
+    "timestamp": "2026-08-25T05:31:43.517Z",
+    "online": true
+  },
+  {
+    "stage": "5",
+    "actor_id": "C02",
+    "timestamp": "2026-08-25T05:31:43.697Z",
+    "online": true
+  },
+  {
+    "stage": "5",
+    "actor_id": "C01",
+    "timestamp": "2026-08-25T05:31:44.139Z",
+    "online": true
+  },
+  {
+    "stage": "5",
+    "actor_id": "R01",
+    "timestamp": "2026-08-25T05:31:52.663Z",
+    "online": true
+  },
+  {
+    "stage": "5",
+    "actor_id": "C03",
+    "timestamp": "2026-08-25T05:31:53.564Z",
+    "online": true
+  },
+  {
+    "stage": "5",
+    "actor_id": "R02",
+    "timestamp": "2026-08-25T05:31:53.564Z",
+    "online": true
+  },
+  {
+    "stage": "5",
+    "actor_id": "C02",
+    "timestamp": "2026-08-25T05:31:53.714Z",
+    "online": true
+  },
+  {
+    "stage": "5",
+    "actor_id": "C01",
+    "timestamp": "2026-08-25T05:31:54.138Z",
+    "online": true
+  },
+  {
+    "stage": "5",
+    "actor_id": "R01",
+    "timestamp": "2026-08-25T05:32:02.677Z",
+    "online": true
+  },
+  {
+    "stage": "5",
+    "actor_id": "C02",
+    "timestamp": "2026-08-25T05:32:03.700Z",
+    "online": true
+  },
+  {
+    "stage": "5",
+    "actor_id": "R02",
+    "timestamp": "2026-08-25T05:32:04.213Z",
+    "online": true
+  },
+  {
+    "stage": "5",
+    "actor_id": "C03",
+    "timestamp": "2026-08-25T05:32:04.213Z",
+    "online": true
+  },
+  {
+    "stage": "5",
+    "actor_id": "C01",
+    "timestamp": "2026-08-25T05:32:04.928Z",
+    "online": true
+  },
+  {
+    "stage": "5",
+    "actor_id": "R02",
+    "timestamp": "2026-08-25T05:32:14.171Z",
+    "online": true
+  },
+  {
+    "stage": "5",
+    "actor_id": "C03",
+    "timestamp": "2026-08-25T05:32:14.205Z",
+    "online": true
+  },
+  {
+    "stage": "5",
+    "actor_id": "C02",
+    "timestamp": "2026-08-25T05:32:14.288Z",
+    "online": true
+  },
+  {
+    "stage": "5",
+    "actor_id": "C01",
+    "timestamp": "2026-08-25T05:32:15.020Z",
+    "online": true
+  },
+  {
+    "stage": "5",
+    "actor_id": "C03",
+    "timestamp": "2026-08-25T05:32:24.265Z",
+    "online": true
+  },
+  {
+    "stage": "5",
+    "actor_id": "R02",
+    "timestamp": "2026-08-25T05:32:24.266Z",
+    "online": true
+  },
+  {
+    "stage": "5",
+    "actor_id": "C02",
+    "timestamp": "2026-08-25T05:32:24.436Z",
+    "online": true
+  },
+  {
+    "stage": "5",
+    "actor_id": "C01",
+    "timestamp": "2026-08-25T05:32:24.885Z",
+    "online": true
+  },
+  {
+    "stage": "5",
+    "actor_id": "R02",
+    "timestamp": "2026-08-25T05:32:34.028Z",
+    "online": true
+  },
+  {
+    "stage": "5",
+    "actor_id": "C03",
+    "timestamp": "2026-08-25T05:32:34.211Z",
+    "online": true
+  },
+  {
+    "stage": "5",
+    "actor_id": "C02",
+    "timestamp": "2026-08-25T05:32:34.374Z",
+    "online": true
+  },
+  {
+    "stage": "5",
+    "actor_id": "C01",
+    "timestamp": "2026-08-25T05:32:34.932Z",
+    "online": true
+  },
+  {
+    "stage": "5",
+    "actor_id": "C03",
+    "timestamp": "2026-08-25T05:32:44.049Z",
+    "online": true
+  },
+  {
+    "stage": "5",
+    "actor_id": "R02",
+    "timestamp": "2026-08-25T05:32:44.249Z",
+    "online": true
+  },
+  {
+    "stage": "5",
+    "actor_id": "C02",
+    "timestamp": "2026-08-25T05:32:44.556Z",
+    "online": true
+  },
+  {
+    "stage": "5",
+    "actor_id": "C01",
+    "timestamp": "2026-08-25T05:32:44.938Z",
+    "online": true
+  },
+  {
+    "stage": "5",
+    "actor_id": "R02",
+    "timestamp": "2026-08-25T05:32:53.998Z",
+    "online": true
+  },
+  {
+    "stage": "5",
+    "actor_id": "C03",
+    "timestamp": "2026-08-25T05:32:54.173Z",
+    "online": true
+  },
+  {
+    "stage": "5",
+    "actor_id": "C02",
+    "timestamp": "2026-08-25T05:32:54.816Z",
+    "online": true
+  },
+  {
+    "stage": "5",
+    "actor_id": "C01",
+    "timestamp": "2026-08-25T05:32:54.838Z",
+    "online": true
+  },
+  {
+    "stage": "5",
+    "actor_id": "R02",
+    "timestamp": "2026-08-25T05:33:04.265Z",
+    "online": true
+  },
+  {
+    "stage": "5",
+    "actor_id": "C03",
+    "timestamp": "2026-08-25T05:33:04.266Z",
+    "online": true
+  },
+  {
+    "stage": "5",
+    "actor_id": "C02",
+    "timestamp": "2026-08-25T05:33:04.432Z",
+    "online": true
+  },
+  {
+    "stage": "5",
+    "actor_id": "C01",
+    "timestamp": "2026-08-25T05:33:04.935Z",
+    "online": true
+  },
+  {
+    "stage": "5",
+    "actor_id": "C03",
+    "timestamp": "2026-08-25T05:33:14.015Z",
+    "online": true
+  },
+  {
+    "stage": "5",
+    "actor_id": "R02",
+    "timestamp": "2026-08-25T05:33:14.354Z",
+    "online": true
+  },
+  {
+    "stage": "5",
+    "actor_id": "C02",
+    "timestamp": "2026-08-25T05:33:14.466Z",
+    "online": true
+  },
+  {
+    "stage": "5",
+    "actor_id": "C01",
+    "timestamp": "2026-08-25T05:33:14.970Z",
+    "online": true
+  },
+  {
+    "stage": "5",
+    "actor_id": "C03",
+    "timestamp": "2026-08-25T05:33:24.003Z",
+    "online": true
+  },
+  {
+    "stage": "5",
+    "actor_id": "R02",
+    "timestamp": "2026-08-25T05:33:24.200Z",
+    "online": true
+  },
+  {
+    "stage": "5",
+    "actor_id": "C02",
+    "timestamp": "2026-08-25T05:33:24.394Z",
+    "online": true
+  },
+  {
+    "stage": "5",
+    "actor_id": "C01",
+    "timestamp": "2026-08-25T05:33:25.009Z",
+    "online": true
+  },
+  {
+    "stage": "5",
+    "actor_id": "R01",
+    "timestamp": "2026-08-25T05:33:29.919Z",
+    "online": true
+  },
+  {
+    "stage": "5",
+    "actor_id": "C03",
+    "timestamp": "2026-08-25T05:33:33.479Z",
+    "online": true
+  },
+  {
+    "stage": "5",
+    "actor_id": "R02",
+    "timestamp": "2026-08-25T05:33:33.510Z",
+    "online": true
+  },
+  {
+    "stage": "5",
+    "actor_id": "C02",
+    "timestamp": "2026-08-25T05:33:33.698Z",
+    "online": true
+  },
+  {
+    "stage": "5",
+    "actor_id": "C01",
+    "timestamp": "2026-08-25T05:33:34.911Z",
+    "online": true
+  }
+]

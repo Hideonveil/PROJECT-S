@@ -1,0 +1,19 @@
+{
+  "runId": "breakpoint-accelerated-20260825",
+  "mode": "stateful",
+  "status": "INCONCLUSIVE",
+  "failure": {
+    "name": "Error",
+    "message": "CAPACITY_AUTH: identity BP056 login returned HTTP 429",
+    "cause": null,
+    "cause_code": null,
+    "timeout_source": null,
+    "code": null
+  },
+  "evidence": {
+    "runId": "breakpoint-accelerated-20260825",
+    "ledgerFile": "output/capacity-validation/breakpoint-accelerated-20260825/lifecycle-ledger.ndjson",
+    "stage": "preflight",
+    "eventCount": 93
+  }
+}

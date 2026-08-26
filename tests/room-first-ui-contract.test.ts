@@ -99,7 +99,7 @@ describe("room-first matching UI", () => {
   it("routes legacy matching links to the single Room surface", () => {
     expect(app).toContain('case "matching":');
     expect(app).toContain('replaceCanonicalRoute(isActiveSessionRoom(state.room) ? "#/room" : "#/home")');
-    expect(room).toContain("room-recruitment-indicator");
+    expect(room).toContain("room-recruitment-loop");
   });
 
   it("creates a Room before matching and reuses it for ranked pairs", () => {

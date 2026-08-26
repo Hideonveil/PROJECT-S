@@ -1,0 +1,27 @@
+{
+  "runId": "bp-lite-capacity-run2-20260826",
+  "mode": "stateful",
+  "status": "INCONCLUSIVE",
+  "failure": {
+    "name": "AuthRateLimitError",
+    "message": "CAPACITY_AUTH: identity BP054 Supabase sign-in failed",
+    "cause": {
+      "name": "AuthApiError",
+      "message": "Request rate limit reached",
+      "code": "over_request_rate_limit",
+      "syscall": null,
+      "address": null,
+      "port": null,
+      "errno": null
+    },
+    "cause_code": "over_request_rate_limit",
+    "timeout_source": null,
+    "code": "over_request_rate_limit"
+  },
+  "evidence": {
+    "runId": "bp-lite-capacity-run2-20260826",
+    "ledgerFile": "/run/capacity/evidence/lifecycle-ledger.ndjson",
+    "stage": "40",
+    "eventCount": 88
+  }
+}

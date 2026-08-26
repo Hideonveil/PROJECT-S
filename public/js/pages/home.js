@@ -281,9 +281,12 @@ function rolesLabel(roles) {
 export function matchingDirectoryPersonMarkup(person, extraClass = "") {
   const gameName = person.gameId === "deadlock" || !person.gameId ? "Deadlock" : person.gameId;
   return `<article class="match-directory-player ${extraClass}" data-home-directory-person aria-label="正在匹配的玩家 ${esc(person.nickname || "玩家")}">
-    <div class="match-directory-player-top"><b>${esc(person.nickname || "玩家")}</b><span>${person.mode === "casual" ? "休闲" : "冲分"}</span></div>
-    <p>${esc(gameName)} · ${person.mode === "casual" ? "轻松开黑" : esc(rankLabel(person.rankCode, "段位待定"))}</p>
-    <footer><span>${esc(rolesLabel(person.desiredRoles))}</span><i>${person.microphonePreference === "on" ? "开麦" : person.microphonePreference === "off" ? "不开麦" : "都可以"}</i></footer>
+    <span class="match-directory-player-mark" aria-hidden="true">${icon("check", 13)}</span>
+    <div class="match-directory-player-copy">
+      <div class="match-directory-player-top"><b>${esc(person.nickname || "玩家")}</b><span>${person.mode === "casual" ? "休闲" : "冲分"}</span></div>
+      <p>${esc(gameName)} · ${person.mode === "casual" ? "轻松开黑" : esc(rankLabel(person.rankCode, "段位待定"))}</p>
+      <footer><span>${esc(rolesLabel(person.desiredRoles))}</span><i>${person.microphonePreference === "on" ? "开麦" : person.microphonePreference === "off" ? "不开麦" : "都可以"}</i></footer>
+    </div>
   </article>`;
 }
 
@@ -294,13 +297,15 @@ export function matchingDirectoryMarkup(entries = []) {
 
 function matchingDirectory(entries) {
   const people = Array.isArray(entries) ? entries.slice(0, 6) : [];
-  return `<aside class="match-directory" data-directory-activity aria-label="正在摇人的玩家">
-    <header><span><i></i>NOW MATCHING</span><b>正在摇人</b></header>
+  return `<aside class="match-directory match-directory--signal-card" data-directory-activity aria-label="正在摇人的玩家">
+    <div class="match-directory-caution" aria-hidden="true"><span>NEVER PLAY ALONE / NOW MATCHING /</span></div>
+    <header class="match-directory-head"><span><i></i>NOW MATCHING</span></header>
     <div class="match-directory-list match-directory-list--activity" id="home-directory-list">
       ${people.length
         ? matchingDirectoryMarkup(people)
-        : `<div class="match-directory-empty"><b>还没有公开的匹配请求</b><span>第一个开始摇人的人，会出现在这里。</span></div>`}
+        : `<div class="match-directory-empty"><span class="match-directory-empty-mark" aria-hidden="true">+</span><b>等待玩家中</b></div>`}
     </div>
+    <footer class="match-directory-livebar"><span><i></i>实时更新中</span></footer>
   </aside>`;
 }
 

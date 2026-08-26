@@ -1,0 +1,14 @@
+{
+  "total": 61,
+  "success": 52,
+  "five_xx": 0,
+  "four_xx": 0,
+  "rate_limited": 0,
+  "timeout": 0,
+  "network_error": 9,
+  "p50Ms": 1274.79,
+  "p95Ms": 5119.85,
+  "p99Ms": 5119.85,
+  "aborted": true,
+  "abortReason": "fetch failed"
+}

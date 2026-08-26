@@ -515,8 +515,33 @@ export async function refreshState(runtime, options, stage, ledger, action = "st
   }
 }
 
+function isTransientTransportError(error) {
+  return error?.cause_code === "ECONNRESET" || error?.cause?.code === "ECONNRESET";
+}
+
+export async function markOnline(runtime, options, stage, ledger) {
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      return await statefulRequest({ runtime, options, stage, action: "presence.online", method: "POST", requestPath: "/api/online", body: {}, ledger });
+    } catch (error) {
+      if (attempt !== 0 || !isTransientTransportError(error)) throw error;
+      await recordEvent(runtime, {
+        stage,
+        action: "presence.online.transport_retry",
+        endpoint: "runner://transport-retry",
+        error,
+        expected_state: "one idempotent presence retry after ECONNRESET",
+        actual_state: snapshotState(runtime.state),
+        retry_attempt: 1,
+      }, ledger);
+      await new Promise((resolve) => setTimeout(resolve, 180));
+    }
+  }
+  throw new Error("CAPACITY_STATEFUL: presence retry exhausted");
+}
+
 async function startActor(runtime, options, stage, ledger) {
-  await statefulRequest({ runtime, options, stage, action: "presence.online", method: "POST", requestPath: "/api/online", body: {}, ledger });
+  await markOnline(runtime, options, stage, ledger);
   startHeartbeat(runtime, options, stage, ledger);
   await statefulRequest({ runtime, options, stage, action: "matchmaking.start", method: "POST", requestPath: "/api/matchmaking/start", body: { match: matchInput(runtime.actor) }, ledger });
 }
@@ -821,10 +846,11 @@ export async function runStatefulRehearsal({ options, manifest, credentials }) {
       const stageRuntimes = new Map();
       activeRuntimes = stageRuntimes;
       try {
-        for (const actor of manifest.actors.filter((candidate) => stage.actorIds.includes(candidate.actorId))) {
+        for (const [actorIndex, actor] of manifest.actors.filter((candidate) => stage.actorIds.includes(candidate.actorId)).entries()) {
           const credential = credentialsById.get(actor.actorId);
           if (!credential) throw new Error(`CAPACITY_AUTH: no stateful credential for ${actor.actorId}`);
-          const session = await authenticateIdentity({ baseUrl: options.baseUrl, credential, config, ledger, runId: options.runId, actorId: actor.actorId });
+          if (actorIndex > 0) await sleep(Math.max(1_000, Number(options.authDelayMs || 10_000)));
+          const session = await authenticateIdentity({ baseUrl: options.baseUrl, credential, ledger, runId: options.runId, actorId: actor.actorId });
           const runtime = {
             actor,
             actorId: actor.actorId,

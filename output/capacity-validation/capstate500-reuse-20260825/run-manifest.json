@@ -1,0 +1,54 @@
+{
+  "run_id": "capstate500-reuse-20260825",
+  "actors": [
+    {
+      "actor_id": "R01",
+      "user_id": "2b4c582d-0679-48e7-a15d-756b61b8d6cc",
+      "mode": "ranked",
+      "profile": "synthetic_test",
+      "role": "ranked",
+      "match": {
+        "rankCode": "oracle"
+      },
+      "scenario": "capacity"
+    },
+    {
+      "actor_id": "R02",
+      "user_id": "c8dbbb47-0e1b-4027-a06c-ac12fb14f2c3",
+      "mode": "ranked",
+      "profile": "synthetic_test",
+      "role": "ranked",
+      "match": {
+        "rankCode": "oracle"
+      },
+      "scenario": "capacity"
+    },
+    {
+      "actor_id": "C01",
+      "user_id": "9d9b9eaf-2bbf-437b-ae58-c9ded1a6d3ec",
+      "mode": "casual",
+      "profile": "synthetic_test",
+      "role": "casual",
+      "match": null,
+      "scenario": "capacity"
+    },
+    {
+      "actor_id": "C02",
+      "user_id": "cf015f77-388c-42a8-976c-46ef5d813b11",
+      "mode": "casual",
+      "profile": "synthetic_test",
+      "role": "casual",
+      "match": null,
+      "scenario": "capacity"
+    },
+    {
+      "actor_id": "C03",
+      "user_id": "58678e49-a6b4-42df-8a49-b9baac61114e",
+      "mode": "casual",
+      "profile": "synthetic_test",
+      "role": "casual",
+      "match": null,
+      "scenario": "capacity"
+    }
+  ]
+}

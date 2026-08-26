@@ -91,7 +91,21 @@ async function mockProductBackend(
     })
   );
   await page.route("**/api/auth/login", (route) =>
-    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ email: "test@project-s.local" }) })
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        email: "test@project-s.local",
+        user_id: "00000000-0000-0000-0000-000000000001",
+        session: {
+          access_token: "test-access-token",
+          refresh_token: "test-refresh-token",
+          expires_in: 3600,
+          expires_at: 4102444800,
+          token_type: "bearer",
+        },
+      }),
+    })
   );
   await page.route("**/api/auth/register", (route) => {
     profileExists = false;
@@ -267,7 +281,17 @@ async function mockThreeMemberRecoveryBackend(
   await page.route("**/api/auth/login", (route) => route.fulfill({
     status: 200,
     contentType: "application/json",
-    body: JSON.stringify({ email: `${me.id}@project-s.local` }),
+    body: JSON.stringify({
+      email: `${me.id}@project-s.local`,
+      user_id: `auth-${me.id}`,
+      session: {
+        access_token: `test-access-token-${me.id}`,
+        refresh_token: `test-refresh-token-${me.id}`,
+        expires_in: 3600,
+        expires_at: 4102444800,
+        token_type: "bearer",
+      },
+    }),
   }));
   await page.route("**/api/session", (route) => route.fulfill({
     status: 200,

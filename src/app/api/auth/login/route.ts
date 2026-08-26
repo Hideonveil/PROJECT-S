@@ -64,7 +64,23 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "请先验证邮箱", code: "EMAIL_NOT_VERIFIED", email }, { status: 403 });
     }
 
-    return NextResponse.json({ ok: true, email, username: username || data.user.user_metadata?.username || "", meta: { requestId: rid } });
+    // Return the session created by this request so the browser can hydrate
+    // its Supabase client without issuing a second password sign-in. Keep the
+    // response deliberately narrow and never log these values.
+    return NextResponse.json({
+      ok: true,
+      email,
+      username: username || data.user.user_metadata?.username || "",
+      user_id: data.user.id,
+      session: {
+        access_token: data.session.access_token,
+        refresh_token: data.session.refresh_token,
+        expires_in: data.session.expires_in,
+        expires_at: data.session.expires_at,
+        token_type: data.session.token_type,
+      },
+      meta: { requestId: rid },
+    });
   } catch (error) {
     if (error instanceof AppError) {
       return errorResponse(error, rid, "登录失败，请稍后重试");

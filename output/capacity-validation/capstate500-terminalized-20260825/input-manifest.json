@@ -1,0 +1,49 @@
+{
+  "run_id": "capstate500-terminalized-20260825",
+  "release_candidate": "220b993",
+  "source_pool": "capstate500-0824",
+  "actors": [
+    {
+      "actor_id": "R01",
+      "user_id": "814d33aa-c4d0-4f3f-95d4-c2afc2c2a9f6",
+      "mode": "ranked",
+      "role": "ranked",
+      "profile": "synthetic_test",
+      "scenario": "capacity",
+      "match": { "rankCode": "oracle" }
+    },
+    {
+      "actor_id": "R02",
+      "user_id": "87a45001-0e67-4be9-8bdf-206f9f4792ee",
+      "mode": "ranked",
+      "role": "ranked",
+      "profile": "synthetic_test",
+      "scenario": "capacity",
+      "match": { "rankCode": "oracle" }
+    },
+    {
+      "actor_id": "C01",
+      "user_id": "147cba5b-aae4-48ca-bda2-8d99eea56545",
+      "mode": "casual",
+      "role": "casual",
+      "profile": "synthetic_test",
+      "scenario": "capacity"
+    },
+    {
+      "actor_id": "C02",
+      "user_id": "cb3dc195-9c14-493f-8699-8b34b9be5632",
+      "mode": "casual",
+      "role": "casual",
+      "profile": "synthetic_test",
+      "scenario": "capacity"
+    },
+    {
+      "actor_id": "C03",
+      "user_id": "aae27264-3a32-4f05-afff-0fd9b2e51113",
+      "mode": "casual",
+      "role": "casual",
+      "profile": "synthetic_test",
+      "scenario": "capacity"
+    }
+  ]
+}

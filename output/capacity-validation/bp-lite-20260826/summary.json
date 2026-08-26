@@ -1,0 +1,27 @@
+{
+  "runId": "bp-lite-20260826",
+  "mode": "stateful",
+  "status": "INCONCLUSIVE",
+  "failure": {
+    "name": "TypeError",
+    "message": "fetch failed",
+    "cause": {
+      "name": "Error",
+      "message": "Client network socket disconnected before secure TLS connection was established",
+      "code": "ECONNRESET",
+      "syscall": null,
+      "address": null,
+      "port": 443,
+      "errno": null
+    },
+    "cause_code": "ECONNRESET",
+    "timeout_source": null,
+    "code": null
+  },
+  "evidence": {
+    "runId": "bp-lite-20260826",
+    "ledgerFile": "output/capacity-validation/bp-lite-20260826/lifecycle-ledger.ndjson",
+    "stage": "40",
+    "eventCount": 201
+  }
+}

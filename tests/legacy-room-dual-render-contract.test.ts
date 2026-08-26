@@ -9,7 +9,7 @@ describe("canonical Active Session route contract", () => {
   const session = read("public/js/pages/session-preview.js");
 
   it("renders the canonical Session UI from #/room", () => {
-    expect(app).toContain('import { sessionPage, sessionPreviewPage } from "./pages/session-preview.js?v=20260825-room-first-01";');
+    expect(app).toContain('import { recruitingRoomFragments, sessionPage, sessionPreviewPage } from "./pages/session-preview.js?v=20260826-room-shell-01";');
     expect(app).toContain("html = sessionPage(state);");
     expect(app).not.toContain('import { roomPage } from "./pages/room.js";');
     expect(app).not.toContain("html = roomPage(state);");
@@ -47,6 +47,6 @@ describe("canonical Active Session route contract", () => {
     expect(app).toContain('window.addEventListener("pageshow"');
     expect(app).toContain('document.addEventListener("visibilitychange"');
     expect(app).toContain('"open-room": () => replaceCanonicalRoute("#/room")');
-    expect(app).toContain('if (restoreRoute && isActiveSessionRoom(snapshot.room)');
+    expect(app).toContain('if (restoreRoute && !isRecruitmentExitRoom(snapshot.room) && isActiveSessionRoom(snapshot.room)');
   });
 });

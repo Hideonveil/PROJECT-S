@@ -1,0 +1,19 @@
+{
+  "runId": "bp-lite-async-20260826",
+  "mode": "stateful",
+  "status": "INCONCLUSIVE",
+  "failure": {
+    "name": "TimeoutError",
+    "message": "stage 40 did not form 36 active sessions",
+    "cause": null,
+    "cause_code": null,
+    "timeout_source": "matching_wait",
+    "code": "CAPACITY_TIMEOUT"
+  },
+  "evidence": {
+    "runId": "bp-lite-async-20260826",
+    "ledgerFile": "output/capacity-validation/bp-lite-async-20260826/lifecycle-ledger.ndjson",
+    "stage": "40",
+    "eventCount": 1002
+  }
+}

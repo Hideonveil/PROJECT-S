@@ -1,0 +1,27 @@
+{
+  "runId": "breakpoint-authfix-20260825",
+  "mode": "stateful",
+  "status": "INCONCLUSIVE",
+  "failure": {
+    "name": "TypeError",
+    "message": "fetch failed",
+    "cause": {
+      "name": "Error",
+      "message": "Client network socket disconnected before secure TLS connection was established",
+      "code": "ECONNRESET",
+      "syscall": null,
+      "address": null,
+      "port": 443,
+      "errno": null
+    },
+    "cause_code": "ECONNRESET",
+    "timeout_source": null,
+    "code": null
+  },
+  "evidence": {
+    "runId": "breakpoint-authfix-20260825",
+    "ledgerFile": "output/capacity-validation/breakpoint-authfix-20260825/lifecycle-ledger.ndjson",
+    "stage": "40",
+    "eventCount": 364
+  }
+}

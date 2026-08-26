@@ -12,6 +12,7 @@ import {
 } from "../tools/capacity/evidence.mjs";
 import {
   closeClient,
+  markOnline,
   refreshState,
   statefulRequest,
   startHeartbeat,
@@ -173,6 +174,24 @@ describe("stateful request timeout safety", () => {
       await closeClient(actor);
     } finally {
       await closeClient(actor).catch(() => {});
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("retries one transient reset only for the idempotent online presence call", async () => {
+    const { directory, ledger } = await ledgerFixture();
+    const actor = runtime();
+    let calls = 0;
+    globalThis.fetch = vi.fn(() => {
+      calls += 1;
+      if (calls === 1) return Promise.reject(new TypeError("fetch failed", { cause: Object.assign(new Error("reset"), { code: "ECONNRESET" }) }));
+      return Promise.resolve(new Response(JSON.stringify({ online: true }), { status: 200 }));
+    });
+    try {
+      await expect(markOnline(actor, options(), "5", ledger)).resolves.toMatchObject({ status: 200 });
+      expect(calls).toBe(2);
+      expect(ledger.events.some((event) => event.action === "presence.online.transport_retry")).toBe(true);
+    } finally {
       await rm(directory, { recursive: true, force: true });
     }
   });
