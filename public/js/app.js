@@ -1120,6 +1120,7 @@ function render() {
   document.body.dataset.immersive = immersive ? "true" : "";
   app.replaceChildren(persistentProductShell(html));
   syncHomeStepperAccessibility();
+  window.requestAnimationFrame(() => syncHomeStepperAccessibility());
   if (route.name === "gameover") restorePendingFeedbackState();
   lastGoodbyeAnnouncementKey = route.name === "room" ? goodbyeAnnouncementKey(state.room) : "";
   if (routeFocusPending) {
