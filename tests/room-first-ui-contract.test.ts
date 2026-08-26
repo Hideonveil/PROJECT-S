@@ -12,12 +12,23 @@ describe("room-first matching UI", () => {
     expect(home).toContain('filter.goal ? DEADLOCK_PATHS');
   });
 
-  it("re-renders the wizard body after selecting a goal", () => {
+  it("switches goals in place after the initial game selection", () => {
     const start = app.indexOf('if (action === "home-goal")');
     const end = app.indexOf('if (action === "home-casual-intent")', start);
-    expect(start).toBeGreaterThanOrEqual(0);
-    expect(end).toBeGreaterThan(start);
-    expect(app.slice(start, end)).toContain("render();");
+    const branch = app.slice(start, end);
+    expect(branch).toContain("selectHomeChoice(actionEl)");
+    expect(branch).toContain("updateHomeFlowStepper()");
+    expect(branch).not.toContain("render();");
+  });
+
+  it("does not show progress or start matching before a goal is chosen", () => {
+    const start = home.indexOf("function deadlockStage");
+    const end = home.indexOf("function rolesLabel", start);
+    const stage = home.slice(start, end);
+    expect(stage).toContain("const progress = filter.goal");
+    expect(stage).toContain("data-home-stepper hidden");
+    expect(stage).toContain("data-home-wizard-advance");
+    expect(stage).toContain("const advance = filter.goal");
   });
 
   it("updates casual intent locally instead of rebuilding the page", () => {

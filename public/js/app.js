@@ -1238,6 +1238,8 @@ function updateHomeFlowStepper() {
   const applyNext = () => {
     if (revision !== homeStepperRevision || !current.isConnected) return;
     current.setAttribute("aria-label", next.getAttribute("aria-label") || "Deadlock 配置进度");
+    current.hidden = false;
+    current.removeAttribute("aria-hidden");
     current.replaceChildren(...next.childNodes);
     current.animate(
       [
@@ -1247,6 +1249,16 @@ function updateHomeFlowStepper() {
       { duration: 360, easing: "cubic-bezier(.22,1,.36,1)" },
     );
   };
+  const advance = document.querySelector("[data-home-wizard-advance]");
+  if (advance) {
+    const path = homeWizardPath();
+    const step = Math.max(0, Math.min(path.length - 1, Number(HOME_FILTER.step) || 0));
+    const isLast = step === path.length - 1;
+    advance.hidden = false;
+    advance.innerHTML = isLast
+      ? `<div class="match-start-dock" data-match-start-dock><button class="match-start" type="button" data-action="home-start-match" aria-label="开始匹配"><span>开始匹配</span>${icon("arrowRight", 25)}</button></div>`
+      : `<button type="button" class="match-wizard-next" data-action="home-wizard-next"><span>下一步</span>${icon("arrowRight", 20)}</button>`;
+  }
   if (window.matchMedia("(prefers-reduced-motion: reduce)").matches || !current.animate) {
     applyNext();
     return;
@@ -3475,7 +3487,8 @@ document.addEventListener("click", (event) => {
     }
     HOME_FILTER.step = 0;
     HOME_FILTER.direction = 1;
-    render();
+    selectHomeChoice(actionEl);
+    updateHomeFlowStepper();
     return;
   }
 
