@@ -15,7 +15,7 @@ describe("reservation conflict guard", () => {
     expect(service).toContain("Math.random() * RESERVATION_CONFLICT_BACKOFF_JITTER_MS");
     expect(service).toContain("await waitForReservationConflict(conflictCount)");
     expect(service).toContain("continue;");
-    expect(service).toContain("A bare 40001 without this marker is a real database");
+    expect(service).toContain('String(error?.code || "") !== "40001"');
     expect(service).toContain("hasReservationConflictReason(data");
     expect(service).toContain("isPairReservationConflict(error, pair)");
     expect(service).toContain("isGroupReservationConflict(error, reservation)");

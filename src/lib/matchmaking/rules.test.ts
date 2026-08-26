@@ -139,10 +139,9 @@ describe("Deadlock matchmaking skeleton", () => {
       .toMatchObject({ desiredTeammates: 3, minTeammates: 3 });
   });
 
-  it("only allows casual tickets whose teammate ranges intersect", () => {
+  it("keeps casual teammate counts as preferences", () => {
     const casual = ticket({ mode: "casual", rankCode: null, desiredTeammates: 1, minTeammates: 1 });
-    expect(evaluateCompatibility(casual, ticket({ mode: "casual", rankCode: null, desiredTeammates: 3, minTeammates: 3 }), rules).hardFailures)
-      .toContain("group_size_conflict");
+    expect(evaluateCompatibility(casual, ticket({ mode: "casual", rankCode: null, desiredTeammates: 3, minTeammates: 3 }), rules).compatible).toBe(true);
     expect(evaluateCompatibility(casual, ticket({ mode: "casual", rankCode: null, desiredTeammates: 3, minTeammates: 1 }), rules).compatible).toBe(true);
   });
 
@@ -160,8 +159,9 @@ describe("Deadlock matchmaking skeleton", () => {
   });
 
   it("keeps the casual group lifecycle explicit", () => {
-    expect(canGroupTransition("partial_ready", "waiting_confirmation")).toBe(true);
-    expect(canGroupTransition("waiting_confirmation", "partial_ready")).toBe(true);
+    expect(canGroupTransition("partial_ready", "forming")).toBe(true);
+    expect(canGroupTransition("forming", "backfilling")).toBe(true);
+    expect(canGroupTransition("backfilling", "locked")).toBe(true);
     expect(isTerminalGroupState("expired")).toBe(true);
     expect(() => assertGroupTransition("matched", "searching")).toThrow("INVALID_GROUP_MATCH_TRANSITION");
   });

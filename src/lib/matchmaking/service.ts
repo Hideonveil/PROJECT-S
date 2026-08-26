@@ -1,7 +1,21 @@
 import { publicProfilesFor } from "../data";
 import { AppError } from "../http";
 import { supabaseAdmin } from "../supabase";
-import { evaluateCompatibility, rankCandidates, teammateRange } from "./rules";
+import { evaluateCompatibility, rankCandidates } from "./rules";
+import {
+  claimMatcherLease,
+  flushMatcherTelemetry,
+  increment as incrementRuntimeMetric,
+  isActualSqlSerializationFailure,
+  isDatabaseTimeout,
+  markActiveTick,
+  matcherCircuitOpen,
+  nextMatcherTick,
+  observeLatency,
+  recordMatcherEvent,
+  recordTicketProcessed,
+  setGauge,
+} from "./runtime-telemetry";
 import type { MatchGroup, MatchGroupMember, MatchTicket, MatchmakingInput, MatchmakingRuleSet } from "./types";
 
 type TicketRow = Record<string, any>;
@@ -46,6 +60,9 @@ function groupFromRow(row: TicketRow, members: MatchGroupMember[] = []): MatchGr
     confirmationDeadline: row.confirmation_deadline || null,
     roomId: row.room_id || null,
     sessionId: row.session_id || null,
+    roomPhase: row.formation_state || null,
+    hardMaxPlayers: Number(row.hard_max_players || 6),
+    recruitmentMode: row.recruitment_mode || "open",
     members,
   };
 }
@@ -61,22 +78,53 @@ function rulesFromRow(row: TicketRow): MatchmakingRuleSet {
   };
 }
 
-function groupRangeAllows(groupRow: TicketRow, candidate: MatchTicket, currentTeammates = 0) {
-  const candidateRange = teammateRange(candidate);
-  if (!candidateRange) return true;
-  const groupMin = Math.max(1, Number(groupRow.min_teammates || 1));
-  const groupMax = Math.min(5, Number(groupRow.desired_teammates || groupMin));
-  if (groupMin > groupMax) return false;
-  const intersectionMin = Math.max(groupMin, candidateRange.min);
-  const intersectionMax = Math.min(groupMax, candidateRange.max);
-  return intersectionMin <= intersectionMax && currentTeammates <= intersectionMax;
-}
-
 const RESERVATION_CONFLICT_BUDGET = 2;
+const CASUAL_BACKFILL_BUDGET = 4;
 const RESERVATION_CONFLICT_BACKOFF_BASE_MS = 100;
 const RESERVATION_CONFLICT_BACKOFF_JITTER_MS = 150;
 
 type ReservationKind = "pair" | "group";
+
+type MatcherAttemptContext = {
+  tickId: string;
+  ticketId: string;
+  startedAt: number;
+  conflictCount: number;
+  outcome: "NO_CANDIDATE" | "BUSINESS_CONFLICT" | "SUCCESS" | "WAITING" | "DATABASE_ERROR";
+  reasonCode: string | null;
+  targetId: string | null;
+};
+
+function createMatcherAttemptContext(tickId: string, ticketId: string): MatcherAttemptContext {
+  return {
+    tickId,
+    ticketId,
+    startedAt: Date.now(),
+    conflictCount: 0,
+    outcome: "NO_CANDIDATE",
+    reasonCode: null,
+    targetId: null,
+  };
+}
+
+function recordBusinessConflict(context: MatcherAttemptContext, reasonCode: string, targetId?: string | null) {
+  context.conflictCount += 1;
+  context.outcome = "BUSINESS_CONFLICT";
+  context.reasonCode = reasonCode;
+  context.targetId = targetId || null;
+  if (reasonCode === "STALE_CANDIDATE") incrementRuntimeMetric("stale_candidate");
+  if (reasonCode === "GROUP_FULL") incrementRuntimeMetric("group_full");
+  if (reasonCode === "ROOM_LOCKED") incrementRuntimeMetric("room_locked");
+  recordMatcherEvent({
+    tickId: context.tickId,
+    ticketId: context.ticketId,
+    candidateId: targetId || null,
+    operation: "reserve",
+    outcome: "BUSINESS_CONFLICT",
+    reasonCode,
+    attemptNumber: context.conflictCount,
+  });
+}
 
 type ReservationMetricBucket = {
   minute: string;
@@ -112,11 +160,13 @@ function flushReservationMetrics(nextMinute: string) {
   }
 }
 
-function recordReservationAttempt() {
+function recordReservationAttempt(kind?: ReservationKind) {
   const minute = currentMetricMinute();
   flushReservationMetrics(minute);
   if (!reservationMetricBucket) return;
   reservationMetricBucket.reserveAttempts += 1;
+  if (kind === "pair") incrementRuntimeMetric("pair_attempts");
+  if (kind === "group") incrementRuntimeMetric("group_attempts");
 }
 
 function recordReservationConflict(kind: ReservationKind) {
@@ -125,6 +175,7 @@ function recordReservationConflict(kind: ReservationKind) {
   if (!reservationMetricBucket) return;
   if (kind === "pair") reservationMetricBucket.pairConflicts += 1;
   if (kind === "group") reservationMetricBucket.groupConflicts += 1;
+  incrementRuntimeMetric(kind === "pair" ? "pair_business_conflicts" : "group_business_conflicts");
 }
 
 function hasReservationConflictReason(data: any, reasons: string[]) {
@@ -132,28 +183,171 @@ function hasReservationConflictReason(data: any, reasons: string[]) {
 }
 
 function isPairReservationConflict(error: any, data?: any) {
-  // New RPCs return expected business contention as a committed JSON result.
-  // During rollout, older RPCs may still encode the same outcome as SQLSTATE
-  // 40001. A bare 40001 without this marker is a real database serialization
-  // failure and must propagate instead of being treated as a safe candidate
-  // miss.
+  // Business contention must be a committed typed result. A legacy exception
+  // carrying SQLSTATE 40001 is deliberately not accepted as a business miss.
   return hasReservationConflictReason(data, ["MATCH_RESERVATION_CONFLICT"])
-    || error?.message?.includes("MATCH_RESERVATION_CONFLICT");
+    || (String(error?.code || "") !== "40001" && error?.message?.includes("MATCH_RESERVATION_CONFLICT"));
 }
 
 function isGroupReservationConflict(error: any, data?: any) {
   return hasReservationConflictReason(data, ["GROUP_RESERVATION_CONFLICT", "GROUP_SIZE_CONFLICT"])
-    || error?.message?.includes("GROUP_RESERVATION_CONFLICT")
-    || error?.message?.includes("GROUP_SIZE_CONFLICT");
+    || (String(error?.code || "") !== "40001" && error?.message?.includes("GROUP_RESERVATION_CONFLICT"))
+    || (String(error?.code || "") !== "40001" && error?.message?.includes("GROUP_SIZE_CONFLICT"));
 }
 
 function waitForReservationConflict(conflictNumber: number) {
-  const delay = RESERVATION_CONFLICT_BACKOFF_BASE_MS * conflictNumber
+  const delay = Math.min(30_000, RESERVATION_CONFLICT_BACKOFF_BASE_MS * (2 ** Math.max(0, conflictNumber - 1)))
     + Math.floor(Math.random() * RESERVATION_CONFLICT_BACKOFF_JITTER_MS);
+  incrementRuntimeMetric("matcher_backoffs");
   return new Promise<void>((resolve) => setTimeout(resolve, delay));
 }
 
 const matchmakingFlights = new Map<string, Promise<unknown>>();
+
+const MATCHER_INTERVAL_MS = 1000;
+const MATCHER_BATCH_SIZE = 32;
+const MATCHER_IDLE_COOLDOWN_MS = 5_000;
+const MATCHER_WAITING_COOLDOWN_MS = 15_000;
+const MATCHER_ERROR_COOLDOWN_MS = 30_000;
+let matcherHandle: ReturnType<typeof setInterval> | null = null;
+let matcherTelemetryHandle: ReturnType<typeof setInterval> | null = null;
+let matcherBusy = false;
+let lastPoolGaugeAt = 0;
+
+function cooldownForAttempt(context: MatcherAttemptContext, previousConflicts: number) {
+  if (context.outcome === "BUSINESS_CONFLICT") {
+    const exponent = Math.min(5, Math.max(0, previousConflicts));
+    return Math.min(30_000, 1_000 * (2 ** exponent)) + Math.floor(Math.random() * 500);
+  }
+  if (context.outcome === "WAITING") return MATCHER_WAITING_COOLDOWN_MS;
+  if (context.outcome === "DATABASE_ERROR") return MATCHER_ERROR_COOLDOWN_MS;
+  return MATCHER_IDLE_COOLDOWN_MS + Math.floor(Math.random() * 1_000);
+}
+
+async function persistMatchAttemptState(sourceRow: TicketRow, context: MatcherAttemptContext) {
+  if (!sourceRow.id || sourceRow.state !== "searching") return;
+  const previousConflicts = Number(sourceRow.consecutive_conflicts || 0);
+  const cooldownMs = cooldownForAttempt(context, previousConflicts);
+  const consecutiveConflicts = context.outcome === "BUSINESS_CONFLICT" ? previousConflicts + 1 : 0;
+  const nextAttemptAt = new Date(Date.now() + cooldownMs).toISOString();
+  const { error } = await supabaseAdmin()
+    .from("matchmaking_tickets")
+    .update({
+      last_match_attempt_at: new Date().toISOString(),
+      next_match_attempt_at: nextAttemptAt,
+      last_match_outcome: context.outcome,
+      last_match_target_id: context.targetId,
+      consecutive_conflicts: consecutiveConflicts,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", sourceRow.id)
+    .eq("state", "searching");
+  if (error) throw error;
+  if (context.outcome === "BUSINESS_CONFLICT") {
+    recordMatcherEvent({
+      tickId: context.tickId,
+      ticketId: context.ticketId,
+      candidateId: context.targetId,
+      operation: "schedule_next_attempt",
+      outcome: "COOLDOWN",
+      reasonCode: context.reasonCode,
+      attemptNumber: consecutiveConflicts,
+      cooldownMs,
+    });
+  }
+}
+
+async function refreshMatcherPoolGauges() {
+  if (Date.now() - lastPoolGaugeAt < 10_000) return;
+  lastPoolGaugeAt = Date.now();
+  const admin = supabaseAdmin();
+  const [{ count: searching }, { count: forming }] = await Promise.all([
+    admin.from("matchmaking_tickets").select("id", { count: "exact", head: true }).eq("state", "searching"),
+    admin.from("matchmaking_groups").select("id", { count: "exact", head: true }).in("state", ["forming", "backfilling"]),
+  ]);
+  setGauge("searching_tickets", Number(searching || 0));
+  setGauge("forming_rooms", Number(forming || 0));
+}
+
+async function runMatchmakingSweep() {
+  if (matcherBusy) return;
+  matcherBusy = true;
+  const tickId = nextMatcherTick();
+  try {
+    if (!(await claimMatcherLease())) return;
+    markActiveTick();
+    await refreshMatcherPoolGauges();
+    if (matcherCircuitOpen()) return;
+    const eligibleAt = new Date().toISOString();
+    const { data: rows, error } = await supabaseAdmin()
+      .from("matchmaking_tickets")
+      .select("id,user_id,mode,state,next_match_attempt_at,consecutive_conflicts")
+      .eq("state", "searching")
+      .or(`next_match_attempt_at.is.null,next_match_attempt_at.lte.${eligibleAt}`)
+      .order("search_started_at", { ascending: true })
+      .limit(MATCHER_BATCH_SIZE);
+    if (error) throw error;
+    setGauge("eligible_tickets", (rows || []).length);
+    for (const row of (rows || []) as TicketRow[]) {
+      const context = createMatcherAttemptContext(tickId, row.id);
+      recordTicketProcessed(row.id);
+      const startedAt = Date.now();
+      try {
+        const result = await withMatchmakingFlight(row.user_id, () => row.mode === "casual"
+          ? attemptCasualGroup(row.user_id, context)
+          : attemptMatch(row.user_id, context));
+        if (result?.state && result.state !== "searching") {
+          context.outcome = "SUCCESS";
+        } else if (context.outcome === "NO_CANDIDATE" && row.mode === "casual" && result?.group_id) {
+          context.outcome = "WAITING";
+        }
+        await persistMatchAttemptState(row, context);
+        observeLatency("matchmaking_start", Date.now() - startedAt);
+      } catch (error) {
+        context.outcome = "DATABASE_ERROR";
+        context.reasonCode = isActualSqlSerializationFailure(error) ? "DATABASE_SERIALIZATION_FAILURE" : "DATABASE_ERROR";
+        if (isActualSqlSerializationFailure(error)) incrementRuntimeMetric("actual_sql_40001");
+        if (isDatabaseTimeout(error)) incrementRuntimeMetric("transaction_timeouts");
+        incrementRuntimeMetric("database_errors");
+        recordMatcherEvent({
+          tickId,
+          ticketId: row.id,
+          operation: "matchmaking_attempt",
+          outcome: isActualSqlSerializationFailure(error) ? "SQL_SERIALIZATION_FAILURE" : isDatabaseTimeout(error) ? "TIMEOUT" : "DATABASE_ERROR",
+          reasonCode: context.reasonCode,
+        });
+        // An infrastructure error is not a retry invitation. Persist a
+        // bounded cooldown so one bad ticket cannot turn the sweep into a
+        // zero-delay error loop while the error is investigated.
+        try { await persistMatchAttemptState(row, context); } catch (persistError) {
+          console.warn(JSON.stringify({ event: "matchmaking_attempt_state_error", message: persistError instanceof Error ? persistError.message : String(persistError) }));
+        }
+      }
+    }
+  } catch (error) {
+    incrementRuntimeMetric("database_errors");
+    console.warn(JSON.stringify({
+      event: "matchmaking_sweep_error",
+      message: error instanceof Error ? error.message : String(error),
+    }));
+  } finally {
+    matcherBusy = false;
+  }
+}
+
+/**
+ * A deliberately small in-process matcher. Active tickets are durable rows,
+ * so a restart simply resumes from the next sweep. Existing reservation RPCs
+ * provide the database-side idempotency and conflict boundary.
+ */
+export function startPersistentMatcher() {
+  if (matcherHandle) return;
+  void runMatchmakingSweep();
+  matcherHandle = setInterval(() => { void runMatchmakingSweep(); }, MATCHER_INTERVAL_MS);
+  matcherHandle.unref?.();
+  matcherTelemetryHandle = setInterval(() => { void flushMatcherTelemetry(); }, 10_000);
+  matcherTelemetryHandle.unref?.();
+}
 
 function withMatchmakingFlight<T>(userId: string, work: () => Promise<T>): Promise<T> {
   const running = matchmakingFlights.get(userId);
@@ -183,7 +377,7 @@ async function activeTicketRow(userId: string) {
   return ticket;
 }
 
-async function attemptMatch(userId: string) {
+async function attemptMatch(userId: string, context?: MatcherAttemptContext) {
   const admin = supabaseAdmin();
   const sourceRow = await activeTicketRow(userId);
   if (!sourceRow || sourceRow.state !== "searching") return sourceRow;
@@ -233,8 +427,12 @@ async function attemptMatch(userId: string) {
   let conflictCount = 0;
   for (const candidate of ranked) {
     if (conflictCount >= RESERVATION_CONFLICT_BUDGET) break;
+    if (context?.targetId && context.targetId === candidate.ticket.id) {
+      incrementRuntimeMetric("same_target_suppressed");
+      continue;
+    }
     const compatibility = evaluateCompatibility(source, candidate.ticket, rules);
-    recordReservationAttempt();
+    recordReservationAttempt("pair");
     const { data: pair, error } = await admin.rpc("matchmaking_reserve_pair", {
       p_ticket_a: source.id,
       p_ticket_b: candidate.ticket.id,
@@ -244,19 +442,30 @@ async function attemptMatch(userId: string) {
     if (error || isPairReservationConflict(null, pair)) {
       if (isPairReservationConflict(error, pair)) {
         conflictCount += 1;
+        if (context) recordBusinessConflict(context, "MATCH_RESERVATION_CONFLICT", candidate.ticket.id);
         recordReservationConflict("pair");
         if (conflictCount < RESERVATION_CONFLICT_BUDGET) await waitForReservationConflict(conflictCount);
         continue;
       }
       throw error;
     }
-    const { error: presentError } = await admin.rpc("matchmaking_present_pair", { p_pair_id: pair.id });
-    if (presentError) throw presentError;
+    if (context) {
+      context.outcome = "SUCCESS";
+      context.reasonCode = null;
+      context.targetId = candidate.ticket.id;
+      observeLatency("time_to_pair", Date.now() - context.startedAt);
+      observeLatency("time_to_first_match", Date.now() - context.startedAt);
+    }
+    incrementRuntimeMetric("pair_success");
+    if (!["matched", "playing"].includes(String(pair.state))) {
+      const { error: presentError } = await admin.rpc("matchmaking_present_pair", { p_pair_id: pair.id });
+      if (presentError) throw presentError;
+    }
     // Ranked pairs are direct connections: once a compatible second player
     // enters the pair, both tickets are accepted server-side and the room is
     // created atomically. The confirmation rows remain as an audit trail, but
     // neither player needs to click a second consent button.
-    await autoConnectPair(pair.id, requestIdForAutoConnect(source.id, candidate.ticket.id));
+    if (!["matched", "playing"].includes(String(pair.state))) await autoConnectPair(pair.id, requestIdForAutoConnect(source.id, candidate.ticket.id));
     break;
   }
   return activeTicketRow(userId);
@@ -322,72 +531,104 @@ async function groupSnapshot(groupId: string, viewerId: string) {
     profile: profileById.get(member.user_id) || null,
   })));
   if (group.roomId) {
-    const { data: room } = await admin.from("rooms").select("code").eq("id", group.roomId).maybeSingle();
+    const { data: room } = await admin.from("rooms").select("code,formation_state").eq("id", group.roomId).maybeSingle();
     group.roomCode = room?.code || null;
+    group.roomPhase = room?.formation_state || null;
   }
   return group.members.some((member) => member.userId === viewerId) ? group : null;
 }
 
-async function attemptCasualGroup(userId: string) {
+async function attemptCasualGroup(userId: string, context?: MatcherAttemptContext) {
   const admin = supabaseAdmin();
   let sourceRow = await activeTicketRow(userId);
-  if (!sourceRow || sourceRow.mode !== "casual" || sourceRow.state !== "searching") return sourceRow;
+  if (!sourceRow || sourceRow.mode !== "casual") return sourceRow;
   const { data: ruleRow, error: ruleError } = await admin.from("matchmaking_rule_sets").select("*").eq("id", sourceRow.rule_set_id).single();
   if (ruleError || !ruleRow) throw ruleError || new Error("MATCH_RULE_SET_MISSING");
   const rules = rulesFromRow(ruleRow);
   const source = ticketFromRow(sourceRow);
 
-  // Prefer an existing group. This is the common case when the owner starts
-  // first and teammates arrive later.
-  const { data: openGroups, error: openGroupError } = await admin
-    .from("matchmaking_groups")
-    .select("*")
-    .eq("game_id", source.gameId)
-    .in("state", ["searching", "partial_ready"])
-    .neq("owner_user_id", userId)
-    .order("created_at", { ascending: true })
-    .limit(24);
-  if (openGroupError) throw openGroupError;
-  let conflictCount = 0;
-  for (const groupRow of (openGroups || []) as TicketRow[]) {
-    if (conflictCount >= RESERVATION_CONFLICT_BUDGET) break;
-    const { count } = await admin.from("matchmaking_group_members").select("id", { count: "exact", head: true }).eq("group_id", groupRow.id).neq("decision", "rejected");
-    const currentTeammates = Math.max(0, Number(count || 1) - 1);
-    if (currentTeammates >= Number(groupRow.desired_teammates || 1)) continue;
-    const { data: ownerRow } = await admin.from("matchmaking_tickets").select("*").eq("group_id", groupRow.id).eq("user_id", groupRow.owner_user_id).maybeSingle();
-    if (!ownerRow) continue;
-    const ownerTicket = ticketFromRow(ownerRow);
-    const ownerCandidates = rankCandidates(ownerTicket, [source], rules);
-    if (!ownerCandidates.length) continue;
-    const compatibility = ownerCandidates[0].compatibility;
-    if (!groupRangeAllows(groupRow, source, currentTeammates)) continue;
-    recordReservationAttempt();
-    const { data: reservation, error } = await admin.rpc("matchmaking_reserve_group_member", {
-      p_group_id: groupRow.id,
-      p_ticket_id: source.id,
-      p_hard_snapshot: { passed: true, ruleSetVersion: rules.version },
-      p_soft_snapshot: compatibility.softSignals,
-    });
-    if (!error && !isGroupReservationConflict(null, reservation)) {
-      sourceRow = await activeTicketRow(userId);
-      break;
+  // A non-owner already inside a forming room waits for the owner (or another
+  // sweep) to backfill it. The owner remains searchable and drives the room.
+  let ownGroup: TicketRow | null = null;
+  if (sourceRow.group_id) {
+    const { data: group } = await admin.from("matchmaking_groups").select("*").eq("id", sourceRow.group_id).maybeSingle();
+    ownGroup = group as TicketRow | null;
+    if (ownGroup && ownGroup.owner_user_id !== userId) {
+      if (context) context.outcome = "WAITING";
+      return sourceRow;
     }
-    if (!isGroupReservationConflict(error, reservation)) throw error;
-    conflictCount += 1;
-    recordReservationConflict("group");
-    if (conflictCount < RESERVATION_CONFLICT_BUDGET) await waitForReservationConflict(conflictCount);
+    if (ownGroup && !["searching", "partial_ready", "forming", "backfilling"].includes(ownGroup.state)) return sourceRow;
   }
 
-  if (conflictCount >= RESERVATION_CONFLICT_BUDGET) return activeTicketRow(userId);
+  // A new starter first tries existing groups. This is the only operation that
+  // changes the candidate's group; the RPC performs the row-lock boundary.
+  if (!ownGroup && sourceRow.state === "searching") {
+    const { data: openGroups, error: openGroupError } = await admin
+      .from("matchmaking_groups")
+      .select("*")
+      .eq("game_id", source.gameId)
+      .in("state", ["searching", "partial_ready", "forming", "backfilling"])
+      .neq("owner_user_id", userId)
+      .order("created_at", { ascending: true })
+      .limit(24);
+    if (openGroupError) throw openGroupError;
+    let conflictCount = 0;
+    for (const groupRow of (openGroups || []) as TicketRow[]) {
+      if (conflictCount >= RESERVATION_CONFLICT_BUDGET) break;
+      const { count } = await admin.from("matchmaking_group_members")
+        .select("id", { count: "exact", head: true })
+        .eq("group_id", groupRow.id).neq("decision", "rejected");
+      if (Number(count || 0) >= Number(groupRow.hard_max_players || 6)) {
+        incrementRuntimeMetric("group_full");
+        continue;
+      }
+      const { data: ownerRow } = await admin.from("matchmaking_tickets")
+        .select("*").eq("group_id", groupRow.id)
+        .eq("user_id", groupRow.owner_user_id).maybeSingle();
+      if (!ownerRow) continue;
+      const ownerTicket = ticketFromRow(ownerRow);
+      const candidate = rankCandidates(ownerTicket, [source], rules)[0];
+      if (!candidate) continue;
+      recordReservationAttempt("group");
+      const { data: reservation, error } = await admin.rpc("matchmaking_reserve_group_member", {
+        p_group_id: groupRow.id,
+        p_ticket_id: source.id,
+        p_hard_snapshot: { passed: true, ruleSetVersion: rules.version },
+        p_soft_snapshot: candidate.compatibility.softSignals,
+      });
+      if (!error && !isGroupReservationConflict(null, reservation)) {
+        if (context) {
+          context.outcome = "SUCCESS";
+          context.reasonCode = null;
+          context.targetId = source.id;
+          observeLatency("time_to_forming_room", Date.now() - context.startedAt);
+          observeLatency("time_to_first_match", Date.now() - context.startedAt);
+        }
+        incrementRuntimeMetric("group_success");
+        return activeTicketRow(userId);
+      }
+      if (!isGroupReservationConflict(error, reservation)) throw error;
+      conflictCount += 1;
+      if (context) recordBusinessConflict(context, String(reservation?.reason || "GROUP_RESERVATION_CONFLICT"), groupRow.id);
+      recordReservationConflict("group");
+      if (conflictCount < RESERVATION_CONFLICT_BUDGET) await waitForReservationConflict(conflictCount);
+    }
 
-  if (!sourceRow?.group_id) {
-    const { error: groupError } = await admin.rpc("matchmaking_ensure_group", { p_ticket_id: source.id });
-    if (groupError) throw groupError;
-    sourceRow = await activeTicketRow(userId);
+    if (conflictCount >= RESERVATION_CONFLICT_BUDGET) return activeTicketRow(userId);
+
+    if (!sourceRow.group_id) {
+      const { error: groupError } = await admin.rpc("matchmaking_ensure_group", { p_ticket_id: source.id });
+      if (groupError) throw groupError;
+      sourceRow = await activeTicketRow(userId);
+      if (!sourceRow?.group_id) return sourceRow;
+      const { data: group } = await admin.from("matchmaking_groups").select("*").eq("id", sourceRow.group_id).maybeSingle();
+      ownGroup = group as TicketRow | null;
+    }
   }
-  if (!sourceRow?.group_id) return sourceRow;
-  const { data: ownGroup } = await admin.from("matchmaking_groups").select("*").eq("id", sourceRow.group_id).maybeSingle();
-  if (!ownGroup || ownGroup.owner_user_id !== userId || !["searching", "partial_ready"].includes(ownGroup.state)) return sourceRow;
+
+  if (!ownGroup || ownGroup.owner_user_id !== userId || !["searching", "partial_ready", "forming", "backfilling"].includes(ownGroup.state)) {
+    return activeTicketRow(userId);
+  }
 
   const { data: candidates, error: candidatesError } = await admin
     .from("matchmaking_tickets")
@@ -399,14 +640,23 @@ async function attemptCasualGroup(userId: string) {
     .order("search_started_at", { ascending: true })
     .limit(100);
   if (candidatesError) throw candidatesError;
-  const { count: existingCount } = await admin.from("matchmaking_group_members").select("id", { count: "exact", head: true }).eq("group_id", ownGroup.id).neq("decision", "rejected");
-  let teammateCount = Math.max(0, Number(existingCount || 1) - 1);
-  const ranked = rankCandidates(source, (candidates || []).map(ticketFromRow), rules);
+  // Two one-person placeholder groups must not try to absorb each other in
+  // opposite directions. A stable UUID order gives one owner the merge right;
+  // tickets without a group remain eligible for ordinary backfill.
+  const eligibleCandidates = (candidates || [])
+    .map(ticketFromRow)
+    .filter((candidate) => !candidate.groupId || String(ownGroup.id) < String(candidate.groupId));
+  const ranked = rankCandidates(source, eligibleCandidates, rules);
+  let conflictCount = 0;
+  let accepted = 0;
   for (const candidate of ranked) {
-    if (conflictCount >= RESERVATION_CONFLICT_BUDGET) break;
-    if (teammateCount >= Number(ownGroup.desired_teammates || source.desiredTeammates || 1)) break;
-    if (!groupRangeAllows(ownGroup, candidate.ticket, teammateCount)) continue;
-    recordReservationAttempt();
+    if (accepted >= CASUAL_BACKFILL_BUDGET || conflictCount >= RESERVATION_CONFLICT_BUDGET) break;
+    if (context?.targetId && context.targetId === candidate.ticket.id) {
+      incrementRuntimeMetric("same_target_suppressed");
+      continue;
+    }
+    recordReservationAttempt("group");
+    incrementRuntimeMetric("backfill_attempts");
     const { data: reservation, error } = await admin.rpc("matchmaking_reserve_group_member", {
       p_group_id: ownGroup.id,
       p_ticket_id: candidate.ticket.id,
@@ -414,19 +664,29 @@ async function attemptCasualGroup(userId: string) {
       p_soft_snapshot: candidate.compatibility.softSignals,
     });
     if (!error && !isGroupReservationConflict(null, reservation)) {
-      teammateCount += 1;
-    } else if (isGroupReservationConflict(error, reservation)) {
-      conflictCount += 1;
-      recordReservationConflict("group");
-      if (conflictCount < RESERVATION_CONFLICT_BUDGET) await waitForReservationConflict(conflictCount);
-    } else {
-      throw error;
+      accepted += 1;
+      incrementRuntimeMetric("group_success");
+      incrementRuntimeMetric("backfill_success");
+      if (context) {
+        context.outcome = "SUCCESS";
+        context.reasonCode = null;
+        context.targetId = candidate.ticket.id;
+        observeLatency("backfill_latency", Date.now() - context.startedAt);
+      }
+      if (["matched", "playing"].includes(reservation?.state)) break;
+      continue;
     }
+    if (!isGroupReservationConflict(error, reservation)) throw error;
+    conflictCount += 1;
+    if (context) recordBusinessConflict(context, String(reservation?.reason || "GROUP_RESERVATION_CONFLICT"), candidate.ticket.id);
+    recordReservationConflict("group");
+    if (conflictCount < RESERVATION_CONFLICT_BUDGET) await waitForReservationConflict(conflictCount);
   }
   return activeTicketRow(userId);
 }
 
 async function startTicketInternal(userId: string, input: MatchmakingInput, requestId: string | null) {
+  startPersistentMatcher();
   const admin = supabaseAdmin();
   const { data, error } = await admin.rpc("matchmaking_start_ticket", {
     p_user_id: userId,
@@ -541,7 +801,7 @@ async function joinPublicTicketInternal(userId: string, targetTicketId: string, 
         groupId = group?.id || null;
       }
       if (!groupId) throw new AppError("DIRECT_JOIN_UNAVAILABLE", "这支队伍刚刚发生变化，请重新选择", 409, true);
-      recordReservationAttempt();
+      recordReservationAttempt("group");
       const { data: reservation, error: reserveError } = await admin.rpc("matchmaking_reserve_group_member", {
         p_group_id: groupId,
         p_ticket_id: joiner.id,
@@ -554,7 +814,7 @@ async function joinPublicTicketInternal(userId: string, targetTicketId: string, 
       }
       if (reserveError) throw reserveError;
     } else {
-      recordReservationAttempt();
+      recordReservationAttempt("pair");
       const { data: pair, error: reserveError } = await admin.rpc("matchmaking_reserve_pair", {
         p_ticket_a: joiner.id,
         p_ticket_b: target.id,
@@ -567,9 +827,11 @@ async function joinPublicTicketInternal(userId: string, targetTicketId: string, 
       }
       if (reserveError) throw reserveError;
       if (!pair?.id) throw new AppError("DIRECT_JOIN_FAILED", "加入匹配失败，请重试", 500, true);
-      const { error: presentError } = await admin.rpc("matchmaking_present_pair", { p_pair_id: pair.id });
-      if (presentError) throw presentError;
-      await autoConnectPair(pair.id, requestId ? `auto-join:${requestId}` : `auto-join:${pair.id}`);
+      if (!["matched", "playing"].includes(String(pair.state))) {
+        const { error: presentError } = await admin.rpc("matchmaking_present_pair", { p_pair_id: pair.id });
+        if (presentError) throw presentError;
+        await autoConnectPair(pair.id, requestId ? `auto-join:${requestId}` : `auto-join:${pair.id}`);
+      }
     }
   } catch (error) {
     await admin.rpc("matchmaking_cancel_ticket", {
@@ -622,6 +884,11 @@ export async function matchmakingStatus(userId: string) {
     }));
 
   if (!ticket) return { ticket: null, pair: null, group: null, candidate: null, matching: matching || 0, matchable: matchable || 0, directory };
+  let ticketRoomCode: string | null = null;
+  if (ticket.room_id) {
+    const { data: room } = await admin.from("rooms").select("code").eq("id", ticket.room_id).maybeSingle();
+    ticketRoomCode = room?.code || null;
+  }
   let pair: TicketRow | null = null;
   let candidate = null;
   const group = ticket.group_id ? await groupSnapshot(ticket.group_id, userId) : null;
@@ -653,7 +920,7 @@ export async function matchmakingStatus(userId: string) {
       pair = { ...pair, confirmations: confirmations || [], roomCode };
     }
   }
-  return { ticket, pair, group, candidate, matching: matching || 0, matchable: matchable || 0, directory };
+  return { ticket: { ...ticket, roomCode: ticketRoomCode }, pair, group, candidate, matching: matching || 0, matchable: matchable || 0, directory };
 }
 
 async function cancelTicketInternal(userId: string, reason: string, requestId: string | null) {

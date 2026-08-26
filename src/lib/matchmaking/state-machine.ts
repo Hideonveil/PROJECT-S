@@ -13,8 +13,11 @@ const transitions: Record<MatchState, readonly MatchState[]> = {
 };
 
 const groupTransitions: Record<GroupMatchState, readonly GroupMatchState[]> = {
-  searching: ["partial_ready", "waiting_confirmation", "cancelled", "expired"],
-  partial_ready: ["searching", "waiting_confirmation", "cancelled", "expired"],
+  searching: ["partial_ready", "forming", "cancelled", "expired"],
+  partial_ready: ["searching", "forming", "cancelled", "expired"],
+  forming: ["backfilling", "locked", "cancelled", "expired"],
+  backfilling: ["forming", "locked", "cancelled", "expired"],
+  locked: ["matched", "cancelled", "expired"],
   waiting_confirmation: ["matched", "partial_ready", "cancelled", "expired"],
   matched: ["playing", "cancelled"],
   playing: ["completed", "cancelled"],

@@ -1,6 +1,11 @@
 (function () {
   "use strict";
 
+  // The Matching V2 interactive prototype is intentionally self-contained:
+  // it must not run the product-wide locale resolver or make even a local API
+  // request while the fake state machine is being reviewed.
+  if (document.querySelector("[data-prototype-page]")) return;
+
   const STORAGE_KEY = "jiyuan_locale";
   const MANUAL_KEY = "jiyuan_locale_manual";
   const SKIP_SELECTOR = [

@@ -43,6 +43,15 @@
 > 75 及以上停止。
 > 失败批次已通过普通用户 API 收敛，`finalActive=0`。
 
+> Matching V2 Minimal 已完成 Production 部署：Ranked 继续复用 Pair → formal Room/Session；Casual
+> 复用现有 `matchmaking_groups`、`matchmaking_group_members`、`rooms`、`room_members`、`sessions`，
+> 只新增 `rooms.formation_state`、Group 的 hard-cap/recruitment 字段与
+> `forming/backfilling/locked` 状态。`20260825193000_matchmaking_v2_minimal_forming.sql` 已在
+> Production Supabase SQL Editor 成功执行；应用侧有限周期 matcher（每秒、每轮最多 32 个
+> searching ticket、每组最多 4 个 backfill）随 `matching-v2-20260825` 发布。代码验证：typecheck
+> PASS、production build PASS；下一步仍需执行 10–20 人 correctness smoke 后，才恢复
+> `40 → 75 → 100 → 150 → 200` capacity run。
+
 ## 1. 当前阶段
 
 - 当前阶段：Final Private Pilot Gate（`PENDING / NO-GO`）。
@@ -64,7 +73,7 @@
 - Runtime source baseline、tests/tooling、project docs 与 migration provenance 均已进入 Git。
 - `0009_realtime_matchmaking.sql` 已恢复为历史原始版本；当前 migration provenance 规则保持有效：`NOT_RECORDED` 不得解释为未执行，不得 replay 或 repair production migration history，后续数据库变化必须使用 forward-only migration。
 - `v0.1` / `v1` / `v2` 仅作为 historical archive，不承担当前项目事实源职责。
-- 当前源码 migration 文件数：35。新增 `20260824100000_session_member_likes.sql`、`20260825110000_optimize_rls_initplan.sql`、`20260825130000_return_reservation_conflicts.sql`、`20260825150000_separate_presence_heartbeat_from_reconcile.sql` 与 `20260825160000_terminalize_room_members_on_terminal.sql` 均为 forward-only migration；此前审计中使用的“27 个 migration”属于更早时间点，不能继续作为当前仓库总数。
+- 当前源码 migration 文件数：36。新增 `20260825193000_matchmaking_v2_minimal_forming.sql` 与 `20260824100000_session_member_likes.sql`、`20260825110000_optimize_rls_initplan.sql`、`20260825130000_return_reservation_conflicts.sql`、`20260825150000_separate_presence_heartbeat_from_reconcile.sql`、`20260825160000_terminalize_room_members_on_terminal.sql` 均为 forward-only migration；此前审计中使用的“27 个 migration”属于更早时间点，不能继续作为当前仓库总数。
 - 本轮新增工程修复 commit：`2e269f2c6e1c580afe0b3c0a4fe013a95fcd1b52`，并由 docs-only commit `1454bd4` 固化事实。它将 Stateful Runner 的同一 Actor `/api/state` 读取做 in-flight 合并、将等待轮询默认间隔从 1 秒调整为约 2 秒并加入轻微 jitter，同时防止 heartbeat 请求重叠；该修复已随 `1454bd4` 部署 Production。
 - 本轮新增 forward-only migration：`20260825150000_separate_presence_heartbeat_from_reconcile.sql`，SHA-256 为 `d3014accb511b75a53a1f94e0c93423b328e393dc80abe576def2eb88b5b7fd8`。已在 Production Supabase SQL Editor 成功执行一次；它只移除 `presence_heartbeat()` 内对 `presence_reconcile_stale()` 的调用，保留 heartbeat、30 秒 effective-online、180 秒 reconnect grace 及 `pg_cron` stale sweep；未 replay/repair migration history。
 - 本轮新增 forward-only migration：`20260825160000_terminalize_room_members_on_terminal.sql`，SHA-256 为 `1b834906140b24165b6c37fc8274eab04191b4a63c9fd0c64866b46cba08c13a`。已在 Production Supabase SQL Editor 成功执行一次；Session/Room 进入 terminal 时只将仍为 `active` 的成员更新为 `exited` 并写入 `exited_at`，不做历史 backfill、不删除数据；session/room trigger 与函数已只读确认存在。
@@ -73,6 +82,7 @@
 
 - 公网入口：`https://www.jiyuan.online`
 - 部署方式：腾讯云中国香港节点上的 Docker Compose，Caddy 对外提供 HTTPS 和代理。
+- 当前 Production runtime：`matching-v2-20260825`；`/api/health=200 ready`、`/api/health/live=200 live`，`china-hk-app-1=Healthy`、`china-hk-gateway-1=Running`。Matching V2 migration 已执行；Production `/prototype/matching-v2` 返回 `404`，未开放本地 prototype。
 - 最近 Production application source commit：`220b9939903b5ee6200fd794129aa526c84da15f`；Production runtime health version：`220b993`。此前 `1454bd4`、`8972b1e`、`347c0bb`、`8631311`、`40c138c`、`47f3a11`、`923bf47`、`875bb97`、`892d61e`、`cd51a83` 与 `7bee0a2-dirty-presence-2c0143f4` 作为历史部署版本/标签保留。
 - Git 应用源码基线与 Production runtime version / deployment label 仍是两个不同概念；本次具备源码同步、容器 build、health、HTTP 与容器状态证据，但不把单独的 health 字段解释为任意容器文件的字节级证明。
 - 此前 `875bb97` 发布后的健康检查曾确认：`HTTP 200`、`ok=true`、`status=ready`、`version=875bb9786b5c4c5684de87358cb0289236adc869`、`online=0`、`matching=0`、`playing=0`、`users=531`；检查时间 `2026-08-24T10:17:41.166Z`。这是历史安全收尾快照，不覆盖当前 `40c138c` 发布后的 degraded 诊断证据。

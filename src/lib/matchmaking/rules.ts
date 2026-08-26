@@ -61,6 +61,9 @@ export function normalizeMatchmakingInput(input: Partial<MatchmakingInput>): Mat
   const minTeammates = mode === "casual"
     ? Math.min(desiredTeammates!, Number.isFinite(requestedMinimum) && requestedMinimum >= 1 ? Math.max(1, requestedMinimum) : desiredTeammates!)
     : undefined;
+  const recruitmentMode = mode === "casual" && ["open", "rush", "fill"].includes(String(input.recruitmentMode))
+    ? input.recruitmentMode as "open" | "rush" | "fill"
+    : mode === "casual" ? "open" : undefined;
   return {
     gameId: "deadlock",
     mode,
@@ -71,6 +74,7 @@ export function normalizeMatchmakingInput(input: Partial<MatchmakingInput>): Mat
     microphonePreference,
     desiredTeammates,
     minTeammates,
+    recruitmentMode,
   };
 }
 
@@ -145,13 +149,9 @@ export function evaluateCompatibility(
       ) hardFailures.push("rank_distance");
     }
   }
-  if (a.mode === "casual") {
-    const rangeA = teammateRange(a);
-    const rangeB = teammateRange(b);
-    if (rangeA && rangeB && Math.max(rangeA.min, rangeB.min) > Math.min(rangeA.max, rangeB.max)) {
-      hardFailures.push("group_size_conflict");
-    }
-  }
+  // Casual teammate counts are preferences in Matching V2 Minimal. The game
+  // hard cap is applied by the forming-room RPC; a requested group size must
+  // not strand otherwise compatible players in separate pools.
 
   return {
     compatible: hardFailures.length === 0,

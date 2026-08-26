@@ -10,10 +10,10 @@ import * as api from "./api.js";
 import { authPage } from "./pages/auth.js";
 import { HERO_PREVIEW_DIRECTORY, heroDirectoryMarkup, heroDirectoryPersonMarkup, heroPreviewPage, landingPage } from "./pages/landing.js?v=20260822-directory-readonly-01";
 import { welcomePage } from "./pages/welcome.js";
-import { homeFlowStepper, homePage, matchingDirectoryMarkup, matchingDirectoryPersonMarkup } from "./pages/home.js?v=20260822-directory-readonly-01";
+import { homeFlowStepper, homePage, matchingDirectoryMarkup, matchingDirectoryPersonMarkup } from "./pages/home.js?v=20260825-room-first-01";
 import { communityPage } from "./pages/community.js";
 import { matchingPage, matchingPreviewPage } from "./pages/matching.js";
-import { sessionPage, sessionPreviewPage } from "./pages/session-preview.js?v=20260822-role-fit-01";
+import { sessionPage, sessionPreviewPage } from "./pages/session-preview.js?v=20260825-room-first-01";
 import { gameoverPage } from "./pages/gameover.js";
 import { connectionsPage } from "./pages/connections.js";
 import { mePage } from "./pages/me.js";
@@ -53,6 +53,7 @@ const DRAFT = {
   needed: 1,
   teamMin: 1,
   teamMax: 1,
+  casualIntent: "default",
   onboardStep: 0,
   onboardDirection: 1,
   dirty: false,
@@ -70,6 +71,8 @@ const HOME_FILTER = {
   team: "1",
   teamMin: "1",
   teamMax: "1",
+  casualIntent: "default",
+  advancedOpen: false,
   voice: "on",
 };
 let homeStepperRevision = 0;
@@ -666,6 +669,8 @@ function resetHomeFilter() {
   HOME_FILTER.team = "1";
   HOME_FILTER.teamMin = "1";
   HOME_FILTER.teamMax = "1";
+  HOME_FILTER.casualIntent = "default";
+  HOME_FILTER.advancedOpen = false;
   HOME_FILTER.voice = "on";
 }
 
@@ -715,8 +720,8 @@ function parseRoute() {
 }
 
 function isActiveSessionRoom(room) {
-  if (!room?.id) return false;
-  const terminal = new Set(["completed", "cancelled", "expired"]);
+  if (!room?.id || room.resumeEligible !== true) return false;
+  const terminal = new Set(["finished", "completed", "closed", "cancelled", "expired"]);
   return !terminal.has(String(room.status || "").toLowerCase())
     && !terminal.has(String(room.sessionStatus || "").toLowerCase());
 }
@@ -1041,20 +1046,11 @@ function render() {
     case "connections":
       html = connectionsPage(state);
       break;
-    case "matching": {
-      if (state.room) {
-        update({ room: null });
-        replaceCanonicalRoute(state.session?.status === "completed" ? "#/gameover" : "#/home");
-        return;
-      }
-      if (state.match.status !== "active") {
-        navigate("#/home");
-        return;
-      }
-      html = matchingPage(state);
-      immersive = true;
-      break;
-    }
+    case "matching":
+      // Retire the standalone waiting screen. A current room is always the
+      // user-facing recruiting surface; stale legacy links safely return home.
+      replaceCanonicalRoute(isActiveSessionRoom(state.room) ? "#/room" : "#/home");
+      return;
     case "matching-preview":
       if (!localMatchingPreview) {
         navigate("#/hero");
@@ -1202,9 +1198,28 @@ function prepareNeedDraft() {
 }
 
 function homeWizardPath() {
+  if (!HOME_FILTER.goal) return ["goal"];
   return HOME_FILTER.goal === "casual"
-    ? ["goal", "team", "voice"]
+    ? ["goal", "intent", "voice"]
     : ["goal", "rank", "roles", "voice"];
+}
+
+function prewarmMatchArtwork() {
+  [
+    "/assets/games/deadlock-card.jpg", "/assets/games/coming-soon-card.jpg",
+    "/assets/modes/rank-hero-card.jpg", "/assets/modes/casual-hero-card.jpg",
+    "/assets/ranks/01-initiate.png", "/assets/ranks/02-seeker.png",
+    "/assets/ranks/03-acolyte.png", "/assets/ranks/04-sentinel.png",
+    "/assets/ranks/05-mystic.png", "/assets/ranks/06-ritualist.png",
+    "/assets/ranks/07-emissary.png", "/assets/ranks/08-oracle.png",
+    "/assets/ranks/09-phantom.png", "/assets/ranks/10-ascendant.png",
+    "/assets/ranks/11-eternus.png",
+  ].forEach((src) => {
+    const image = new Image();
+    image.decoding = "async";
+    image.fetchPriority = "high";
+    image.src = src;
+  });
 }
 
 function homeWizardStepKey() {
@@ -1259,6 +1274,39 @@ function selectHomeChoice(actionEl) {
     choice.classList.toggle("is-on", choice === actionEl);
     choice.setAttribute("aria-pressed", String(choice === actionEl));
   });
+}
+
+function setCasualAdvancedOpen(open) {
+  const panel = document.getElementById("home-casual-advanced-panel");
+  const card = document.querySelector('[data-action="home-toggle-casual-advanced"]');
+  if (!panel || !card) return;
+  card.classList.toggle("is-on", open);
+  card.setAttribute("aria-pressed", String(open));
+  card.setAttribute("aria-expanded", String(open));
+  if (open) {
+    panel.hidden = false;
+    if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      panel.animate([{ opacity: 0, transform: "translateY(-8px)" }, { opacity: 1, transform: "translateY(0)" }], { duration: 180, easing: "cubic-bezier(.22,1,.36,1)" });
+    }
+  } else if (!panel.hidden) {
+    const close = () => { panel.hidden = true; };
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) close();
+    else panel.animate([{ opacity: 1, transform: "translateY(0)" }, { opacity: 0, transform: "translateY(-6px)" }], { duration: 120, easing: "ease-out" }).finished.then(close).catch(close);
+  }
+}
+
+function updateCasualIntentView() {
+  const intent = HOME_FILTER.casualIntent;
+  document.querySelectorAll('[data-action="home-casual-intent"]').forEach((card) => {
+    const on = card.dataset.value === intent;
+    card.classList.toggle("is-on", on);
+    card.setAttribute("aria-pressed", String(on));
+  });
+  const summary = document.querySelector("[data-casual-advanced-summary]");
+  const { min, max } = homeTeamRange();
+  if (summary) summary.textContent = min === max ? `严格匹配 ${min} 位队友` : `接受 ${min}–${max} 位队友`;
+  updateHomeTeamRangeView();
+  setCasualAdvancedOpen(Boolean(HOME_FILTER.advancedOpen));
 }
 
 function homeTeamRange() {
@@ -1378,12 +1426,13 @@ function syncHomeFilterToDraft() {
   const teamRange = homeTeamRange();
   DRAFT.teamMin = HOME_FILTER.goal === "casual" ? teamRange.min : 1;
   DRAFT.teamMax = HOME_FILTER.goal === "casual" ? teamRange.max : 1;
+  DRAFT.casualIntent = HOME_FILTER.goal === "casual" ? HOME_FILTER.casualIntent : "default";
   DRAFT.needed = DRAFT.teamMax;
   DRAFT.voice = HOME_FILTER.voice !== "off";
   DRAFT.voicePref = HOME_FILTER.voice;
   DRAFT.role = "";
   DRAFT.selectedTags = HOME_FILTER.goal === "casual"
-    ? [`队友人数：${DRAFT.teamMin === DRAFT.teamMax ? DRAFT.teamMax : `${DRAFT.teamMin}–${DRAFT.teamMax}`}`]
+    ? [`组队方式：${DRAFT.casualIntent}`, `队友人数：${DRAFT.teamMin === DRAFT.teamMax ? DRAFT.teamMax : `${DRAFT.teamMin}–${DRAFT.teamMax}`}`]
     : [
         ...HOME_FILTER.ownRoles.map((role) => `我的位置：${role}`),
         ...HOME_FILTER.teammateRoles.map((role) => `希望队友：${role}`),
@@ -1482,6 +1531,12 @@ function normalizeServerRoom(room) {
     need: room.need || state.need,
     sessionId: room.sessionId || null,
     sessionStatus: room.sessionStatus || null,
+    recruiting: room.recruiting === true,
+    recruitmentState: room.recruitmentState || null,
+    formationState: room.formationState || null,
+    formationGroupId: room.formationGroupId || null,
+    isForming: room.isForming === true || ["forming", "backfilling", "locked"].includes(String(room.formationState || "")),
+    resumeEligible: room.resumeEligible === true,
     goodbyeRequests: room.goodbyeRequests || [],
     target: memberModel.targetTotalPlayers,
   };
@@ -1513,23 +1568,31 @@ function sessionPartnerFor(session) {
 
 function roomShapeChanged(next, prev) {
   if (!next || !prev) return true;
-  if (next.code !== prev.code || next.status !== prev.status) return true;
-  if (next.targetTotalPlayers !== prev.targetTotalPlayers || next.activeMemberCount !== prev.activeMemberCount) return true;
-  if (JSON.stringify(next.need || {}) !== JSON.stringify(prev.need || {})) return true;
-  if (JSON.stringify(next.goodbyeRequests || []) !== JSON.stringify(prev.goodbyeRequests || [])) return true;
-  const memberShape = (member) => JSON.stringify([
-    member.id,
+  return roomRenderSignature(next) !== roomRenderSignature(prev);
+}
+
+function roomRenderSignature(room) {
+  const memberShape = (member) => [
+    member.id || "",
     member.memberStatus || "active",
     member.exitedAt || "",
     member.nickname || member.name || "",
     member.username || "",
     member.avatarKey || "",
-    member.gameAccounts || {},
-    member.need || {},
+    member.online === false ? "offline" : "online",
+  ].join(":");
+  return JSON.stringify([
+    room.id || "",
+    room.code || "",
+    room.status || "",
+    room.recruiting === true ? "recruiting" : "locked",
+    room.recruitmentState || "",
+    room.formationState || "",
+    room.targetTotalPlayers || room.target || 0,
+    room.activeMemberCount || 0,
+    (room.goodbyeRequests || []).map((request) => request.userId || request.user_id || request).sort(),
+    (room.members || []).map(memberShape).sort(),
   ]);
-  const members = (next.members || []).map(memberShape).join("|");
-  const oldMembers = (prev.members || []).map(memberShape).join("|");
-  return members !== oldMembers;
 }
 
 function goodbyeAnnouncementKey(room) {
@@ -1878,7 +1941,11 @@ function applyServerSnapshot(data) {
     return;
   } else if (patch.room === null && routeName === "room") {
     render();
-  } else if (patch.room && routeName === "room" && (roomChanged || friendRequestsChanged)) {
+  } else if (patch.room && routeName === "room" && roomChanged) {
+    // Room membership/state really changed: rebuild once so joins/leaves are
+    // reflected, but never repaint on a polling snapshot with only metadata.
+    render();
+  } else if (patch.room && routeName === "room" && friendRequestsChanged) {
     updateSessionView(state.room);
   }
   if (routeName === "matching" && matchmakingChanged && !patch.room && !state.room) updateMatchingView(previousMatch, state.match);
@@ -1923,7 +1990,12 @@ async function startGroupMatch(groupId) {
   try {
     const snapshot = await api.startMatchGroup(groupId);
     applyMatchmakingSnapshot(snapshot);
-    toast("队伍已锁定，正在等待成员确认");
+    if (snapshot?.group?.roomCode || snapshot?.room) {
+      applyServerSnapshot(await api.getState());
+      toast("已停止招募，正在进入房间");
+    } else {
+      toast("队伍已锁定，正在建立房间");
+    }
   } catch (error) {
     toast(error.message);
   } finally {
@@ -2086,7 +2158,7 @@ async function refreshAuthenticatedState({ restoreRoute = false } = {}) {
     const snapshot = await api.getState();
     if (snapshot.user) update({ user: snapshot.user });
     applyServerSnapshot(snapshot);
-    if (restoreRoute && snapshot.room && ["home", "auth", "welcome", "matching"].includes(parseRoute().name)) {
+    if (restoreRoute && isActiveSessionRoom(snapshot.room) && ["home", "auth", "welcome", "matching"].includes(parseRoute().name)) {
       replaceCanonicalRoute("#/room");
     }
   } catch {
@@ -2370,6 +2442,9 @@ async function startMatch() {
       Math.min(5, Math.max(1, Number(DRAFT.teamMax || DRAFT.needed) || 1)),
       Math.max(1, Number(DRAFT.teamMin || DRAFT.teamMax || DRAFT.needed) || 1),
     ) : undefined,
+    recruitmentMode: DRAFT.goal === "娱乐"
+      ? ({ hurry: "rush", fill: "fill" }[DRAFT.casualIntent] || "open")
+      : undefined,
   };
   const need = {
     game: "deadlock", mode: DRAFT.mode, goal: DRAFT.goal, current: 1, target: DRAFT.goal === "娱乐" ? 1 + Number(matchInput.desiredTeammates || 1) : 2,
@@ -2411,7 +2486,12 @@ async function startMatch() {
           candidate: data.candidate || null,
         },
       });
-      navigate("#/matching");
+      // Casual V2 may already have a forming Room after the first compatible
+      // reservation. Hydrate the shared Room UI immediately instead of
+      // rendering the legacy group-only waiting screen for one extra cycle.
+      applyServerSnapshot(await api.getState());
+      if (isActiveSessionRoom(state.room)) replaceCanonicalRoute("#/room");
+      else throw new Error("ROOM_FIRST_NOT_READY");
     }, {
       label: "正在进入匹配池",
       immediate: true,
@@ -2424,7 +2504,8 @@ async function startMatch() {
         const snapshot = await api.getMatchmakingStatus();
         if (snapshot?.ticket) {
           applyMatchmakingSnapshot(snapshot);
-          navigate("#/matching");
+          applyServerSnapshot(await api.getState());
+          if (isActiveSessionRoom(state.room)) replaceCanonicalRoute("#/room");
           toast("服务器已确认你在匹配池中");
           return;
         }
@@ -3367,7 +3448,10 @@ document.addEventListener("click", (event) => {
     HOME_FILTER.team = "1";
     HOME_FILTER.teamMin = "1";
     HOME_FILTER.teamMax = "1";
+    HOME_FILTER.casualIntent = "default";
+    HOME_FILTER.advancedOpen = false;
     HOME_FILTER.time = "现在";
+    prewarmMatchArtwork();
     render();
     window.requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "smooth" }));
     return;
@@ -3385,10 +3469,38 @@ document.addEventListener("click", (event) => {
     const nextGoal = value === "casual" ? "casual" : "rank";
     if (HOME_FILTER.goal !== nextGoal) HOME_FILTER.rank = "";
     HOME_FILTER.goal = nextGoal;
+    if (nextGoal === "casual") {
+      HOME_FILTER.casualIntent = HOME_FILTER.casualIntent || "default";
+      HOME_FILTER.advancedOpen = false;
+    }
     HOME_FILTER.step = 0;
     HOME_FILTER.direction = 1;
     selectHomeChoice(actionEl);
     updateHomeFlowStepper();
+    return;
+  }
+
+  if (action === "home-casual-intent") {
+    const nextIntent = ["default", "hurry", "fill"].includes(value) ? value : "default";
+    HOME_FILTER.casualIntent = nextIntent;
+    HOME_FILTER.advancedOpen = false;
+    if (nextIntent === "fill") {
+      HOME_FILTER.teamMin = "5";
+      HOME_FILTER.teamMax = "5";
+    } else {
+      HOME_FILTER.teamMin = "1";
+      HOME_FILTER.teamMax = "1";
+    }
+    updateCasualIntentView();
+    return;
+  }
+
+  if (action === "home-toggle-casual-advanced") {
+    HOME_FILTER.advancedOpen = !HOME_FILTER.advancedOpen;
+    if (HOME_FILTER.advancedOpen && HOME_FILTER.teamMax === "1") {
+      HOME_FILTER.teamMax = "5";
+    }
+    updateCasualIntentView();
     return;
   }
 
@@ -3435,6 +3547,7 @@ document.addEventListener("click", (event) => {
       stepKey === "rank" && !HOME_FILTER.rank ? "请选择当前段位" :
       stepKey === "roles" && !HOME_FILTER.ownRoles.length ? "请选择自己的位置，或选择不限" :
       stepKey === "roles" && !HOME_FILTER.teammateRoles.length ? "请选择希望队友的位置，或选择不限" :
+      stepKey === "intent" && !HOME_FILTER.casualIntent ? "请选择组队方式" :
       stepKey === "team" && (!Number(HOME_FILTER.teamMin) || !Number(HOME_FILTER.teamMax) || Number(HOME_FILTER.teamMin) > Number(HOME_FILTER.teamMax)) ? "请设置有效的队友人数范围" : "";
     if (error) {
       toast(error);
@@ -3505,6 +3618,7 @@ document.addEventListener("click", (event) => {
     "confirm-match": () => confirmMatch("accepted"),
     "reject-match": () => confirmMatch("rejected"),
     "start-group-match": (id) => startGroupMatch(id),
+    "lock-forming-room": (id) => startGroupMatch(id),
     "confirm-group-match": (id) => confirmGroupMatch(id, "accepted"),
     "reject-group-match": (id) => confirmGroupMatch(id, "rejected"),
     "open-room": () => replaceCanonicalRoute("#/room"),
@@ -3753,8 +3867,8 @@ async function handleAuthSuccess() {
       const snapshot = await api.getState();
       update({ user: snapshot.user });
       applyServerSnapshot(snapshot);
-      hasActiveRoom = Boolean(snapshot.room);
-      destination = snapshot.room
+      hasActiveRoom = isActiveSessionRoom(snapshot.room);
+      destination = hasActiveRoom
         ? "#/room"
         : snapshot.session?.status === "completed"
           ? "#/gameover"
@@ -3807,7 +3921,7 @@ async function restoreSession() {
         const snapshot = await api.getState();
         update({ user: snapshot.user });
         applyServerSnapshot(snapshot);
-        if (snapshot.room && ["home", "auth", "welcome", "matching"].includes(parseRoute().name)) {
+        if (isActiveSessionRoom(snapshot.room) && ["home", "auth", "welcome", "matching"].includes(parseRoute().name)) {
           replaceCanonicalRoute("#/room");
         }
       } catch {

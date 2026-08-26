@@ -43,7 +43,9 @@ describe("room connection flow contract", () => {
   it("uses ranked role groups and a casual teammate count", () => {
     const home = read("public/js/pages/home.js");
     expect(home).toContain('{ key: "roles", label: "位置" }');
-    expect(home).toContain('{ key: "team", label: "队友人数" }');
+    expect(home).toContain('{ key: "intent", label: "组队方式" }');
+    expect(home).toContain('"home-casual-intent"');
+    expect(home).toContain('更多（高级选项）');
     expect(home).toContain("我的位置");
     expect(home).toContain("希望队友位置");
   });

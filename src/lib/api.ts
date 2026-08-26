@@ -230,15 +230,17 @@ export async function enrichRoom(room: Record<string, unknown>, options: { conte
     }
   }
   let ticketIds = [pair?.ticket_a_id, pair?.ticket_b_id].filter(Boolean) as string[];
+  let formationGroup: Record<string, any> | null = null;
   // Casual rooms are group-backed and do not have a matchmaking_pairs row.
   // Resolve every group member's ticket so a restored Session can rebuild
   // every player's conditions instead of silently falling back to pair data.
   if (!ticketIds.length) {
     const { data: group } = await supabaseAdmin()
       .from("matchmaking_groups")
-      .select("id")
+      .select("id,state,hard_max_players,recruitment_mode")
       .eq("room_id", room.id as string)
       .maybeSingle();
+    formationGroup = group as Record<string, any> | null;
     if (group?.id) {
       const { data: groupMembers } = await supabaseAdmin()
         .from("matchmaking_group_members")
@@ -247,6 +249,14 @@ export async function enrichRoom(room: Record<string, unknown>, options: { conte
         .order("joined_at", { ascending: true });
       ticketIds = (groupMembers || []).map((member) => member.ticket_id).filter(Boolean) as string[];
     }
+  }
+  if (!ticketIds.length) {
+    const { data: roomTickets } = await supabaseAdmin()
+      .from("matchmaking_tickets")
+      .select("id")
+      .eq("room_id", room.id as string)
+      .order("created_at", { ascending: true });
+    ticketIds = (roomTickets || []).map((ticket) => ticket.id).filter(Boolean) as string[];
   }
   const { data: ticketRows } = ticketIds.length
     ? await supabaseAdmin()
@@ -318,6 +328,12 @@ export async function enrichRoom(room: Record<string, unknown>, options: { conte
         .eq("session_id", session.id)
         .order("requested_at", { ascending: true })
     : { data: [] };
+  const roomStatus = String(room.status || "").toLowerCase();
+  const sessionStatus = String(session?.status || "").toLowerCase();
+  const legacyFormationState = String(room.formation_state || "").toLowerCase();
+  const hasFormalSession = ["ready", "playing", "completed", "cancelled"].includes(sessionStatus);
+  const recruitmentLocked = hasFormalSession || ["locked", "formal"].includes(legacyFormationState);
+  const recruiting = roomStatus === "connecting" && !recruitmentLocked;
   return {
     id: room.id as string,
     code: room.code as string,
@@ -329,6 +345,12 @@ export async function enrichRoom(room: Record<string, unknown>, options: { conte
     members: memberViews,
     sessionId: session?.id || null,
     sessionStatus: session?.status || null,
+    recruiting: recruiting,
+    recruitmentState: recruiting ? "recruiting" : recruitmentLocked ? "locked" : null,
+    formationState: (room.formation_state as Room["formationState"]) || (formationGroup ? "formal" : null),
+    formationGroupId: formationGroup?.id || null,
+    isForming: ["forming", "backfilling", "locked"].includes(String(room.formation_state || "")),
+    resumeEligible: true,
     goodbyeRequests: mapGoodbyeRequests(goodbyeRows || []),
     currentMemberCount: memberViews.length,
     activeMemberCount: memberViews.filter((member) => member.memberStatus === "active").length,
@@ -361,20 +383,38 @@ async function loadActiveRoomCandidate(profileId: string): Promise<ActiveRoomCan
   // the newest Session per room before restoring it, otherwise a refresh can
   // reopen the previous room instead of returning the player to home.
   const candidateIds = rooms.map((room) => room.id as string);
-  const { data: sessions } = await supabaseAdmin()
-    .from("sessions")
-    .select("*")
-    .in("room_id", candidateIds)
-    .order("created_at", { ascending: false });
+  const liveTicketStates = ["searching", "candidate_found", "waiting_confirmation", "matched", "playing"];
+  const liveFormationStates = ["searching", "partial_ready", "forming", "backfilling", "locked"];
+  const [{ data: sessions }, { data: tickets }, { data: groups }] = await Promise.all([
+    supabaseAdmin()
+      .from("sessions")
+      .select("*")
+      .in("room_id", candidateIds)
+      .order("created_at", { ascending: false }),
+    supabaseAdmin()
+      .from("matchmaking_tickets")
+      .select("room_id,state,group_id")
+      .eq("user_id", profileId)
+      .in("room_id", candidateIds)
+      .in("state", liveTicketStates),
+    supabaseAdmin()
+      .from("matchmaking_groups")
+      .select("room_id,state,session_id")
+      .in("room_id", candidateIds)
+      .in("state", liveFormationStates),
+  ]);
   const latestSessionByRoom = new Map<string, Record<string, any>>();
   for (const row of sessions || []) {
     if (!latestSessionByRoom.has(row.room_id as string)) {
       latestSessionByRoom.set(row.room_id as string, row as Record<string, any>);
     }
   }
+  const liveTicketRoomIds = new Set((tickets || []).map((ticket) => ticket.room_id).filter(Boolean));
+  const liveFormationRoomIds = new Set((groups || []).map((group) => group.room_id).filter(Boolean));
   const room = rooms.find((candidate) => {
     const latest = latestSessionByRoom.get(candidate.id as string);
-    return !latest || ["ready", "playing"].includes(latest.status);
+    if (latest) return ["ready", "playing"].includes(latest.status);
+    return liveTicketRoomIds.has(candidate.id) || liveFormationRoomIds.has(candidate.id);
   });
   return {
     room: (room as Record<string, unknown>) || null,

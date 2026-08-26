@@ -39,6 +39,10 @@ const DEADLOCK_RANK_ARTS = [
   "/assets/ranks/10-ascendant.png",
   "/assets/ranks/11-eternus.png",
 ];
+const DEADLOCK_RANK_DIMENSIONS = [
+  [271, 320], [311, 320], [262, 320], [320, 234], [286, 320], [320, 311],
+  [277, 320], [320, 222], [279, 320], [297, 320], [320, 301],
+];
 const DEADLOCK_TIMES = ["现在", "30分钟后", "1小时后"];
 
 const DEADLOCK_PATHS = {
@@ -50,10 +54,16 @@ const DEADLOCK_PATHS = {
   ],
   casual: [
     { key: "goal", label: "游戏目的" },
-    { key: "team", label: "队友人数" },
+    { key: "intent", label: "组队方式" },
     { key: "voice", label: "是否开麦" },
   ],
 };
+
+const CASUAL_INTENTS = [
+  ["default", "随缘", "不急着凑满，遇到合适的人就一起玩。", "dices"],
+  ["hurry", "速度", "先找到一位就可以开聊，快点开一局。", "zap"],
+  ["fill", "满人", "优先继续招募，尽量凑到游戏人数上限。", "users"],
+];
 
 function option(value, label, on, action, iconName = "", multiple = false) {
   return `<button type="button" class="cursor-target home-filter-tag match-option ${on ? "is-on" : ""}" data-action="${action}" data-value="${esc(value)}" aria-pressed="${on}">
@@ -68,7 +78,7 @@ function goalOptions(filter) {
   ];
   return `<div class="match-choice-cards match-choice-cards--goal" role="group" aria-label="游戏目的">
     ${choices.map(([value, label, iconName, artClass]) => `<button type="button" class="cursor-target match-option match-choice-card ${filter.goal === value ? "is-on" : ""}" data-action="home-goal" data-value="${value}" aria-pressed="${filter.goal === value}">
-      <span class="match-choice-art-slot ${artClass}" aria-hidden="true"><img src="${value === "rank" ? "/assets/modes/rank-hero.jpg" : "/assets/modes/casual-hero.jpg"}" alt="" loading="lazy" decoding="async" /></span>
+      <span class="match-choice-art-slot ${artClass}" aria-hidden="true"><img src="${value === "rank" ? "/assets/modes/rank-hero-card.jpg" : "/assets/modes/casual-hero-card.jpg"}" alt="" width="600" height="${value === "rank" ? "529" : "554"}" loading="eager" fetchpriority="high" decoding="async" /></span>
       <span class="match-choice-card-body"><span class="match-choice-card-title"><span class="match-option-icon">${icon(iconName, 18)}</span><b>${label}</b><span class="match-option-check">${icon("check", 11)}</span></span></span>
     </button>`).join("")}
   </div>`;
@@ -79,11 +89,11 @@ function gameOptions(selected) {
   const on = selected === "deadlock";
   return `<div class="match-games-grid">
     <button type="button" class="cursor-target match-option match-game-option match-game-option--deadlock match-game-card home-filter-game-row ${on ? "is-on" : ""}" data-home-game="deadlock" data-action="home-game" data-value="deadlock" aria-pressed="${on}">
-      <span class="match-game-art-slot match-game-card-media" aria-hidden="true"></span>
+      <span class="match-game-art-slot match-game-card-media" aria-hidden="true"><img src="/assets/games/deadlock-card.jpg" alt="" width="300" height="450" loading="eager" fetchpriority="high" decoding="async" /></span>
       <span class="match-game-option-main match-game-card-info"><span class="match-game-card-title-row"><span class="match-option-icon">${icon(GAME_ICONS.deadlock, 20)}</span><b>${esc(game?.name || "Deadlock")}</b><span class="match-option-check">${icon("arrowRight", 12)}</span></span></span>
     </button>
     <article class="match-game-card match-game-card--soon match-games-soon" role="note" aria-label="其他游戏即将开放">
-      <span class="match-game-art-slot match-game-card-media" data-label="OTHER GAMES" aria-hidden="true"><img src="/assets/games/coming-soon.png" alt="" loading="lazy" decoding="async" /></span>
+      <span class="match-game-art-slot match-game-card-media" data-label="OTHER GAMES" aria-hidden="true"><img src="/assets/games/coming-soon-card.jpg" alt="" width="700" height="497" loading="eager" fetchpriority="high" decoding="async" /></span>
       <span class="match-game-option-main match-game-card-info"><span class="match-game-card-title-row"><span class="match-option-icon">${icon("sparkles", 20)}</span><b>COMING SOON</b></span></span>
     </article>
   </div>`;
@@ -99,7 +109,7 @@ function flowStepper(currentStep, steps) {
 }
 
 export function homeFlowStepper(filter) {
-  const path = DEADLOCK_PATHS[filter.goal === "casual" ? "casual" : "rank"];
+  const path = filter.goal ? DEADLOCK_PATHS[filter.goal === "casual" ? "casual" : "rank"] : DEADLOCK_PATHS.rank.slice(0, 1);
   const step = Math.max(0, Math.min(path.length - 1, Number(filter.step) || 0));
   return flowStepper(step, path);
 }
@@ -133,7 +143,7 @@ function rankOptions(selected) {
       index === 8 ? "match-rank-option--phantom" : "",
     ].filter(Boolean).map((className) => ` ${className}`).join("");
     return `<button type="button" class="cursor-target home-filter-tag match-option match-rank-option${artAdjustment} ${on ? "is-on" : ""}" data-action="home-rank" data-value="${esc(value)}" aria-pressed="${on}">
-      <span class="match-rank-art-slot" aria-hidden="true"><img src="${DEADLOCK_RANK_ARTS[index]}" alt="" decoding="async" /></span><span class="match-rank-card-body"><span class="match-rank-name">${esc(name)}</span>${material ? `<small>${esc(material)}</small>` : ""}<span class="match-option-check">${icon("check", 11)}</span></span>
+      <span class="match-rank-art-slot" aria-hidden="true"><img src="${DEADLOCK_RANK_ARTS[index]}" alt="" width="${DEADLOCK_RANK_DIMENSIONS[index][0]}" height="${DEADLOCK_RANK_DIMENSIONS[index][1]}" loading="eager" fetchpriority="${index < 4 ? "high" : "auto"}" decoding="auto" /></span><span class="match-rank-card-body"><span class="match-rank-name">${esc(name)}</span>${material ? `<small>${esc(material)}</small>` : ""}<span class="match-option-check">${icon("check", 11)}</span></span>
     </button>`;
   }).join("")}</div>`;
 }
@@ -149,6 +159,24 @@ function wizardContent(filter, stepKey) {
       ${roleOptions(DEADLOCK_ROLES, filter.teammateRoles, "home-teammate-role", "希望队友位置")}
     </div>`;
   }
+  if (stepKey === "intent") {
+    const intent = filter.casualIntent || "default";
+    const min = Math.min(5, Math.max(1, Number(filter.teamMin ?? 1) || 1));
+    const max = Math.max(min, Math.min(5, Number(filter.teamMax ?? min) || min));
+    const summary = min === max ? `严格匹配 ${min} 位队友` : `接受 ${min}–${max} 位队友`;
+    return `<div class="match-casual-intent-options">
+      <div class="match-options match-options--voice match-options--casual-intents" role="group" aria-label="组队意图">
+        ${CASUAL_INTENTS.map(([value, label, _description, iconName]) => option(value, label, intent === value, "home-casual-intent", iconName)).join("")}
+        <button type="button" class="cursor-target home-filter-tag match-option match-casual-more-option ${filter.advancedOpen ? "is-on" : ""}" data-action="home-toggle-casual-advanced" aria-label="更多（高级选项）" aria-pressed="${Boolean(filter.advancedOpen)}" aria-expanded="${Boolean(filter.advancedOpen)}" aria-controls="home-casual-advanced-panel">
+          <span class="match-option-icon">${icon("slidersHorizontal", 20)}</span><span>更多</span><span class="match-option-check">${icon("check", 12)}</span>
+        </button>
+      </div>
+      <div id="home-casual-advanced-panel" class="match-casual-advanced-panel" ${filter.advancedOpen ? "" : "hidden"} aria-label="高级人数设置">
+        <div class="match-casual-advanced-panel__head"><div><b>队友人数</b><span data-casual-advanced-summary>${summary}</span></div><small>拖动范围调整</small></div>
+        ${teamRangeMarkup(filter)}
+      </div>
+    </div>`;
+  }
   if (stepKey === "voice") {
     return `<div class="match-choice-stack">
       ${filter.goal === "rank" ? `<p class="match-rank-note" role="note">${icon("mic", 18)}<span><b>冲分最好开麦哦</b><small>及时沟通位置与团战信息，配合会更稳定。</small></span></p>` : ""}
@@ -159,13 +187,17 @@ function wizardContent(filter, stepKey) {
       </div>
     </div>`;
   }
-  if (stepKey === "team") {
-    const min = Math.min(5, Math.max(1, Number(filter.teamMin ?? filter.team ?? 1) || 1));
-    const max = Math.max(min, Math.min(5, Number(filter.teamMax ?? filter.team ?? min) || min));
-    const minPercent = ((min - 1) / 4) * 100;
-    const maxPercent = ((max - 1) / 4) * 100;
-    const summary = min === max ? `严格匹配 ${min} 位队友` : `接受 ${min}–${max} 位队友`;
-    const detents = [1, 2, 3, 4, 5].map((value) => `<span class="match-team-range-detent${value >= min && value <= max ? " is-active" : ""}${value === min || value === max ? " is-edge" : ""}" data-team-range-detent="${value}" style="left:${((value - 1) / 4) * 100}%"><i></i><b>${value}</b></span>`).join("");
+  if (stepKey === "team") return teamRangeMarkup(filter);
+  return `<div class="match-options match-options--time" role="group" aria-label="什么时候玩">${DEADLOCK_TIMES.map((time, index) => option(time, time, filter.time === time, "home-time", index === 0 ? "zap" : "clock")).join("")}</div>`;
+}
+
+function teamRangeMarkup(filter) {
+  const min = Math.min(5, Math.max(1, Number(filter.teamMin ?? filter.team ?? 1) || 1));
+  const max = Math.max(min, Math.min(5, Number(filter.teamMax ?? filter.team ?? min) || min));
+  const minPercent = ((min - 1) / 4) * 100;
+  const maxPercent = ((max - 1) / 4) * 100;
+  const summary = min === max ? `严格匹配 ${min} 位队友` : `接受 ${min}–${max} 位队友`;
+  const detents = [1, 2, 3, 4, 5].map((value) => `<span class="match-team-range-detent${value >= min && value <= max ? " is-active" : ""}${value === min || value === max ? " is-edge" : ""}" data-team-range-detent="${value}" style="left:${((value - 1) / 4) * 100}%"><i></i><b>${value}</b></span>`).join("");
     return `<div class="match-team-range" data-home-team-range role="group" aria-label="可接受的队友人数" style="--team-range-min:${minPercent}%;--team-range-max:${maxPercent}%;--team-range-fill-left:${minPercent}%;--team-range-fill-right:${100 - maxPercent}%">
       <div class="match-team-range-head"><strong data-team-range-summary>${summary}</strong></div>
       <div class="match-team-range-track-wrap" data-home-team-range-track>
@@ -173,13 +205,11 @@ function wizardContent(filter, stepKey) {
         <div class="match-team-range-detents" aria-hidden="true">${detents}</div>
         <span class="match-team-range-thumb match-team-range-thumb--min" data-team-range-thumb="min" aria-hidden="true"><i>MIN</i></span>
         <span class="match-team-range-thumb match-team-range-thumb--max" data-team-range-thumb="max" aria-hidden="true"><i>MAX</i></span>
-        <input class="match-team-range-input match-team-range-input--min" type="range" min="1" max="${max}" step="1" value="${min}" data-home-team-range-input="min" aria-label="最少接受 ${min} 位队友" />
-        <input class="match-team-range-input match-team-range-input--max" type="range" min="${min}" max="5" step="1" value="${max}" data-home-team-range-input="max" aria-label="最多接受 ${max} 位队友" />
+        <input class="match-team-range-input match-team-range-input--min" type="range" min="1" max="${max}" step="1" value="${min}" name="teamMin" autocomplete="off" data-home-team-range-input="min" aria-label="最少接受 ${min} 位队友" />
+        <input class="match-team-range-input match-team-range-input--max" type="range" min="${min}" max="5" step="1" value="${max}" name="teamMax" autocomplete="off" data-home-team-range-input="max" aria-label="最多接受 ${max} 位队友" />
       </div>
       <div class="match-team-range-labels" aria-hidden="true"><span>1 位</span><span>2 位</span><span>3 位</span><span>4 位</span><span>5 位</span></div>
     </div>`;
-  }
-  return `<div class="match-options match-options--time" role="group" aria-label="什么时候玩">${DEADLOCK_TIMES.map((time, index) => option(time, time, filter.time === time, "home-time", index === 0 ? "zap" : "clock")).join("")}</div>`;
 }
 
 function wizardCopy(stepKey, goal) {
@@ -188,6 +218,7 @@ function wizardCopy(stepKey, goal) {
     rank: ["你的当前段位？", ""],
     roles: ["你想玩几号位？", ""],
     team: ["想找几位队友？", ""],
+    intent: ["选择组队方式", "先选你的节奏；人数偏好可以放进更多高级选项。"],
     voice: ["要不要开麦？", ""],
   };
   return copy[stepKey] || copy.goal;
@@ -209,7 +240,7 @@ function comingSoonStage(filter) {
 }
 
 function deadlockStage(filter) {
-  const path = DEADLOCK_PATHS[filter.goal === "casual" ? "casual" : "rank"];
+  const path = filter.goal ? DEADLOCK_PATHS[filter.goal === "casual" ? "casual" : "rank"] : DEADLOCK_PATHS.rank.slice(0, 1);
   const step = Math.max(0, Math.min(path.length - 1, Number(filter.step) || 0));
   const stepKey = path[step].key;
   const [title, description] = wizardCopy(stepKey, filter.goal);

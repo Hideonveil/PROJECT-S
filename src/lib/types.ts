@@ -60,6 +60,13 @@ export interface Room {
   members: RoomMemberView[];
   sessionId?: string | null;
   sessionStatus?: string | null;
+  /** User-facing recruitment signal; legacy formation/status fields remain compatibility data. */
+  recruiting?: boolean;
+  recruitmentState?: "recruiting" | "locked" | null;
+  formationState?: "forming" | "backfilling" | "locked" | "formal" | null;
+  formationGroupId?: string | null;
+  isForming?: boolean;
+  resumeEligible?: boolean;
   goodbyeRequests: Array<{ userId: string; requestedAt: string }>;
   currentMemberCount?: number;
   activeMemberCount?: number;

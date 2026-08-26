@@ -103,6 +103,7 @@ function matchingProgress({ awaiting, isWaiting }) {
 
 function actionsMarkup({ awaiting, mine, group, canStart }) {
   if (group) {
+    if (["forming", "backfilling"].includes(group.state)) return `<div class="matching-confirm-actions" id="matching-confirm-actions">${canStart ? `<button type="button" class="matching-group-start" data-action="lock-forming-room" data-value="${esc(group.id)}"><span>就这些人，进入房间</span>${icon("check", 17)}</button>` : ""}<button type="button" data-action="cancel-match"><span>退出招募</span>${icon("x", 16)}</button></div>`;
     if (group.state === "waiting_confirmation") return `<div class="matching-confirm-actions" id="matching-confirm-actions">${mine?.decision !== "accepted" && !mine?.isOwner ? `<button type="button" data-action="reject-group-match" data-value="${esc(group.id)}"><span>暂不加入</span>${icon("x", 16)}</button><button type="button" data-action="confirm-group-match" data-value="${esc(group.id)}"><span>加入房间</span>${icon("check", 16)}</button>` : ""}<button type="button" data-action="cancel-match"><span>退出队伍</span>${icon("x", 16)}</button></div>`;
     const totalPlayers = (group.members || []).filter((member) => member.decision !== "rejected").length;
     const startLabel = totalPlayers >= Number(group.desiredTeammates || 1) + 1 ? "队伍已满，开房" : `已满 ${totalPlayers} 人，可开房`;
@@ -119,6 +120,7 @@ function legacyGroupMatchingPage(state) {
   const target = Number(group?.desiredTeammates || 1);
   const minimum = Number(group?.minTeammates || Math.max(1, target - 1));
   const isWaiting = group?.state === "waiting_confirmation";
+  const isForming = ["forming", "backfilling"].includes(group?.state);
   const mine = members.find((member) => member.userId === state.user.id);
   const profileName = (member) => member.profile?.nickname || (member.isOwner ? "队长" : "候选玩家");
   // Casual groups may be opened as soon as the owner and one teammate are
@@ -229,19 +231,22 @@ function matchingWorkbench(state, { group = null } = {}) {
   const candidate = state.match.candidate;
   const awaiting = !group && ["waiting_confirmation", "matched", "playing"].includes(pair?.state) && candidate;
   const isWaiting = group?.state === "waiting_confirmation";
+  const isForming = ["forming", "backfilling"].includes(group?.state);
   const members = normalizedMembers(state, { group, candidate, awaiting });
   const mine = group ? members.find((member) => memberId(member) === state.user.id) : pair?.confirmations?.find((confirmation) => confirmation.user_id === state.user.id)?.decision;
   const theirs = !group && pair?.confirmations?.find((confirmation) => confirmation.user_id !== state.user.id)?.decision;
-  const target = group ? Number(group.desiredTeammates || 1) : matchingMode(state.need) === "casual" ? Math.max(1, Number(state.need.target || 2) - 1) : 1;
+  const target = group
+    ? Math.max(1, Number(group.hardMaxPlayers || 0) - 1 || Number(group.desiredTeammates || 1))
+    : matchingMode(state.need) === "casual" ? Math.max(1, Number(state.need.target || 2) - 1) : 1;
   const minimum = group ? Math.min(target, Math.max(1, Number(group.minTeammates || target) || target)) : matchingMode(state.need) === "casual" ? Math.min(target, Math.max(1, Number(state.need.minTeammates || target) || target)) : 1;
   const targetLabel = minimum === target ? String(target) : `${minimum}–${target}`;
   const teammates = members.filter((member) => memberId(member) !== state.user.id && member.decision !== "rejected");
   const allConfirmed = group && isWaiting && members.every((member) => member.decision === "accepted");
   const canStart = Boolean(group && !isWaiting && group.ownerUserId === state.user.id && teammates.length >= 1 && teammates.length <= target);
-  const title = group ? isWaiting ? "队伍已锁定，等大家确认" : `已找到 ${teammates.length}/${targetLabel} 位队友` : awaiting ? "对方已进入，正在连接" : "寻找与您游戏目标一致的玩家中";
   const currentTotalPlayers = teammates.length + 1;
-  const description = group ? isWaiting ? (allConfirmed ? "所有人已确认，正在建立房间。" : "队长已发起开局，其他成员确认后进入房间。") : teammates.length >= 1 ? `当前共 ${currentTotalPlayers} 人，队长可以开房，也可以继续等待更多队友。` : "再来 1 位队友即可开房，也可以继续等待更多队友。" : awaiting ? "无需双方再次确认，连接完成后 3 秒进入 Session。" : "我们会按游戏、目的、位置与麦克风偏好持续寻找。";
-  const footer = group ? isWaiting ? "成员拒绝后会回到队伍招募状态。" : "至少 2 人后队长可以开房，也可以继续等待。" : awaiting ? "对方已加入，正在建立 Session 连接。" : "匹配期间保持在线，我们会持续更新状态。";
+  const title = group ? isWaiting ? "队伍已锁定，等大家确认" : isForming ? `FORMING ROOM · ${currentTotalPlayers} 人` : `已找到 ${teammates.length}/${targetLabel} 位队友` : awaiting ? "对方已进入，正在连接" : "寻找与您游戏目标一致的玩家中";
+  const description = group ? isWaiting ? (allConfirmed ? "所有人已确认，正在建立房间。" : "队长已发起开局，其他成员确认后进入房间。") : isForming ? "这是同一个 Room，成员可以先聊天；兼容玩家会继续加入。" : teammates.length >= 1 ? `当前共 ${currentTotalPlayers} 人，队长可以停止招募，也可以继续等待。` : "继续寻找第一位兼容队友。" : awaiting ? "无需双方再次确认，连接完成后 3 秒进入 Session。" : "我们会按游戏、目的、位置与麦克风偏好持续寻找。";
+  const footer = group ? isWaiting ? "成员拒绝后会回到队伍招募状态。" : isForming ? "达到游戏人数上限会自动停止招募。" : "找到第一位兼容队友后进入形成房间。" : awaiting ? "对方已加入，正在建立 Session 连接。" : "匹配期间保持在线，我们会持续更新状态。";
   return homeShell(state, `<div class="matching-modal-page" role="dialog" aria-modal="true" aria-labelledby="matching-modal-title">
     <div class="matching-modal-backdrop" aria-hidden="true"></div>
     <section class="matching-modal ${group ? "matching-group-modal" : ""}" data-matching-modal ${group ? `data-matching-group="${esc(group.id)}"` : ""}>

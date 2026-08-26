@@ -13,6 +13,9 @@ export const MATCH_STATES = [
 export const GROUP_MATCH_STATES = [
   "searching",
   "partial_ready",
+  "forming",
+  "backfilling",
+  "locked",
   "waiting_confirmation",
   "matched",
   "playing",
@@ -41,6 +44,8 @@ export interface MatchmakingInput {
   desiredTeammates?: number;
   /** Casual mode only. Lower bound for accepted teammates, excluding the owner. */
   minTeammates?: number;
+  /** Casual mode only. Controls recruitment priority, not compatibility rules. */
+  recruitmentMode?: "open" | "rush" | "fill";
 }
 
 export interface MatchTicket extends MatchmakingInput {
@@ -80,6 +85,9 @@ export interface MatchGroup {
   confirmationDeadline: string | null;
   roomId: string | null;
   sessionId: string | null;
+  roomPhase?: "forming" | "backfilling" | "locked" | "formal" | null;
+  hardMaxPlayers?: number;
+  recruitmentMode?: string;
   roomCode?: string | null;
   members: MatchGroupMember[];
 }
