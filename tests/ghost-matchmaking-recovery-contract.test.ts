@@ -59,7 +59,7 @@ describe("ghost matchmaking recovery", () => {
 
   it("does not restore a room whose latest Session is terminal", () => {
     expect(api).toContain("latestSessionByRoom");
-    expect(api).toContain('["ready", "playing"].includes(latest.status)');
+    expect(api).toContain('sessionStatus === "ready" || sessionStatus === "playing"');
     expect(api).toContain("otherwise a refresh can");
     expect(api).toContain("reopen the previous room");
   });

@@ -1,8 +1,9 @@
 import { requireRequestProfile } from "@/lib/auth";
 import { enrichRoom } from "@/lib/api";
+import { exitPreSessionRoom } from "@/lib/matchmaking/service";
 import { supabaseAdmin } from "@/lib/supabase";
-import { errorResponse, idempotencyKey, jsonBody, jsonOk, requestId } from "@/lib/http";
-import { mapSession, sessionForRoomCode } from "@/lib/session";
+import { AppError, errorResponse, idempotencyKey, jsonBody, jsonOk, requestId } from "@/lib/http";
+import { mapSession } from "@/lib/session";
 import type { Session } from "@/lib/types";
 
 export async function POST(request: Request, { params }: { params: Promise<{ code: string }> }) {
@@ -17,18 +18,46 @@ export async function POST(request: Request, { params }: { params: Promise<{ cod
     const me = await requireRequestProfile(request, body);
     userId = me.id;
     const admin = supabaseAdmin();
-    const current = await sessionForRoomCode(code);
-    roomId = current.room_id;
-    sessionId = current.id;
+    const { data: room, error: roomError } = await admin
+      .from("rooms")
+      .select("*")
+      .eq("code", code)
+      .maybeSingle();
+    if (roomError) throw roomError;
+    if (!room) throw new AppError("ROOM_NOT_FOUND", "房间不存在", 404);
+    roomId = room.id;
+
+    const { data: currentSession, error: sessionError } = await admin
+      .from("sessions")
+      .select("*")
+      .eq("room_id", room.id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (sessionError) throw sessionError;
+
+    // Room-first creates the shared Room before Session. In that phase the
+    // user's normal leave action must cancel recruitment, not call a
+    // Session-only RPC that cannot find a Session yet.
+    if (!currentSession) {
+      await exitPreSessionRoom(me.id, room.id, idempotencyKey(request));
+      const { data: remainingRoom } = await admin.from("rooms").select("*").eq("id", room.id).maybeSingle();
+      return jsonOk({
+        room: remainingRoom ? await enrichRoom(remainingRoom, { resumeEligible: false }) : null,
+        session: null,
+        exited: true,
+      }, rid);
+    }
+
+    sessionId = currentSession.id;
     const { data: updatedSession, error: rpcError } = await admin.rpc("phase1_exit_room", {
-      p_session_id: current.id,
+      p_session_id: currentSession.id,
       p_actor_id: me.id,
       p_request_id: idempotencyKey(request),
     });
     if (rpcError) throw rpcError;
-    const { data: room } = await admin.from("rooms").select("*").eq("id", current.room_id).single();
     return jsonOk({
-      room: await enrichRoom(room),
+      room: await enrichRoom(room, { resumeEligible: false }),
       session: mapSession(updatedSession as Session),
       exited: true,
     }, rid);

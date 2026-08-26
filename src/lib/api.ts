@@ -89,6 +89,9 @@ export type StateReadContext = ReadContext & {
   activeRoomCandidate?: Promise<ActiveRoomCandidate>;
 };
 
+const TERMINAL_ROOM_STATUSES = new Set(["completed", "cancelled", "closed", "finished"]);
+const TERMINAL_SESSION_STATUSES = new Set(["completed", "cancelled"]);
+
 export function createStateReadContext(): StateReadContext {
   return {
     ...createReadContext(),
@@ -192,7 +195,7 @@ export async function publicDirectory(): Promise<PublicMatchDirectoryEntry[]> {
   return publicDirectoryInflight;
 }
 
-export async function enrichRoom(room: Record<string, unknown>, options: { context?: ReadContext; session?: Record<string, any> | null } = {}): Promise<Room> {
+export async function enrichRoom(room: Record<string, unknown>, options: { context?: ReadContext; session?: Record<string, any> | null; resumeEligible?: boolean } = {}): Promise<Room> {
   const roomNeed = (room.need as Record<string, any>) || {};
   const { data: members } = await supabaseAdmin()
     .from("room_members")
@@ -350,7 +353,7 @@ export async function enrichRoom(room: Record<string, unknown>, options: { conte
     formationState: (room.formation_state as Room["formationState"]) || (formationGroup ? "formal" : null),
     formationGroupId: formationGroup?.id || null,
     isForming: ["forming", "backfilling", "locked"].includes(String(room.formation_state || "")),
-    resumeEligible: true,
+    resumeEligible: options.resumeEligible === true,
     goodbyeRequests: mapGoodbyeRequests(goodbyeRows || []),
     currentMemberCount: memberViews.length,
     activeMemberCount: memberViews.filter((member) => member.memberStatus === "active").length,
@@ -363,13 +366,20 @@ type ActiveRoomCandidate = {
   session: Record<string, any> | null;
 };
 
+const LIVE_TICKET_STATES = ["searching", "candidate_found", "waiting_confirmation", "matched", "playing"];
+const LIVE_GROUP_STATES = ["searching", "partial_ready", "forming", "backfilling", "locked"];
+
 async function loadActiveRoomCandidate(profileId: string): Promise<ActiveRoomCandidate> {
   const { data: members } = await supabaseAdmin()
     .from("room_members")
-    .select("room_id")
+    .select("room_id,user_id")
     .eq("user_id", profileId)
     .eq("status", "active");
-  const roomIds = (members || []).map((m) => m.room_id);
+  const activeMemberUserId = profileId;
+  const roomIds = Array.from(new Set((members || [])
+    .filter((member) => member.user_id === activeMemberUserId)
+    .map((member) => member.room_id)
+    .filter(Boolean)));
   if (!roomIds.length) return { room: null, session: null };
   const { data: rooms } = await supabaseAdmin()
     .from("rooms")
@@ -383,8 +393,6 @@ async function loadActiveRoomCandidate(profileId: string): Promise<ActiveRoomCan
   // the newest Session per room before restoring it, otherwise a refresh can
   // reopen the previous room instead of returning the player to home.
   const candidateIds = rooms.map((room) => room.id as string);
-  const liveTicketStates = ["searching", "candidate_found", "waiting_confirmation", "matched", "playing"];
-  const liveFormationStates = ["searching", "partial_ready", "forming", "backfilling", "locked"];
   const [{ data: sessions }, { data: tickets }, { data: groups }] = await Promise.all([
     supabaseAdmin()
       .from("sessions")
@@ -393,15 +401,14 @@ async function loadActiveRoomCandidate(profileId: string): Promise<ActiveRoomCan
       .order("created_at", { ascending: false }),
     supabaseAdmin()
       .from("matchmaking_tickets")
-      .select("room_id,state,group_id")
+      .select("id,user_id,room_id,state,group_id")
       .eq("user_id", profileId)
-      .in("room_id", candidateIds)
-      .in("state", liveTicketStates),
+      .in("state", LIVE_TICKET_STATES),
     supabaseAdmin()
       .from("matchmaking_groups")
-      .select("room_id,state,session_id")
+      .select("id,room_id,state,session_id")
       .in("room_id", candidateIds)
-      .in("state", liveFormationStates),
+      .in("state", LIVE_GROUP_STATES),
   ]);
   const latestSessionByRoom = new Map<string, Record<string, any>>();
   for (const row of sessions || []) {
@@ -409,12 +416,37 @@ async function loadActiveRoomCandidate(profileId: string): Promise<ActiveRoomCan
       latestSessionByRoom.set(row.room_id as string, row as Record<string, any>);
     }
   }
-  const liveTicketRoomIds = new Set((tickets || []).map((ticket) => ticket.room_id).filter(Boolean));
-  const liveFormationRoomIds = new Set((groups || []).map((group) => group.room_id).filter(Boolean));
+  const liveTickets = (tickets || []).filter((ticket) => ticket.user_id === activeMemberUserId);
+  const liveTicketIds = new Set(liveTickets.map((ticket) => ticket.id));
+  const liveTicketRoomIds = new Set(liveTickets.map((ticket) => ticket.room_id).filter((roomId) => candidateIds.includes(roomId)));
+  const groupIds = (groups || []).map((group) => group.id).filter(Boolean);
+  const { data: groupMembers } = groupIds.length
+    ? await supabaseAdmin()
+        .from("matchmaking_group_members")
+        .select("group_id,ticket_id,user_id,decision")
+        .in("group_id", groupIds)
+        .eq("user_id", activeMemberUserId)
+        .eq("decision", "accepted")
+    : { data: [] };
+  const acceptedGroupIds = new Set((groupMembers || [])
+    .filter((member) => liveTicketIds.has(member.ticket_id))
+    .map((member) => member.group_id));
+  const liveFormationRoomIds = new Set((groups || [])
+    .filter((group) => acceptedGroupIds.has(group.id))
+    .map((group) => group.room_id)
+    .filter((roomId) => candidateIds.includes(roomId)));
+  const sessionPlayersIncludeUser = (session: Record<string, any> | undefined) =>
+    Array.isArray(session?.players) && session.players.map(String).includes(String(activeMemberUserId));
   const room = rooms.find((candidate) => {
     const latest = latestSessionByRoom.get(candidate.id as string);
-    if (latest) return ["ready", "playing"].includes(latest.status);
-    return liveTicketRoomIds.has(candidate.id) || liveFormationRoomIds.has(candidate.id);
+    const sessionStatus = String(latest?.status || "").toLowerCase();
+    const terminalSession = Boolean(latest && TERMINAL_SESSION_STATUSES.has(sessionStatus));
+    if (terminalSession || TERMINAL_ROOM_STATUSES.has(String(candidate.status || "").toLowerCase())) return false;
+    if (latest) {
+      return (sessionStatus === "ready" || sessionStatus === "playing") && sessionPlayersIncludeUser(latest);
+    }
+    const preSessionEligible = liveTicketRoomIds.has(candidate.id) || liveFormationRoomIds.has(candidate.id);
+    return preSessionEligible;
   });
   return {
     room: (room as Record<string, unknown>) || null,
@@ -422,16 +454,16 @@ async function loadActiveRoomCandidate(profileId: string): Promise<ActiveRoomCan
   };
 }
 
-function activeRoomCandidate(profileId: string, context?: StateReadContext) {
+export async function resolveActiveRoom(profileId: string, context?: StateReadContext): Promise<ActiveRoomCandidate> {
   if (!context) return loadActiveRoomCandidate(profileId);
   if (!context.activeRoomCandidate) context.activeRoomCandidate = loadActiveRoomCandidate(profileId);
   return context.activeRoomCandidate;
 }
 
 export async function activeRoomFor(profileId: string, context?: StateReadContext): Promise<Room | null> {
-  const candidate = await activeRoomCandidate(profileId, context);
+  const candidate = await resolveActiveRoom(profileId, context);
   if (!candidate.room) return null;
-  return enrichRoom(candidate.room, { context, session: candidate.session });
+  return enrichRoom(candidate.room, { context, session: candidate.session, resumeEligible: true });
 }
 
 export async function recentConnectionsFor(profileId: string, context?: ReadContext): Promise<EnrichedRecentConnection[]> {
@@ -481,7 +513,7 @@ export async function recentConnectionsFor(profileId: string, context?: ReadCont
 }
 
 export async function activeSessionFor(profileId: string, context?: StateReadContext): Promise<Session | null> {
-  const candidate = await activeRoomCandidate(profileId, context);
+  const candidate = await resolveActiveRoom(profileId, context);
   if (!candidate.session || !["ready", "playing"].includes(String(candidate.session.status))) return null;
   return candidate.session as Session;
 }
@@ -521,7 +553,7 @@ export async function completedSessionViewFor(profileId: string, context?: ReadC
       .maybeSingle(),
   ]);
 
-  const enriched = room ? await enrichRoom(room as Record<string, unknown>, { context }) : null;
+  const enriched = room ? await enrichRoom(room as Record<string, unknown>, { context, resumeEligible: false }) : null;
   const fallbackProfiles = !enriched
     ? await publicProfilesFor(Array.isArray(session.players) ? session.players : [], {}, context)
     : [];

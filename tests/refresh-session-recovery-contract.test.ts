@@ -33,7 +33,7 @@ describe("active Session refresh recovery", () => {
   it("looks up the active room through room_members and restores all members", () => {
     expect(dataApi).toContain('.from("room_members")');
     expect(dataApi).toContain('.eq("status", "active")');
-    expect(dataApi).toContain("return enrichRoom(candidate.room, { context, session: candidate.session });");
+    expect(dataApi).toContain("return enrichRoom(candidate.room, { context, session: candidate.session, resumeEligible: true });");
     expect(dataApi).toContain("activeRoomCandidate");
     expect(dataApi).not.toContain("activeSessionFor(profileId).then");
   });

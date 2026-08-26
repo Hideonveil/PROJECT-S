@@ -15,9 +15,9 @@ describe("active Room recovery contract", () => {
 
   it("does not restore an active member-only Room without a live ticket, group, or Session", () => {
     expect(api).toContain('.from("matchmaking_tickets")');
-    expect(api).toContain('const liveTicketStates = ["searching", "candidate_found", "waiting_confirmation", "matched", "playing"];');
-    expect(api).toContain('.in("state", liveTicketStates)');
+    expect(api).toContain('const LIVE_TICKET_STATES = ["searching", "candidate_found", "waiting_confirmation", "matched", "playing"];');
+    expect(api).toContain('.in("state", LIVE_TICKET_STATES)');
     expect(api).toContain('.from("matchmaking_groups")');
-    expect(api).toContain('resumeEligible: true');
+    expect(api).toContain('resumeEligible: true });');
   });
 });

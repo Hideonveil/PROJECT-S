@@ -947,6 +947,41 @@ export function cancelTicket(userId: string, reason: string, requestId: string |
   return withMatchmakingFlight(userId, () => cancelTicketInternal(userId, reason, requestId));
 }
 
+/**
+ * Leave a Room-first Room before a formal Session exists. The Room code is
+ * checked against the user's current ticket/group backing so an old active
+ * room_member row cannot be used to exit or mutate an unrelated Room.
+ */
+export async function exitPreSessionRoom(userId: string, roomId: string, requestId: string | null) {
+  const admin = supabaseAdmin();
+  const { data: activeMember, error: memberError } = await admin
+    .from("room_members")
+    .select("room_id")
+    .eq("room_id", roomId)
+    .eq("user_id", userId)
+    .eq("status", "active")
+    .maybeSingle();
+  if (memberError) throw memberError;
+  if (!activeMember) throw new AppError("ROOM_NOT_ACTIVE", "你已不在这个房间中", 409);
+
+  const ticket = await activeTicketRow(userId);
+  if (!ticket) throw new AppError("ROOM_NOT_RESUMABLE", "这个房间已经结束，请重新开始", 409);
+
+  let backedRoomId = ticket.room_id || null;
+  if (!backedRoomId && ticket.group_id) {
+    const { data: group, error: groupError } = await admin
+      .from("matchmaking_groups")
+      .select("room_id")
+      .eq("id", ticket.group_id)
+      .maybeSingle();
+    if (groupError) throw groupError;
+    backedRoomId = group?.room_id || null;
+  }
+  if (backedRoomId !== roomId) throw new AppError("ROOM_NOT_ACTIVE", "这个房间已经结束，请重新开始", 409);
+
+  return cancelTicket(userId, "pre_session_room_exit", requestId);
+}
+
 async function confirmPairInternal(userId: string, pairId: string, decision: string, requestId: string | null) {
   if (!pairId || !["accepted", "rejected"].includes(decision)) {
     throw new AppError("CONFIRMATION_INVALID", "确认操作无效", 422);
