@@ -21,6 +21,25 @@ describe("room-first matching UI", () => {
     expect(branch).not.toContain("render();");
   });
 
+  it("defaults Deadlock to Ranked without changing goal toggles into a reload", () => {
+    const start = app.indexOf('if (action === "home-game")');
+    const end = app.indexOf('if (action === "home-back-games")', start);
+    const branch = app.slice(start, end);
+    expect(branch).toContain('HOME_FILTER.goal = "rank"');
+    expect(branch).toContain("prewarmMatchArtwork();");
+    expect(branch).toContain("render();");
+  });
+
+  it("does not repaint the home wizard for realtime activity snapshots", () => {
+    const start = app.indexOf("function connectEvents()");
+    const end = app.indexOf("function markPresenceOnline", start);
+    const branch = app.slice(start, end);
+    expect(app).toContain("function updateHomeActivityView(");
+    expect(branch).toContain("updateHomeActivityView(state.match)");
+    expect(branch).not.toContain("if (routeName === \"home\") {\n        render();");
+    expect(app).toContain('if (routeName === "home" && Array.isArray(data.matchmaking?.directory)) updateHomeDirectoryView(state.match);');
+  });
+
   it("does not show progress or start matching before a goal is chosen", () => {
     const start = home.indexOf("function deadlockStage");
     const end = home.indexOf("function rolesLabel", start);

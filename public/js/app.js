@@ -838,6 +838,13 @@ function directorySignature(directory) {
   })));
 }
 
+function updateHomeActivityView(match = state.match) {
+  const onlineEl = document.getElementById("home-online-count");
+  const playingEl = document.getElementById("home-playing-count");
+  if (onlineEl) onlineEl.textContent = String(Math.max(0, match?.pool ?? 0));
+  if (playingEl) playingEl.textContent = String(Math.max(0, match?.playing ?? 0));
+}
+
 function updateHomeDirectoryView(match = state.match, { force = false } = {}) {
   const listEl = document.getElementById("home-directory-list");
   if (!listEl) return;
@@ -1941,12 +1948,9 @@ function applyServerSnapshot(data) {
   const friendRequestsChanged = previousFriendRequestShape !== JSON.stringify(state.friendRequests || {});
   const matchmakingChanged = previousMatchShape !== matchmakingShape(state.match);
   if (["home", "hero"].includes(routeName)) {
-    const onlineEl = document.getElementById("home-online-count");
-    const playingEl = document.getElementById("home-playing-count");
-    if (onlineEl) onlineEl.textContent = String(Math.max(0, state.match.pool ?? 0));
-    if (playingEl) playingEl.textContent = String(Math.max(0, state.match.playing ?? 0));
+    updateHomeActivityView(state.match);
     if (routeName === "hero") updateHeroActivityView(state.match);
-    if (routeName === "home" && Array.isArray(data.matchmaking?.directory)) render();
+    if (routeName === "home" && Array.isArray(data.matchmaking?.directory)) updateHomeDirectoryView(state.match);
   }
   if (patch.room && routeName === "matching" && isActiveSessionRoom(state.room)) {
     replaceCanonicalRoute("#/room");
@@ -2125,7 +2129,7 @@ function connectEvents() {
       update({ match: { ...state.match, online, pool, playing } });
       const routeName = parseRoute().name;
       if (routeName === "home") {
-        render();
+        updateHomeActivityView(state.match);
       } else if (routeName === "hero") {
         updateHeroActivityView(state.match);
       }
@@ -3450,7 +3454,7 @@ document.addEventListener("click", (event) => {
 
   if (action === "home-game") {
     HOME_FILTER.game = value;
-    HOME_FILTER.goal = "";
+    HOME_FILTER.goal = "rank";
     HOME_FILTER.rank = "";
     HOME_FILTER.step = 0;
     HOME_FILTER.direction = 1;

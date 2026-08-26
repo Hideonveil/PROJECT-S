@@ -1,8 +1,7 @@
--- Room-first recovery contract.
--- A live ticket is not sufficient evidence that a player can resume a Room.
--- Reuse only a ticket with a current Room/Group/Session backing; otherwise
--- close the orphan through the normal ticket lifecycle before creating a new
--- ticket. This keeps the active-ticket uniqueness guard intact.
+-- Fix the Room-first starter's return-type boundary.
+-- matchmaking_create_waiting_room() returns jsonb, not a rooms composite row.
+-- Keep the decoded room row for validation and the RPC payload separate so a
+-- new ticket is not rolled back with "malformed record literal".
 
 begin;
 
@@ -101,8 +100,9 @@ begin
       return to_jsonb(v_existing) || jsonb_build_object('reused', true);
     end if;
 
-    -- This is an orphaned live ticket, not an active player. Keep the audit
-    -- row and release the active-ticket uniqueness guard through lifecycle.
+    -- Keep an orphaned live ticket as an audit row, but release the active
+    -- uniqueness guard through the normal lifecycle before creating a fresh
+    -- Room-first ticket.
     if v_existing.room_id is not null then
       update public.room_members
          set status = 'exited', exited_at = coalesce(exited_at, now())
@@ -199,52 +199,6 @@ begin
   return to_jsonb(v_ticket) || jsonb_build_object('reused', false, 'roomCode', v_room_json->>'code');
 end;
 $$;
-
--- Keep the ticket pointer aligned even when a ticket joins an already-forming
--- group whose Room was created before the ticket was reserved.
-create or replace function public.matchmaking_sync_ticket_room_id()
-returns trigger
-language plpgsql
-security definer
-set search_path = public
-as $$
-declare
-  v_room_id uuid;
-begin
-  if new.group_id is null then return new; end if;
-  select room_id into v_room_id from public.matchmaking_groups where id = new.group_id;
-  if v_room_id is not null then new.room_id := v_room_id; end if;
-  return new;
-end;
-$$;
-
-create or replace function public.matchmaking_sync_group_ticket_room_ids()
-returns trigger
-language plpgsql
-security definer
-set search_path = public
-as $$
-begin
-  if new.room_id is not null then
-    update public.matchmaking_tickets
-       set room_id = new.room_id, updated_at = now(), version = version + 1
-     where group_id = new.id
-       and room_id is distinct from new.room_id;
-  end if;
-  return new;
-end;
-$$;
-
-drop trigger if exists matchmaking_ticket_room_sync on public.matchmaking_tickets;
-create trigger matchmaking_ticket_room_sync
-before insert or update of group_id on public.matchmaking_tickets
-for each row execute function public.matchmaking_sync_ticket_room_id();
-
-drop trigger if exists matchmaking_group_room_sync on public.matchmaking_groups;
-create trigger matchmaking_group_room_sync
-after update of room_id on public.matchmaking_groups
-for each row when (new.room_id is distinct from old.room_id)
-execute function public.matchmaking_sync_group_ticket_room_ids();
 
 revoke all on function public.matchmaking_start_ticket(uuid,jsonb,text) from public, anon, authenticated;
 grant execute on function public.matchmaking_start_ticket(uuid,jsonb,text) to service_role;
