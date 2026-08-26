@@ -12,6 +12,14 @@ describe("room-first matching UI", () => {
     expect(home).toContain('filter.goal ? DEADLOCK_PATHS');
   });
 
+  it("re-renders the wizard body after selecting a goal", () => {
+    const start = app.indexOf('if (action === "home-goal")');
+    const end = app.indexOf('if (action === "home-casual-intent")', start);
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(end).toBeGreaterThan(start);
+    expect(app.slice(start, end)).toContain("render();");
+  });
+
   it("updates casual intent locally instead of rebuilding the page", () => {
     expect(app).toContain("function updateCasualIntentView()");
     expect(app).toContain("setCasualAdvancedOpen(Boolean(HOME_FILTER.advancedOpen))");

@@ -3475,8 +3475,7 @@ document.addEventListener("click", (event) => {
     }
     HOME_FILTER.step = 0;
     HOME_FILTER.direction = 1;
-    selectHomeChoice(actionEl);
-    updateHomeFlowStepper();
+    render();
     return;
   }
 
