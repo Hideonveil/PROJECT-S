@@ -40,6 +40,13 @@ describe("room-first matching UI", () => {
     expect(app).toContain('if (routeName === "home" && Array.isArray(data.matchmaking?.directory)) updateHomeDirectoryView(state.match);');
   });
 
+  it("invalidates an in-place stepper animation before a full route render", () => {
+    const start = app.indexOf("function clearTimers()");
+    const end = app.indexOf("function initProductTicker", start);
+    expect(app).toContain("homeStepperRevision += 1;");
+    expect(app.slice(start, end)).toContain("homeStepperRevision += 1;");
+  });
+
   it("does not show progress or start matching before a goal is chosen", () => {
     const start = home.indexOf("function deadlockStage");
     const end = home.indexOf("function rolesLabel", start);

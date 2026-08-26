@@ -139,6 +139,7 @@ function trackCandidate(pair, candidate) {
 }
 
 function clearTimers() {
+  homeStepperRevision += 1;
   timers.forEach((t) => {
     window.clearTimeout(t);
     window.clearInterval(t);
