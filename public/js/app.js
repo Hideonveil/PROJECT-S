@@ -527,7 +527,12 @@ function persistentProductShell(html) {
     const currentSteps = [...currentStepper.querySelectorAll(markerSelector)];
     const nextSteps = [...nextStepper.querySelectorAll(markerSelector)];
     if (currentSteps.length !== nextSteps.length) return;
-    currentStepper.setAttribute("aria-label", nextStepper.getAttribute("aria-label") || "身份创建进度");
+    if (selector === "[data-home-stepper]") {
+      const activeIndex = Math.max(0, nextSteps.findIndex((item) => item.classList.contains("is-active")));
+      currentStepper.setAttribute("aria-label", `Deadlock 配置进度：第 ${activeIndex + 1} 步，共 ${nextSteps.length} 步`);
+    } else {
+      currentStepper.setAttribute("aria-label", nextStepper.getAttribute("aria-label") || "身份创建进度");
+    }
     currentSteps.forEach((item, index) => {
       const nextItem = nextSteps[index];
       item.className = nextItem?.className || item.className;

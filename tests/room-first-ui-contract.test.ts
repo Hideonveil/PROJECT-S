@@ -52,6 +52,7 @@ describe("room-first matching UI", () => {
     expect(app).toContain("function syncHomeStepperAccessibility()");
     expect(app).toContain("syncHomeStepperAccessibility();");
     expect(app).toContain("current.querySelectorAll(\".match-wizard-marker\")");
+    expect(app).toContain("nextSteps.findIndex((item) => item.classList.contains(\"is-active\"))");
   });
 
   it("keeps the final start CTA wide enough to show its label", () => {
