@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 const app = readFileSync("public/js/app.js", "utf8");
 const home = readFileSync("public/js/pages/home.js", "utf8");
 const room = readFileSync("public/js/pages/session-preview.js", "utf8");
+const styles = readFileSync("public/styles/product-shell.css", "utf8");
 const migration = readFileSync("supabase/migrations/20260825230000_room_first_matchmaking.sql", "utf8");
 
 describe("room-first matching UI", () => {
@@ -45,6 +46,31 @@ describe("room-first matching UI", () => {
     const end = app.indexOf("function initProductTicker", start);
     expect(app).toContain("homeStepperRevision += 1;");
     expect(app.slice(start, end)).toContain("homeStepperRevision += 1;");
+  });
+
+  it("resyncs the stepper accessibility label after a full render", () => {
+    expect(app).toContain("function syncHomeStepperAccessibility()");
+    expect(app).toContain("syncHomeStepperAccessibility();");
+  });
+
+  it("keeps the final start CTA wide enough to show its label", () => {
+    expect(styles).toContain(".match-wizard-actions > [data-home-wizard-advance]");
+    expect(styles).toContain(".match-wizard-actions .match-start-dock { width: 100%;");
+  });
+
+  it("keeps the final start CTA in document flow instead of hiding it as a floating icon", () => {
+    const home = app.slice(app.indexOf('if (route.name === "home") {'), app.indexOf('if (route.name === "matching") {'));
+    expect(home).not.toContain("initMatchStartDock();");
+    expect(styles).toContain(".match-wizard-actions .match-start-dock { width: 100%;");
+    expect(styles).not.toContain(".match-wizard-actions .match-start-dock { width: 58%; }");
+  });
+
+  it("reconciles a successful Room-first start before showing pool-entry failure", () => {
+    const start = app.indexOf("async function startMatch()");
+    const end = app.indexOf("function startMatchingFlow", start);
+    const branch = app.slice(start, end);
+    expect(branch).toContain("reconcileRoomFirstStart");
+    expect(branch).not.toContain('throw new Error("ROOM_FIRST_NOT_READY")');
   });
 
   it("does not show progress or start matching before a goal is chosen", () => {

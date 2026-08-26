@@ -1114,6 +1114,7 @@ function render() {
 
   document.body.dataset.immersive = immersive ? "true" : "";
   app.replaceChildren(persistentProductShell(html));
+  syncHomeStepperAccessibility();
   if (route.name === "gameover") restorePendingFeedbackState();
   lastGoodbyeAnnouncementKey = route.name === "room" ? goodbyeAnnouncementKey(state.room) : "";
   if (routeFocusPending) {
@@ -1142,7 +1143,6 @@ function render() {
   }
 
   if (route.name === "home") {
-    initMatchStartDock();
     initTargetCursor();
     homeDirectoryOffset = 0;
     homeDirectorySignature = "";
@@ -1249,13 +1249,6 @@ function updateHomeFlowStepper() {
     current.hidden = false;
     current.removeAttribute("aria-hidden");
     current.replaceChildren(...next.childNodes);
-    current.animate(
-      [
-        { opacity: 0.24, transform: "translateY(7px) scale(0.985)", filter: "blur(3px)" },
-        { opacity: 1, transform: "translateY(0) scale(1)", filter: "blur(0)" },
-      ],
-      { duration: 360, easing: "cubic-bezier(.22,1,.36,1)" },
-    );
   };
   const advance = document.querySelector("[data-home-wizard-advance]");
   if (advance) {
@@ -1267,18 +1260,15 @@ function updateHomeFlowStepper() {
       ? `<div class="match-start-dock" data-match-start-dock><button class="match-start" type="button" data-action="home-start-match" aria-label="开始匹配"><span>开始匹配</span>${icon("arrowRight", 25)}</button></div>`
       : `<button type="button" class="match-wizard-next" data-action="home-wizard-next"><span>下一步</span>${icon("arrowRight", 20)}</button>`;
   }
-  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches || !current.animate) {
-    applyNext();
-    return;
-  }
-  const outgoing = current.animate(
-    [
-      { opacity: 1, transform: "translateY(0) scale(1)", filter: "blur(0)" },
-      { opacity: 0.2, transform: "translateY(-6px) scale(0.985)", filter: "blur(3px)" },
-    ],
-    { duration: 150, easing: "cubic-bezier(.4,0,1,1)" },
-  );
-  outgoing.finished.then(applyNext).catch(() => {});
+  applyNext();
+}
+
+function syncHomeStepperAccessibility() {
+  const current = app.querySelector("[data-home-stepper]");
+  if (!current || current.hidden || !HOME_FILTER.goal) return;
+  const path = homeWizardPath();
+  const step = Math.max(0, Math.min(path.length - 1, Number(HOME_FILTER.step) || 0));
+  current.setAttribute("aria-label", `Deadlock 配置进度：第 ${step + 1} 步，共 ${path.length} 步`);
 }
 
 function toggleHomeChoice(actionEl, selected) {
@@ -2429,6 +2419,39 @@ function moveOnboardStep(direction) {
   render();
 }
 
+const ROOM_FIRST_RECONCILE_DELAYS_MS = [0, 250, 750];
+
+async function reconcileRoomFirstStart(startData) {
+  for (const delay of ROOM_FIRST_RECONCILE_DELAYS_MS) {
+    if (delay) await new Promise((resolve) => window.setTimeout(resolve, delay));
+    let stateReadHasRoom = false;
+    try {
+      const snapshot = await api.getState();
+      applyServerSnapshot(snapshot);
+      if (isActiveSessionRoom(state.room)) return true;
+      stateReadHasRoom = Boolean(snapshot.matchmaking?.ticket?.roomCode);
+    } catch {
+      // A committed start can race a transient state read. The status read
+      // below is the bounded, read-only fallback for that window.
+    }
+
+    // The start response and the status endpoint both carry the ticket's
+    // Room code. If the first state read races the Room enrichment query,
+    // refresh the read-only matchmaking snapshot before trying once more.
+    const hasRoomFirstTicket = Boolean(startData?.roomCode || startData?.ticket?.roomCode || stateReadHasRoom);
+    if (hasRoomFirstTicket) {
+      try {
+        const status = await api.getMatchmakingStatus();
+        applyMatchmakingSnapshot(status);
+        if (isActiveSessionRoom(state.room)) return true;
+      } catch {
+        // Keep the committed start local while the next bounded attempt runs.
+      }
+    }
+  }
+  return false;
+}
+
 async function startMatch() {
   if (matchRequestPending) return;
   DRAFT.dirty = false;
@@ -2476,6 +2499,7 @@ async function startMatch() {
     return;
   }
   const previousMatch = { ...state.match };
+  let serverAcceptedStart = false;
   matchRequestPending = true;
   update({
     need,
@@ -2489,6 +2513,7 @@ async function startMatch() {
   try {
     await withProjectTransition(async () => {
       const data = await api.startMatchmaking(matchInput);
+      serverAcceptedStart = true;
       update({
         match: {
           ...state.match,
@@ -2506,9 +2531,12 @@ async function startMatch() {
       // Casual V2 may already have a forming Room after the first compatible
       // reservation. Hydrate the shared Room UI immediately instead of
       // rendering the legacy group-only waiting screen for one extra cycle.
-      applyServerSnapshot(await api.getState());
-      if (isActiveSessionRoom(state.room)) replaceCanonicalRoute("#/room");
-      else throw new Error("ROOM_FIRST_NOT_READY");
+      if (await reconcileRoomFirstStart(data)) replaceCanonicalRoute("#/room");
+      else {
+        const error = new Error("ROOM_FIRST_SYNC_PENDING");
+        error.code = "ROOM_FIRST_SYNC_PENDING";
+        throw error;
+      }
     }, {
       label: "正在进入匹配池",
       immediate: true,
@@ -2530,8 +2558,22 @@ async function startMatch() {
         // Fall through only when the server state cannot be recovered.
       }
     }
-    update({ match: previousMatch });
-    toast(err.message);
+    if (serverAcceptedStart && err?.code === "ROOM_FIRST_SYNC_PENDING") {
+      toast("已进入匹配池，房间正在同步，请稍后刷新");
+    } else if (serverAcceptedStart) {
+      // The mutation already committed. Never turn a follow-up read failure
+      // into a false “无法进入匹配池” message or discard the live local state.
+      try {
+        const status = await api.getMatchmakingStatus();
+        applyMatchmakingSnapshot(status);
+      } catch {
+        // The next realtime/state refresh will reconcile the committed ticket.
+      }
+      toast("已进入匹配池，房间正在同步，请稍后刷新");
+    } else {
+      update({ match: previousMatch });
+      toast(err.message);
+    }
   } finally {
     matchRequestPending = false;
   }

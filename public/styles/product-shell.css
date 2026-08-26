@@ -986,12 +986,18 @@ body:has(.landing-shell) {
 
 .match-wizard-actions-left { display: flex; align-items: center; gap: 18px; }
 
+.match-wizard-actions > [data-home-wizard-advance] {
+  width: min(380px, 52%);
+  min-width: min(190px, 52%);
+  flex: 0 1 380px;
+}
+
 .match-wizard-back { min-height: 44px; display: inline-flex; align-items: center; gap: 8px; color: rgba(18, 17, 24, 0.58); font-size: 12px; font-weight: 750; }
 .match-wizard-next { min-width: 190px; max-width: 100%; min-height: 54px; padding: 0 18px; display: flex; align-items: center; justify-content: space-between; border: 2px solid var(--product-black); border-radius: 6px; background: var(--product-black); color: #fff; font-weight: 800; transition: background 150ms ease; }
 .match-wizard-next svg { transition: transform 180ms cubic-bezier(.22,1,.36,1); }
 .match-wizard-next:hover { background: var(--product-violet); }
 .match-wizard-next:hover svg { transform: translateX(3px); }
-.match-wizard-actions .match-start-dock { width: min(380px, 52%); margin: 0; }
+.match-wizard-actions .match-start-dock { width: 100%; min-width: 0; margin: 0; }
 .match-stage-enter { animation: matchStageForward 440ms cubic-bezier(.22,1,.36,1) both; }
 
 @keyframes matchStageForward { from { opacity: 0; transform: translateX(30px); clip-path: inset(0 8% 0 0); } to { opacity: 1; transform: translateX(0); clip-path: inset(0 0 0 0); } }
@@ -2174,7 +2180,7 @@ body.is-project-transitioning { overflow: hidden; }
   .match-options--roles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .match-rank-panel .match-options--ranks { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .match-options--team { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  .match-wizard-actions .match-start-dock { width: 58%; }
+  .match-wizard-actions .match-start-dock { width: 100%; }
   .matching-modal-page { bottom: calc(var(--product-ticker) + 70px); padding: 12px; }
   .matching-modal { width: calc(100vw - 24px); max-height: calc(100vh - var(--product-ticker) - 94px); }
   .matching-modal-content { padding-inline: 22px; }
