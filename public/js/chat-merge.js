@@ -3,9 +3,11 @@ function messageKey(message) {
 }
 
 /** Merge acknowledgement, realtime and recovery reads without duplicate chat bubbles. */
-export function mergeRoomMessages(current = [], incoming = []) {
+export function mergeRoomMessages(current = [], incoming = [], roomId = "") {
   const byKey = new Map();
-  [...current, ...incoming].forEach((message) => {
+  [...current, ...incoming]
+    .filter((message) => !roomId || !message?.room_id || message.room_id === roomId)
+    .forEach((message) => {
     if (message && typeof message === "object") byKey.set(messageKey(message), message);
   });
   return Array.from(byKey.values()).sort((a, b) => {

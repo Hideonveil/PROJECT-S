@@ -3,7 +3,8 @@
  * member arithmetic in one place so every lifecycle view uses the same
  * server-backed membership model.
  */
-export function sessionMembers(source = {}, currentUserId = "") {
+export function sessionMembers(source = {}, currentUserId = "", options = {}) {
+  const includeExited = options?.includeExited === true;
   const raw = Array.isArray(source.members) && source.members.length
     ? source.members
     : Array.isArray(source.players)
@@ -13,19 +14,22 @@ export function sessionMembers(source = {}, currentUserId = "") {
   const members = raw
     .map((member, index) => {
       if (typeof member === "string") return { id: member, name: "玩家", memberStatus: "active" };
-      return { ...member, id: member?.id || `player-${index}` };
+      if (!member?.id) return null;
+      return { ...member, id: member.id };
     })
+    .filter(Boolean)
     .filter((member) => {
       if (!member.id || seen.has(member.id)) return false;
       seen.add(member.id);
       return true;
     });
   const activeMembers = members.filter((member) => (member.memberStatus || member.status || "active") === "active");
+  const visibleMembers = includeExited ? members : activeMembers;
   const currentMember = members.find((member) => member.id === currentUserId) || null;
-  const otherMembers = activeMembers.filter((member) => member.id !== currentUserId);
+  const otherMembers = visibleMembers.filter((member) => member.id !== currentUserId);
   const configuredTarget = Number(source.target ?? source.need?.target ?? 0);
   const targetTotalPlayers = Math.max(
-    activeMembers.length,
+    visibleMembers.length,
     configuredTarget > 0 ? configuredTarget : activeMembers.length,
     1,
   );
@@ -38,6 +42,7 @@ export function sessionMembers(source = {}, currentUserId = "") {
   return {
     members,
     activeMembers,
+    visibleMembers,
     currentMember,
     otherMembers,
     currentMemberCount: members.length,

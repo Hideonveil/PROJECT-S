@@ -116,9 +116,9 @@ function modelFor(state, preview = false) {
   const memberModel = sessionMembers(room, state.user.id);
   const liveMembers = memberModel.activeMembers;
   const me = memberModel.currentMember || state.user || {};
-  const partner = memberModel.otherMembers[0] || liveMembers.find((member) => member.id !== state.user.id) || {};
+  const partner = memberModel.otherMembers[0] || liveMembers.find((member) => member.id !== state.user.id) || null;
   const mine = me.need || state.need || room.need || {};
-  const sourcePlayers = liveMembers.length ? liveMembers : [me, partner].filter(Boolean);
+  const sourcePlayers = liveMembers.length ? liveMembers : [me, partner].filter((member) => member?.id);
   const players = sourcePlayers.map((member, index) => ({
     id: member.id || `player-${index}`,
     label: member.username || member.handle || member.id || `player-${index}`,
@@ -132,9 +132,9 @@ function modelFor(state, preview = false) {
     players,
     memberNeeds: sourcePlayers,
     mine,
-    partner: partner.need || mine,
+    partner: partner?.need || mine,
     mineId: me.username || me.handle || me.id || state.user.username || state.user.handle || state.user.id,
-    partnerId: partner.username || partner.handle || partner.id || players.find((player) => player.id !== (me.id || state.user.id))?.label || "",
+    partnerId: partner?.username || partner?.handle || partner?.id || players.find((player) => player.id !== (me.id || state.user.id))?.label || "",
     currentUserId: state.user.id,
     goodbyeRequests: Array.isArray(room.goodbyeRequests) ? room.goodbyeRequests : [],
     target: memberModel.targetTotalPlayers,

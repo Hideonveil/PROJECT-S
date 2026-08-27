@@ -8,7 +8,14 @@ function friendshipControl() {
 }
 
 function fallbackMembers(state, session) {
-  if (Array.isArray(session.members) && session.members.length) return session.members;
+  const members = Array.isArray(session.members) ? [...session.members] : [];
+  const knownIds = new Set(members.map((member) => member?.id).filter(Boolean));
+  for (const id of Array.isArray(session.players) ? session.players : []) {
+    if (!id || knownIds.has(id)) continue;
+    members.push({ id, name: "玩家", memberStatus: "exited" });
+    knownIds.add(id);
+  }
+  if (members.length) return members;
   const partner = session.partner || {};
   return [
     { ...state.user, id: state.user?.id, memberStatus: "active" },
@@ -18,7 +25,7 @@ function fallbackMembers(state, session) {
 
 export function gameoverPage(state) {
   const session = state.session || {};
-  const model = sessionMembers({ members: fallbackMembers(state, session), target: session.targetTotalPlayers || session.players?.length }, state.user?.id);
+  const model = sessionMembers({ members: fallbackMembers(state, session), target: session.targetTotalPlayers || session.players?.length }, state.user?.id, { includeExited: true });
   const teammates = model.otherMembers;
   const ratings = [
     { id: "happy", label: "很开心", note: "交流顺畅，真的玩到一起" },

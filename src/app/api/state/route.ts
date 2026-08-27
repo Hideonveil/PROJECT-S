@@ -34,6 +34,7 @@ export async function GET(request: Request) {
       friends,
       friendRequests,
       room,
+      snapshotVersion: room?.realtimeVersion ?? null,
       session,
       recentConnections,
       matchmaking,

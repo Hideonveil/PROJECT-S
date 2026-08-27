@@ -1545,8 +1545,8 @@ function normalizeServerRoom(room) {
     target: room.target ?? room.targetTotalPlayers ?? room.need?.target,
     goodbyeRequests: room.goodbyeRequests,
   }, state.user.id);
-  const other = memberModel.otherMembers[0] || members.find((p) => p.id !== state.user.id) || members[0] || {};
-  const partner = {
+  const other = memberModel.otherMembers[0] || members.find((p) => p.id !== state.user.id) || members[0] || null;
+  const partner = other?.id ? {
     ...other,
     name: other.name || other.nickname || "玩家",
     handle: other.handle || `${other.nickname || "玩家"}#${String(other.id || "").slice(-4)}`,
@@ -1556,7 +1556,7 @@ function normalizeServerRoom(room) {
     playStyle: other.playStyle || "",
     need: other.need || room.need || state.need,
     gameAccounts: other.gameAccounts || {},
-  };
+  } : null;
   return {
     id: room.id,
     code: room.code,
@@ -1612,6 +1612,19 @@ function sessionPartnerFor(session) {
 function roomShapeChanged(next, prev) {
   if (!next || !prev) return true;
   return roomRenderSignature(next) !== roomRenderSignature(prev);
+}
+
+function roomSnapshotVersion(room) {
+  const value = room?.realtimeVersion ?? room?.realtime_version;
+  const version = Number(value);
+  return Number.isFinite(version) ? version : null;
+}
+
+function isRoomSnapshotOlder(incoming, current) {
+  if (!incoming?.id || !current?.id || incoming.id !== current.id) return false;
+  const incomingVersion = roomSnapshotVersion(incoming);
+  const currentVersion = roomSnapshotVersion(current);
+  return incomingVersion !== null && currentVersion !== null && incomingVersion < currentVersion;
 }
 
 function roomRenderSignature(room) {
@@ -1912,11 +1925,13 @@ function applyServerSnapshot(data) {
   // Snapshot endpoint responses carry the database's monotonic Room version.
   // A delayed hydration must never replace the newer roster a Realtime event
   // already placed on screen (the source of the former phantom-member flash).
-  if (data?.room && data?.snapshotVersion != null && previousRoom?.id === data.room.id) {
-    const incomingVersion = Number(data.snapshotVersion);
-    const currentVersion = Number(previousRoom.realtimeVersion || 0);
-    if (Number.isFinite(incomingVersion) && incomingVersion < currentVersion) return;
-    data = { ...data, room: { ...data.room, realtimeVersion: incomingVersion } };
+  if (data?.room && previousRoom?.id === data.room.id) {
+    const incomingVersion = data?.snapshotVersion ?? data?.room?.realtimeVersion ?? data?.room?.realtime_version;
+    if (isRoomSnapshotOlder({ ...data.room, realtimeVersion: incomingVersion }, previousRoom)) {
+      data = { ...data, room: undefined };
+    } else if (incomingVersion != null) {
+      data = { ...data, room: { ...data.room, realtimeVersion: Number(incomingVersion) } };
+    }
   }
   const previousMatchShape = matchmakingShape(state.match);
   const previousMatch = state.match;
@@ -2145,6 +2160,7 @@ function handleServerRoom(room) {
   // authoritative until navigation completes. A late Realtime room event
   // must not repaint the Room underneath the exit action.
   if (isRecruitmentExitRoom(room)) return;
+  if (isRoomSnapshotOlder(room, state.room)) return;
   const normalized = normalizeServerRoom(room);
   const isNewRoom = !state.room || state.room.code !== normalized.code;
   if (isNewRoom) roomExitReadyAt = 0;
@@ -2352,10 +2368,17 @@ async function initRoomChat() {
   if (!room?.id || !state.authenticated) return;
   const generation = chatGeneration;
   const isCurrent = () => generation === chatGeneration && ["room", "matching"].includes(parseRoute().name) && state.room?.id === room.id;
+  if (chatAnnouncementRoomId !== room.id) {
+    chatAnnouncementRoomId = room.id;
+    announcedChatMessages.clear();
+    roomChatMessages = [];
+    lastSessionAnnouncementKey = "";
+  }
   const reconcileChatHistory = async () => {
     const messages = await api.fetchRoomMessages(room.id);
     if (!isCurrent()) return;
-    renderChatMessages(mergeRoomMessages(roomChatMessages, messages));
+    const currentRoomMessages = roomChatMessages.filter((message) => !message?.room_id || message.room_id === room.id);
+    renderChatMessages(mergeRoomMessages(currentRoomMessages, messages, room.id));
   };
   try { await reconcileChatHistory(); } catch { /* history recovery will retry after reconnect */ }
   try {
@@ -2366,16 +2389,23 @@ async function initRoomChat() {
       if (!isCurrent()) return;
       appendChatMessage(payload.new);
     });
-    let hasSubscribed = false;
+    let recoveryTimer = 0;
+    const scheduleRecovery = () => {
+      if (recoveryTimer || !isCurrent()) return;
+      recoveryTimer = window.setTimeout(() => {
+        recoveryTimer = 0;
+        reconcileChatHistory().catch(() => {});
+      }, 800);
+    };
     channel.subscribe((status) => {
       if (!isCurrent()) return;
       if (status === "SUBSCRIBED") {
-        if (hasSubscribed) reconcileChatHistory().catch(() => {});
-        hasSubscribed = true;
+        reconcileChatHistory().catch(() => {});
       }
       if (["CHANNEL_ERROR", "TIMED_OUT", "CLOSED"].includes(status)) {
         const statusEl = document.querySelector("[data-chat-send-status]");
         if (statusEl) statusEl.textContent = "聊天连接正在恢复";
+        scheduleRecovery();
       }
     });
     if (!isCurrent()) {
@@ -2383,6 +2413,7 @@ async function initRoomChat() {
       return;
     }
     const close = () => {
+      if (recoveryTimer) window.clearTimeout(recoveryTimer);
       sb.removeChannel(channel);
       if (chatClose === close) chatClose = null;
     };
@@ -2458,7 +2489,7 @@ function renderChatMessages(messages) {
     roomChatMessages = [];
     lastSessionAnnouncementKey = "";
   }
-  roomChatMessages = mergeRoomMessages([], messages);
+  roomChatMessages = mergeRoomMessages([], messages, roomId);
   roomChatMessages.forEach((message) => announcedChatMessages.add(chatMessageKey(message)));
   if (!roomChatMessages.length) {
     el.innerHTML = '<div class="chat-empty">还没有消息，打个招呼吧</div>';
@@ -2484,6 +2515,7 @@ function appendChatMessage(m) {
   const el = document.getElementById("room-chat");
   if (!el) return;
   const roomId = state.room?.id || "";
+  if (m?.room_id && m.room_id !== roomId) return;
   if (roomId !== chatAnnouncementRoomId) {
     chatAnnouncementRoomId = roomId;
     announcedChatMessages.clear();
@@ -2491,7 +2523,7 @@ function appendChatMessage(m) {
   }
   const messageKey = chatMessageKey(m);
   if (announcedChatMessages.has(messageKey)) return;
-  roomChatMessages = mergeRoomMessages(roomChatMessages, [m]);
+  roomChatMessages = mergeRoomMessages(roomChatMessages, [m], roomId);
   const empty = el.querySelector(".chat-empty");
   if (empty) empty.remove();
   el.insertAdjacentHTML("beforeend", chatMessageHtml(m));
@@ -3035,11 +3067,27 @@ async function cancelMatch() {
     try {
       await api.cancelMatchmaking();
     } catch (error) {
+      let authoritativeSnapshot = null;
       try {
         applyMatchmakingSnapshot(await api.getMatchmakingStatus());
       } catch {
-        // Keep the current state when the cancellation response and
-        // reconciliation are both unavailable.
+        // The full state read below is the authoritative fallback.
+      }
+      try {
+        authoritativeSnapshot = await api.getState();
+        applyServerSnapshot(authoritativeSnapshot);
+      } catch {
+        // Keep the current state when both cancellation and reconciliation
+        // are unavailable.
+      }
+      if (roomRecruitment && authoritativeSnapshot && !authoritativeSnapshot.room) {
+        clearTimers();
+        update({ room: null, match: { ...state.match, status: "idle", lifecycle: null, pair: null, group: null, candidate: null } });
+        navigate("#/home");
+        matchConfirmationPending = false;
+        recruitmentExitPending = false;
+        recruitmentExitRoomId = "";
+        return;
       }
       toast(error?.message || "退出匹配失败，请稍后重试");
       if (roomRecruitment) {

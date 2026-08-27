@@ -365,6 +365,7 @@ export async function enrichRoom(room: Record<string, unknown>, options: { conte
 type ActiveRoomCandidate = {
   room: Record<string, unknown> | null;
   session: Record<string, any> | null;
+  ticket: Record<string, any> | null;
 };
 
 const LIVE_TICKET_STATES = ["searching", "candidate_found", "waiting_confirmation", "matched", "playing"];
@@ -381,7 +382,7 @@ async function loadActiveRoomCandidate(profileId: string): Promise<ActiveRoomCan
     .filter((member) => member.user_id === activeMemberUserId)
     .map((member) => member.room_id)
     .filter(Boolean)));
-  if (!roomIds.length) return { room: null, session: null };
+  if (!roomIds.length) return { room: null, session: null, ticket: null };
   const { data: rooms } = await supabaseAdmin()
     .from("rooms")
     .select("*")
@@ -389,7 +390,7 @@ async function loadActiveRoomCandidate(profileId: string): Promise<ActiveRoomCan
     .in("status", ["connecting", "ready", "playing"])
     .order("created_at", { ascending: false })
     .limit(Math.max(roomIds.length, 10));
-  if (!rooms?.length) return { room: null, session: null };
+  if (!rooms?.length) return { room: null, session: null, ticket: null };
   // A room row can remain `playing` after its Session has completed. Resolve
   // the newest Session per room before restoring it, otherwise a refresh can
   // reopen the previous room instead of returning the player to home.
@@ -402,7 +403,7 @@ async function loadActiveRoomCandidate(profileId: string): Promise<ActiveRoomCan
       .order("created_at", { ascending: false }),
     supabaseAdmin()
       .from("matchmaking_tickets")
-      .select("id,user_id,room_id,state,group_id")
+      .select("id,user_id,room_id,state,group_id,game_id,mode,rank_code,desired_roles,microphone_preference,desired_teammates,min_teammates,metadata")
       .eq("user_id", profileId)
       .in("state", LIVE_TICKET_STATES),
     supabaseAdmin()
@@ -452,6 +453,9 @@ async function loadActiveRoomCandidate(profileId: string): Promise<ActiveRoomCan
   return {
     room: (room as Record<string, unknown>) || null,
     session: room ? (latestSessionByRoom.get(room.id as string) || null) : null,
+    ticket: room
+      ? ((liveTickets.find((ticket) => ticket.room_id === room.id) || liveTickets[0]) as Record<string, any> || null)
+      : null,
   };
 }
 
@@ -480,6 +484,21 @@ export async function activeRoomShellFor(profileId: string, context?: StateReadC
 
   const room = candidate.room;
   const roomNeed = (room.need as Record<string, any>) || {};
+  const ticket = candidate.ticket;
+  const ticketNeed = ticket
+    ? {
+        ...roomNeed,
+        game: ticket.game_id || roomNeed.game || "deadlock",
+        mode: ticket.mode || roomNeed.mode || "ranked",
+        goal: ticket.mode === "casual" ? "休闲" : "冲分",
+        rankCode: ticket.rank_code || roomNeed.rankCode || null,
+        details: {
+          ...(roomNeed.details && typeof roomNeed.details === "object" ? roomNeed.details : {}),
+          rank: ticket.rank_code || roomNeed.details?.rank || roomNeed.rankCode || "",
+          voicePreference: ticket.microphone_preference || roomNeed.details?.voicePreference || "any",
+        },
+      }
+    : roomNeed;
   const roomStatus = String(room.status || "").toLowerCase();
   const sessionStatus = String(candidate.session?.status || "").toLowerCase();
   const hasFormalSession = ["ready", "playing", "completed", "cancelled"].includes(sessionStatus);
@@ -492,7 +511,7 @@ export async function activeRoomShellFor(profileId: string, context?: StateReadC
   return {
     id: room.id as string,
     code: room.code as string,
-    need: roomNeed,
+    need: ticketNeed,
     status: room.status as string,
     realtimeVersion: Number(room.realtime_version || 0),
     started_at: (room.started_at as string | null) || null,
@@ -511,7 +530,7 @@ export async function activeRoomShellFor(profileId: string, context?: StateReadC
     goodbyeRequests: [],
     currentMemberCount: activeCount,
     activeMemberCount: activeCount,
-    targetTotalPlayers: Number(roomNeed.target) || (roomStatus === "connecting" ? 2 : 1),
+    targetTotalPlayers: Number(ticketNeed.target) || (roomStatus === "connecting" ? 2 : 1),
   };
 }
 
