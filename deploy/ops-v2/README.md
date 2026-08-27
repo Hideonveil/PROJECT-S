@@ -18,7 +18,7 @@ This project runs Appsmith, Metabase, Prometheus, and Grafana on the founder Mac
 
 ## Security boundary
 
-Appsmith receives only the protected `OPS_V2_API_KEY` in encrypted local configuration and calls `/api/internal/ops-v2/*` through the SSH tunnel. It never receives a Supabase service role, database password, or arbitrary SQL datasource.
+Appsmith receives only the protected `OPS_V2_API_KEY` in encrypted local configuration and calls the verified Production HTTPS `/api/internal/ops-v2/*` endpoint directly. It never receives a Supabase service role, database password, or arbitrary SQL datasource. Prometheus uses the local SSH tunnel for its pull-based metrics scrape.
 
 Metabase uses only the `analytics_readonly` role through `127.0.0.1:5433`. Grafana receives Prometheus facts from the metrics tunnel. Do not create a public DNS record, reverse proxy route, or firewall rule for these services.
 

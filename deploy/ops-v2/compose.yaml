@@ -5,10 +5,6 @@ services:
     env_file: .env.local
     ports:
       - "127.0.0.1:8081:80"
-    extra_hosts:
-      # The Appsmith REST datasource reaches Production only through this
-      # loopback SSH tunnel, while retaining the verified Production hostname.
-      - "www.jiyuan.online:host-gateway"
     volumes:
       - appsmith_stacks:/appsmith-stacks
     healthcheck:

@@ -2,7 +2,7 @@
 
 This document is the import companion for the local Appsmith application. It is
 designed for a founder-only Appsmith instance bound to localhost and connected
-to the protected Jiyuan OPS V2 REST API through an SSH tunnel.
+to the protected Jiyuan OPS V2 REST API over verified Production HTTPS.
 
 ## Pages
 
@@ -15,9 +15,9 @@ to the protected Jiyuan OPS V2 REST API through an SSH tunnel.
 ## Datasource binding
 
 Import `import/datasource.json` as a REST datasource. Set `baseUrl` to the
-local tunnel address and bind `x-jiyuan-ops-key` from the Appsmith server-side
-environment binding. Do not paste a key, database credential, or user token
-into a page, query, widget, or exported artifact.
+verified Production HTTPS base and bind `x-jiyuan-ops-key` from the local
+Appsmith datasource configuration. Do not put a key, database credential, or
+user token into a page, query, widget, or exported artifact.
 
 All reads use the protected `/api/internal/ops-v2` REST endpoints. **No direct database datasource** is permitted.
 
@@ -43,6 +43,6 @@ rows directly.
 
 ## Local-only operation
 
-Keep Appsmith and the SSH tunnel on the founder Mac. Do not publish the
-Appsmith port or the protected API. A failed read must render an error state,
-not an empty or zero-valued dashboard.
+Keep Appsmith on the founder Mac. Do not publish its port or create any direct
+database datasource. A failed read must render an error state, not an empty or
+zero-valued dashboard.
