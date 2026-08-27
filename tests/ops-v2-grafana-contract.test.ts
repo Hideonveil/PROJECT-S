@@ -22,8 +22,11 @@ describe("OPS V2 local Grafana cockpit", () => {
     const config = read("deploy/ops-v2/prometheus/prometheus.yml");
 
     expect(config).toContain("jiyuan_production_metrics");
-    expect(config).toContain("host.docker.internal:9464");
-    expect(config).not.toMatch(/https:\/\/jiyuan\.online/);
+    // The tunnel is still local-only; the public hostname is retained solely
+    // for TLS SNI/certificate validation inside Docker.
+    expect(config).toContain("www.jiyuan.online:9464");
+    expect(config).toContain("server_name: www.jiyuan.online");
+    expect(config).not.toContain("https://www.jiyuan.online/api");
   });
 
   it("provides only a local, secret-safe smoke runner", () => {
