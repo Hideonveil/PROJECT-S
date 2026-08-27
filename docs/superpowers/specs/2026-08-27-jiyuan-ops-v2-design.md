@@ -2,15 +2,15 @@
 
 ## Decision
 
-Replace the custom `/ops` implementation with a lightweight production action surface and two local-only dashboards:
+Replace the custom `/ops` implementation with three local-only internal tools:
 
 | Tool | Sole responsibility | Access |
 | --- | --- | --- |
-| Production `/ops` | carefully limited interventions and inspectors | authenticated Jiyuan admin access |
+| Local Appsmith | live operations and carefully limited interventions | localhost on the founder Mac |
 | Local Metabase | live operations, user/product, and acquisition analysis | localhost on the founder Mac |
 | Local Grafana | production, API, infrastructure, and matcher health | localhost on the founder Mac |
 
-No dashboard runs on the 2 GB production host. Metabase and Grafana bind to `127.0.0.1` on the founder Mac and reach production through SSH tunnels. No dashboard port, database credential, or service-role credential is exposed to a public network.
+No dashboard runs on the 2 GB production host. Appsmith, Metabase, and Grafana bind to `127.0.0.1` on the founder Mac and reach production through SSH tunnels. No dashboard port, database credential, or service-role credential is exposed to a public network.
 
 ## Existing facts and V1 inventory
 
@@ -26,15 +26,15 @@ The production source of truth remains the current Room-first matching model:
 
 ## Deployment topology
 
-Create local-only `deploy/ops-v2/` Compose profiles for Metabase and Grafana. Persistent state uses named local Docker volumes. Service configuration is committed only as templates; passwords, tunnel credentials, and read-only database credentials live in an untracked local environment file.
+Create local-only `deploy/ops-v2/` Compose profiles for Appsmith, Metabase, Grafana, and Prometheus. Persistent state uses named local Docker volumes. Service configuration is committed only as templates; passwords, encryption material, tunnel credentials, and read-only database credentials live in an untracked local environment file.
 
 The production application exposes a protected, read-only metrics endpoint. Local Prometheus scrapes it over the SSH tunnel together with production-safe system metrics. Grafana is provisioned locally with the Prometheus data source and dashboard JSON. Database-derived matcher telemetry is exposed by the application in Prometheus format, not by granting Grafana a production write role.
 
 Metabase uses a dedicated production read-only role over an SSH tunnel after the least-privilege role and connection are verified. This avoids publishing a database connection string or granting arbitrary production SQL access.
 
-## Production `/ops` API
+## Production OPS API
 
-Add a versioned `/api/internal/ops-v2` API protected by the existing server-side admin authorization boundary. The API accepts no browser-supplied service key.
+Add a versioned `/api/internal/ops-v2` API protected by a server-side shared credential stored only in local Appsmith and the Jiyuan server environment. The API accepts no browser-supplied service key.
 
 Read endpoints:
 
@@ -61,26 +61,26 @@ The Room Inspector displays Room mode, status, formation state, members, associa
 
 Ranked preview is read-only compatibility evaluation followed by force-match through the normal pair reservation/presentation path. Casual preview selects an existing compatible forming/backfilling Room, then attaches through the normal group-member reservation path. Locking uses the normal group/Room lock path. All actions require an operator reason and append `ops_audit_log`.
 
-## Local analytics and monitoring
+## Local operations, analytics, and monitoring
 
-Metabase has two first-class collections: `JIYUAN LIVE` and `JIYUAN GROWTH`. LIVE contains online, matching, ranked/casual, microphone/rank breakdown, wait bands, current rooms, playing/sessions, and the last five minutes of lifecycle activity. GROWTH contains total/new/DAU/returning users, D1/D3/D7, ranked/casual usage, rooms/sessions, median/P95 wait time, and reliable acquisition dimensions only. Synthetic accounts are excluded by their permanent synthetic marker.
+Appsmith provides LIVE operations, User/Room Inspectors, Contact Us triage, and Manual Match V2 through the protected OPS API. Metabase has two read-only collections: `JIYUAN LIVE` and `JIYUAN GROWTH`. LIVE contains online, matching, ranked/casual, microphone/rank breakdown, wait bands, current rooms, playing/sessions, and the last five minutes of lifecycle activity. GROWTH contains total/new/DAU/returning users, D1/D3/D7, ranked/casual usage, rooms/sessions, median/P95 wait time, and reliable acquisition dimensions only. Synthetic accounts are excluded by their permanent synthetic marker.
 
 Grafana’s first dashboard is `JIYUAN PRODUCTION`: app/container health, DB proxy/API traffic, matcher rate/outcome ratios, real SQL serialization failures distinct from business conflicts, realtime/presence errors, and storm status. A missing query result is represented as `NO DATA`, never as zero. Alert rules cover sustained CPU, 5xx/timeout spikes, SQL 40001 spikes, matcher conflict spikes, and container restart/OOM.
 
 ## Verification and rollout
 
 1. Unit/contract tests cover authorization, resolver truth, auditor records, preview/no-mutation behavior, normal matching routing, synthetic exclusion, metrics serialization, and no-data semantics.
-2. Start local Metabase, Prometheus, and Grafana through the local Compose project; verify they are only locally reachable.
-3. Deploy the lightweight `/ops` pages and run synthetic smoke: live counts, user/room resolver, contact state, ranked preview/force match, casual attach/lock, and terminal convergence.
+2. Start local Appsmith, Metabase, Prometheus, and Grafana through the local Compose project; verify they are only locally reachable.
+3. Configure Appsmith against the protected API and run synthetic smoke: live counts, user/room resolver, contact state, ranked preview/force match, casual attach/lock, and terminal convergence.
 4. Verify local Metabase and Grafana dashboards with synthetic traffic; ensure synthetic accounts do not enter growth totals.
 5. Deploy only after smoke reports zero new duplicate, ghost, and active residue.
-6. Retire the legacy `/ops` implementation only after the new lightweight `/ops`, Metabase, and Grafana are ready; until then it is an explicitly labelled fallback.
+6. Retire the legacy `/ops` implementation only after local Appsmith, Metabase, and Grafana are ready; until then it is an explicitly labelled fallback.
 
 ## Non-goals
 
 - No new matching state machine or shadow Room/Ticket model.
 - No automatic database cleanup, state repair, or destructive admin action.
-- No arbitrary SQL from `/ops` or a dashboard.
-- No Appsmith deployment.
+- No arbitrary SQL from Appsmith or a dashboard.
+- No new Production `/ops` UI.
 - No public dashboard endpoint, public registration, or browser-held production secret.
 - No inferred school/channel attribution from usernames or IP addresses.
