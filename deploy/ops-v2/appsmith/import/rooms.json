@@ -1,0 +1,29 @@
+{
+  "page": "ROOMS",
+  "queries": [
+    {
+      "name": "listRooms",
+      "method": "GET",
+      "path": "/api/internal/ops-v2/rooms"
+    }
+  ],
+  "columns": [
+    "room id",
+    "mode",
+    "room status",
+    "formation state",
+    "members",
+    "ticket/group",
+    "session",
+    "room age",
+    "anomaly flags"
+  ],
+  "anomalies": [
+    "WAITING TOO LONG",
+    "ORPHAN",
+    "TERMINAL ROOM + ACTIVE MEMBER",
+    "INVALID RESUME",
+    "DUPLICATE",
+    "ROOM / SESSION STATE INCONSISTENCY"
+  ]
+}

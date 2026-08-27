@@ -1,0 +1,19 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: jiyuan_production_metrics
+    scheme: https
+    tls_config:
+      # The local SSH tunnel terminates at the Production HTTPS gateway. Keep
+      # certificate verification enabled by preserving the public hostname.
+      server_name: www.jiyuan.online
+    metrics_path: /api/internal/ops-v2/metrics
+    authorization:
+      type: Bearer
+      credentials_file: /etc/prometheus/secrets/ops_metrics_token
+    static_configs:
+      # Docker resolves this public hostname to the founder Mac. The local SSH
+      # tunnel forwards 127.0.0.1:9464 to the protected Production endpoint.
+      - targets: [www.jiyuan.online:9464]

@@ -3,6 +3,7 @@ node_modules
 out
 .env
 .env.local
+.secrets/
 .env.production
 .env*.local
 .env*

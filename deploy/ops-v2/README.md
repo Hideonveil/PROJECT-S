@@ -1,0 +1,34 @@
+# Jiyuan OPS V2 local 2+1 cockpit
+
+This project runs Appsmith, Metabase, Prometheus, and Grafana on the founder Mac only. It must never be started on the 2 GB Production host.
+
+| Service | Local URL | Purpose |
+| --- | --- | --- |
+| Appsmith | `http://127.0.0.1:8081` | LIVE operations and audited actions |
+| Metabase | `http://127.0.0.1:3002` | LIVE and GROWTH read-only dashboards |
+| Grafana | `http://127.0.0.1:3001` | Production technical health |
+| Prometheus | `http://127.0.0.1:9090` | Local metrics storage |
+
+The published Appsmith cockpit is available at
+`http://127.0.0.1:8081/app/untitled-application-1/live-6a9029cf77dc759d39a9264d`.
+
+## First local setup
+
+1. Copy `.env.example` to `.env.local` and generate unique local values.
+2. Set a distinct `OPS_METRICS_TOKEN` and create `.secrets/ops_metrics_token` locally with that exact value; it is read-only mounted into Prometheus and never added to Git.
+3. Start the protected metrics tunnel with `./deploy/ops-v2/tunnels/start-production-tunnels.sh`. It binds only `127.0.0.1:9464`. After the limited `analytics_readonly` database role exists, add `--analytics-db` to create the separate local-only `127.0.0.1:5433` database tunnel.
+4. Run `docker compose --env-file deploy/ops-v2/.env.local -f deploy/ops-v2/compose.yaml up -d` from this repo. Keep using the same `--env-file` option for subsequent `config`, `ps`, `logs`, and `down` commands.
+
+## Security boundary
+
+Appsmith receives only the protected `OPS_V2_API_KEY` in encrypted local configuration and calls the verified Production HTTPS `/api/internal/ops-v2/*` endpoint directly. It never receives a Supabase service role, database password, or arbitrary SQL datasource. Prometheus uses the local SSH tunnel for its pull-based metrics scrape.
+
+The local Appsmith container may set `APPSMITH_DISABLE_SSRF_FILTER=true` only
+when it must reach the loopback SSH tunnel through the host gateway. This is a
+local-development exception and must not be enabled on a shared or public
+Appsmith instance.
+
+Metabase uses only the `analytics_readonly` role through `127.0.0.1:5433`. Grafana receives Prometheus facts from the metrics tunnel. Do not create a public DNS record, reverse proxy route, or firewall rule for these services.
+
+After a Mac restart, run the tunnel script before opening the cockpit. A failed
+read must appear as an error/no-data state, never as a fabricated zero.

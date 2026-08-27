@@ -536,6 +536,103 @@ async function autoConnectPair(pairId: string, requestId: string | null = null) 
   return pair;
 }
 
+export async function previewOpsRankedMatch(userA: string, userB: string) {
+  if (!userA || !userB || userA === userB) throw new AppError("OPS_MATCH_INPUT_INVALID", "请选择两位不同的玩家", 422, false);
+  const [ticketA, ticketB] = await Promise.all([activeTicketRow(userA), activeTicketRow(userB)]);
+  if (!ticketA || !ticketB || ticketA.mode !== "ranked" || ticketB.mode !== "ranked") {
+    throw new AppError("OPS_MATCH_UNAVAILABLE", "两位玩家必须都在 Ranked 匹配池中", 409, true);
+  }
+  const { data: ruleRow, error } = await supabaseAdmin().from("matchmaking_rule_sets").select("*").eq("id", ticketA.rule_set_id).maybeSingle();
+  if (error || !ruleRow) throw error || new AppError("MATCH_RULE_SET_MISSING", "匹配规则暂不可用", 503, true);
+  const compatibility = evaluateCompatibility(ticketFromRow(ticketA), ticketFromRow(ticketB), rulesFromRow(ruleRow));
+  return { ticketA, ticketB, compatibility };
+}
+
+export async function forceOpsRankedMatch(userA: string, userB: string, reason: string, requestId: string) {
+  const preview = await previewOpsRankedMatch(userA, userB);
+  if (!preview.compatibility.compatible) {
+    throw new AppError("OPS_MATCH_INCOMPATIBLE", "两位玩家当前不满足 Ranked 匹配规则", 409, false);
+  }
+  const { data: pair, error } = await supabaseAdmin().rpc("matchmaking_reserve_pair", {
+    p_ticket_a: preview.ticketA.id,
+    p_ticket_b: preview.ticketB.id,
+    p_hard_snapshot: { passed: true, source: "ops_v2", reason: reason.slice(0, 200) },
+    p_soft_snapshot: { ...preview.compatibility.softSignals, source: "ops_v2" },
+  });
+  if (isPairReservationConflict(error, pair)) throw new AppError("MATCH_RESERVATION_CONFLICT", "候选刚刚被其他匹配占用，请刷新后重试", 409, true);
+  if (error || !pair?.id) throw error || new AppError("OPS_MATCH_FAILED", "人工匹配未能生成 Pair", 500, true);
+  if (!["matched", "playing"].includes(String(pair.state))) {
+    const { error: presentError } = await supabaseAdmin().rpc("matchmaking_present_pair", { p_pair_id: pair.id });
+    if (presentError) throw presentError;
+    await autoConnectPair(pair.id, `ops-v2:${requestId}`);
+  }
+  // Reservation can precede automatic confirmation. Read the canonical pair
+  // once that lifecycle path completes so the operator audit is attached to
+  // the real Room rather than a stale pre-connect RPC snapshot.
+  const { data: connectedPair, error: connectedPairError } = await supabaseAdmin()
+    .from("matchmaking_pairs")
+    .select("room_id")
+    .eq("id", pair.id)
+    .maybeSingle();
+  if (connectedPairError) throw connectedPairError;
+  return { pairId: pair.id, roomId: connectedPair?.room_id || pair.room_id || null, status: "matched" };
+}
+
+export async function previewOpsCasualAttach(userId: string, groupId: string) {
+  const admin = supabaseAdmin();
+  const [ticket, groupResult] = await Promise.all([
+    activeTicketRow(userId),
+    admin.from("matchmaking_groups").select("*").eq("id", groupId).maybeSingle(),
+  ]);
+  if (groupResult.error) throw groupResult.error;
+  const group = groupResult.data as TicketRow | null;
+  if (!ticket || ticket.mode !== "casual" || ticket.state !== "searching" || !group || !["forming", "backfilling", "searching", "partial_ready"].includes(group.state)) {
+    throw new AppError("OPS_CASUAL_ATTACH_UNAVAILABLE", "玩家或休闲 Room 已不在可招募状态", 409, true);
+  }
+  const { count, error: countError } = await admin.from("matchmaking_group_members").select("id", { count: "exact", head: true }).eq("group_id", groupId).neq("decision", "rejected");
+  if (countError) throw countError;
+  if (Number(count || 0) >= Number(group.hard_max_players || 6)) throw new AppError("GROUP_FULL", "休闲 Room 已满员", 409, false);
+  const { data: ownerTicket, error: ownerError } = await admin.from("matchmaking_tickets").select("*").eq("group_id", groupId).eq("user_id", group.owner_user_id).maybeSingle();
+  if (ownerError || !ownerTicket) throw ownerError || new AppError("OPS_CASUAL_OWNER_TICKET_MISSING", "休闲 Room 缺少有效 Owner Ticket", 409, true);
+  const { data: ruleRow, error: ruleError } = await admin.from("matchmaking_rule_sets").select("*").eq("id", ownerTicket.rule_set_id).maybeSingle();
+  if (ruleError || !ruleRow) throw ruleError || new AppError("MATCH_RULE_SET_MISSING", "匹配规则暂不可用", 503, true);
+  return { ticket, group, compatibility: evaluateCompatibility(ticketFromRow(ownerTicket), ticketFromRow(ticket), rulesFromRow(ruleRow)), rules: rulesFromRow(ruleRow) };
+}
+
+export async function forceOpsCasualAttach(userId: string, groupId: string, reason: string) {
+  const preview = await previewOpsCasualAttach(userId, groupId);
+  if (!preview.compatibility.compatible) throw new AppError("OPS_CASUAL_ATTACH_INCOMPATIBLE", "玩家不满足当前休闲 Room 的匹配规则", 409, false);
+  const { data, error } = await supabaseAdmin().rpc("matchmaking_reserve_group_member", {
+    p_group_id: groupId,
+    p_ticket_id: preview.ticket.id,
+    p_hard_snapshot: { passed: true, source: "ops_v2", reason: reason.slice(0, 200), ruleSetVersion: preview.rules.version },
+    p_soft_snapshot: { ...preview.compatibility.softSignals, source: "ops_v2" },
+  });
+  if (isGroupReservationConflict(error, data)) throw new AppError("GROUP_RESERVATION_CONFLICT", "休闲 Room 刚刚发生变化，请刷新后重试", 409, true);
+  if (error) throw error;
+  return { groupId, roomId: data?.room_id || preview.group.room_id || null, status: "attached" };
+}
+
+export async function forceOpsCasualLock(groupId: string, reason: string, requestId: string) {
+  const admin = supabaseAdmin();
+  const { data: group, error: groupError } = await admin
+    .from("matchmaking_groups")
+    .select("id,owner_user_id,state,room_id")
+    .eq("id", groupId)
+    .maybeSingle();
+  if (groupError || !group) throw groupError || new AppError("OPS_CASUAL_LOCK_UNAVAILABLE", "休闲 Room 已不存在", 409, true);
+  if (!["forming", "backfilling", "searching", "partial_ready"].includes(String(group.state))) {
+    throw new AppError("OPS_CASUAL_LOCK_UNAVAILABLE", "休闲 Room 已不在可停止招募状态", 409, true);
+  }
+  const { data, error } = await admin.rpc("matchmaking_lock_forming_group", {
+    p_group_id: groupId,
+    p_user_id: group.owner_user_id,
+    p_request_id: `ops-v2:${requestId}:${reason.slice(0, 64)}`,
+  });
+  if (error) throw error;
+  return { groupId, roomId: data?.room_id || group.room_id || null, status: "locked" };
+}
+
 async function groupSnapshot(groupId: string, viewerId: string) {
   const admin = supabaseAdmin();
   const { data: groupRow, error: groupError } = await admin.from("matchmaking_groups").select("*").eq("id", groupId).maybeSingle();

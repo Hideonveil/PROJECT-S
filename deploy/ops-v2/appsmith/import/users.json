@@ -1,0 +1,25 @@
+{
+  "page": "USERS",
+  "queries": [
+    {
+      "name": "listUsers",
+      "method": "GET",
+      "path": "/api/internal/ops-v2/users"
+    },
+    {
+      "name": "getUserLifecycle",
+      "method": "GET",
+      "path": "/api/internal/ops-v2/users/:userId"
+    }
+  ],
+  "filters": [
+    "Online",
+    "Matching",
+    "Ranked",
+    "Casual",
+    "Waiting > 30s",
+    "In Room",
+    "Playing"
+  ],
+  "display": "presence → ticket → pair/group → room → session → membership"
+}

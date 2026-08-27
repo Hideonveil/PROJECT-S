@@ -1,0 +1,20 @@
+{
+  "page": "LIVE",
+  "queries": [
+    {
+      "name": "getLiveSnapshot",
+      "method": "GET",
+      "path": "/api/internal/ops-v2/live",
+      "failureState": "NO DATA"
+    }
+  ],
+  "widgets": [
+    "online",
+    "matching",
+    "ranked",
+    "casual",
+    "waiting rooms",
+    "playing sessions",
+    "last five minutes activity"
+  ]
+}
