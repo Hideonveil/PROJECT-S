@@ -1,8 +1,7 @@
 with eligible_profiles as (
   select p.id, p.online, p.voice, p.last_seen
-  from public.profiles p
-  left join auth.users au on au.id = p.auth_user_id
-  where coalesce(au.raw_user_meta_data->>'account_type', '') <> 'synthetic_test'
+  from analytics.user_facts p
+  where not p.is_synthetic
 ),
 matching_pool as (
   select t.user_id, t.mode, t.microphone_preference, t.rank_code,
@@ -15,10 +14,20 @@ room_counts as (
   select count(*) filter (where r.status in ('connecting', 'ready')) as waiting_rooms,
          count(*) filter (where r.status = 'playing') as playing_rooms
   from public.rooms r
+  where exists (
+    select 1 from public.room_members rm
+    join eligible_profiles p on p.id = rm.user_id
+    where rm.room_id = r.id
+  )
 ),
 session_counts as (
   select count(*) filter (where s.status = 'active') as active_sessions
   from public.sessions s
+  where exists (
+    select 1 from public.room_members rm
+    join eligible_profiles p on p.id = rm.user_id
+    where rm.room_id = s.room_id
+  )
 ),
 activity as (
   select count(*) as events_last_5_minutes

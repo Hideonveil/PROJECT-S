@@ -1,8 +1,7 @@
 with eligible_profiles as (
   select p.id, p.created_at
-  from public.profiles p
-  left join auth.users au on au.id = p.auth_user_id
-  where coalesce(au.raw_user_meta_data->>'account_type', '') <> 'synthetic_test'
+  from analytics.user_facts p
+  where not p.is_synthetic
 ),
 activity_days as (
   select distinct pe.user_id, pe.occurred_at::date as activity_day
@@ -55,9 +54,19 @@ metric_rows as (
   from public.matchmaking_tickets t join eligible_profiles p on p.id = t.user_id
   where t.mode = 'casual'
   union all
-  select 'rooms_created', count(*)::numeric from public.rooms
+  select 'rooms_created', count(*)::numeric from public.rooms r
+  where exists (
+    select 1 from public.room_members rm
+    join eligible_profiles p on p.id = rm.user_id
+    where rm.room_id = r.id
+  )
   union all
-  select 'sessions_created', count(*)::numeric from public.sessions
+  select 'sessions_created', count(*)::numeric from public.sessions s
+  where exists (
+    select 1 from public.room_members rm
+    join eligible_profiles p on p.id = rm.user_id
+    where rm.room_id = s.room_id
+  )
   union all
   select 'median_wait_seconds', coalesce(percentile_cont(0.5) within group (order by wait_seconds), 0)::numeric from waits
   union all
