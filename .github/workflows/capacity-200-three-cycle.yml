@@ -1,0 +1,144 @@
+name: Capacity 200 three-cycle
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: Unique capacity run id
+        required: true
+        type: string
+      start_at:
+        description: UTC ISO timestamp at least ten minutes in the future
+        required: true
+        type: string
+      production_ack:
+        description: Must exactly equal run_id
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: capacity-production
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+      - name: Verify production acknowledgement
+        env:
+          RUN_ID: ${{ inputs.run_id }}
+          PRODUCTION_ACK: ${{ inputs.production_ack }}
+        run: test "$RUN_ID" = "$PRODUCTION_ACK"
+      - name: Build safe distributed plan
+        run: >-
+          pnpm capacity:distributed -- plan
+          --run-id "${{ inputs.run_id }}"
+          --manifest output/capacity-validation/breakpoint-authfix-rerun40-20260825/run-manifest.json
+          --users 200
+          --nodes 10
+          --start-at "${{ inputs.start_at }}"
+          --output run-plan/plan.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: capacity-plan
+          path: run-plan/plan.json
+          retention-days: 3
+
+  agents:
+    needs: plan
+    strategy:
+      fail-fast: false
+      max-parallel: 10
+      matrix:
+        include:
+          - { node: node-01, shard: CAPACITY_SHARD_01 }
+          - { node: node-02, shard: CAPACITY_SHARD_02 }
+          - { node: node-03, shard: CAPACITY_SHARD_03 }
+          - { node: node-04, shard: CAPACITY_SHARD_04 }
+          - { node: node-05, shard: CAPACITY_SHARD_05 }
+          - { node: node-06, shard: CAPACITY_SHARD_06 }
+          - { node: node-07, shard: CAPACITY_SHARD_07 }
+          - { node: node-08, shard: CAPACITY_SHARD_08 }
+          - { node: node-09, shard: CAPACITY_SHARD_09 }
+          - { node: node-10, shard: CAPACITY_SHARD_10 }
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    env:
+      CAPACITY_SHARD_B64: ${{ secrets[matrix.shard] }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+      - uses: actions/download-artifact@v4
+        with:
+          name: capacity-plan
+          path: run-plan
+      - name: Require credential shard
+        run: test -n "$CAPACITY_SHARD_B64"
+      - name: Materialize private agent inputs
+        run: |
+          mkdir -p agent-input agent-output
+          printf '%s' "$CAPACITY_SHARD_B64" | base64 --decode > agent-input/credentials.json
+          chmod 600 agent-input/credentials.json
+          pnpm capacity:distributed -- job --plan run-plan/plan.json --node-id "${{ matrix.node }}" --output agent-input/job.json
+      - name: Run ordinary-user Production workload
+        run: >-
+          pnpm capacity:distributed -- agent
+          --job agent-input/job.json
+          --credentials agent-input/credentials.json
+          --base-url https://www.jiyuan.online
+          --report agent-output/report.json
+          --allow-production
+          --production-ack "${{ inputs.run_id }}"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: capacity-report-${{ matrix.node }}
+          path: agent-output/
+          retention-days: 7
+
+  summarize:
+    if: always()
+    needs: [plan, agents]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+      - uses: actions/download-artifact@v4
+        with:
+          name: capacity-plan
+          path: run-plan
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: capacity-report-*
+          path: reports
+      - name: Summarize three-cycle result
+        run: >-
+          pnpm capacity:distributed -- summarize
+          --plan run-plan/plan.json
+          --reports reports
+          --output capacity-summary/summary.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: capacity-summary
+          path: capacity-summary/
+          retention-days: 14

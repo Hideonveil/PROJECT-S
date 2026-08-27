@@ -31,7 +31,7 @@ const STAGES = Object.freeze([
   { name: "500", count: 500, ranked: 294, casual: 156, fragmented: 50 },
 ]);
 
-const ACTIVE_SESSION_STATES = new Set(["active", "playing", "matched"]);
+const ACTIVE_SESSION_STATES = new Set(["ready", "active", "playing", "matched"]);
 const TERMINAL_SESSION_STATES = new Set(["completed", "cancelled"]);
 export const STATE_POLL_INTERVAL_MS = 2_000;
 export const STATE_POLL_JITTER_MS = 250;
@@ -400,7 +400,7 @@ export async function subscribeChannel(runtime, stage, name, configure) {
   return subscribed;
 }
 
-async function subscribeActor(runtime, stage) {
+export async function subscribeActor(runtime, stage) {
   try {
     runtime.client = await createRealtimeClient(runtime);
     await subscribeChannel(runtime, stage, "node-events", (channel) => {
@@ -701,7 +701,7 @@ async function sendRoomMessages(group, runtime, options, stage, ledger, messageL
   }
 }
 
-async function refreshActor(runtime, options, stage, ledger) {
+export async function refreshActor(runtime, options, stage, ledger) {
   const before = snapshotIds(runtime);
   await closeClient(runtime);
   await sleep(250);
@@ -713,7 +713,7 @@ async function refreshActor(runtime, options, stage, ledger) {
   if (before.room_id && (before.room_id !== after.room_id || before.session_id !== after.session_id)) throw new Error(`CAPACITY_STATEFUL: refresh changed room/session for ${runtime.actorId}`);
 }
 
-async function disconnectAndReconnect(runtime, options, stage, ledger, durationMs) {
+export async function disconnectAndReconnect(runtime, options, stage, ledger, durationMs) {
   const before = snapshotIds(runtime);
   stopHeartbeat(runtime);
   await closeClient(runtime);
@@ -732,13 +732,13 @@ async function requestGoodbye(group, options, stage, ledger) {
   await Promise.all(group.map((runtime) => statefulRequest({ runtime, options, stage, action: "goodbye", method: "POST", requestPath: `/api/room/${code}/goodbye`, body: { requested: true }, ledger })));
 }
 
-async function explicitLeave(runtime, options, stage, ledger) {
+export async function explicitLeave(runtime, options, stage, ledger) {
   const code = runtime.state?.room?.code || runtime.state?.session?.roomCode;
   if (!code) return;
   await statefulRequest({ runtime, options, stage, action: "leave", method: "POST", requestPath: `/api/room/${code}/exit`, body: {}, ledger });
 }
 
-async function submitFeedback(runtime, options, stage, ledger) {
+export async function submitFeedback(runtime, options, stage, ledger) {
   const session = runtime.state?.session;
   const code = runtime.state?.room?.code || session?.roomCode;
   if (!code || session?.status !== "completed") return;

@@ -38,6 +38,8 @@ function runtime() {
     ids: {},
     realtimeTimeoutMs: 5,
     cleanupTimeoutMs: 5,
+    realtime: [],
+    realtimeLedger: [],
     presence: [],
     roomChannels: new Set(),
   };
@@ -138,6 +140,27 @@ describe("stateful evidence ledger", () => {
 });
 
 describe("stateful request timeout safety", () => {
+  it("counts a ready session as active while waiting for rooms", async () => {
+    const { directory, ledger } = await ledgerFixture();
+    const actor = runtime();
+    actor.client = {
+      channel() {
+        return { on() {}, subscribe(callback) { callback("SUBSCRIBED"); } };
+      },
+    };
+    globalThis.fetch = vi.fn(() => Promise.resolve(new Response(JSON.stringify({
+      user: { id: actor.userId },
+      room: { id: "room-ready", code: "READY01" },
+      session: { id: "session-ready", status: "ready" },
+      matchmaking: {},
+    }), { status: 200 })));
+    try {
+      await expect(waitForRooms(new Map([[actor.actorId, actor]]), 1, options({ durationSec: 1, statePollIntervalMs: 0, statePollJitterMs: 0 }), "40", ledger)).resolves.toBeUndefined();
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
   it("coalesces concurrent state hydration for one actor", async () => {
     const { directory, ledger } = await ledgerFixture();
     const actor = runtime();
