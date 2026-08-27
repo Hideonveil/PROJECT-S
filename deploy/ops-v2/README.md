@@ -9,6 +9,9 @@ This project runs Appsmith, Metabase, Prometheus, and Grafana on the founder Mac
 | Grafana | `http://127.0.0.1:3001` | Production technical health |
 | Prometheus | `http://127.0.0.1:9090` | Local metrics storage |
 
+The published Appsmith cockpit is available at
+`http://127.0.0.1:8081/app/untitled-application-1/live-6a9029cf77dc759d39a9264d`.
+
 ## First local setup
 
 1. Copy `.env.example` to `.env.local` and generate unique local values.
