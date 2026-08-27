@@ -54,6 +54,10 @@ services:
     command: ["--config.file=/etc/prometheus/prometheus.yml", "--storage.tsdb.path=/prometheus"]
     ports:
       - "127.0.0.1:9090:9090"
+    extra_hosts:
+      # Preserve the Production hostname for HTTPS/SNI while keeping traffic
+      # inside the founder Mac's loopback SSH tunnel.
+      - "www.jiyuan.online:host-gateway"
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ./.secrets/ops_metrics_token:/etc/prometheus/secrets/ops_metrics_token:ro
