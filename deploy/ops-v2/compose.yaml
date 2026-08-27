@@ -3,6 +3,10 @@ services:
     image: appsmith/appsmith-ce:release
     restart: unless-stopped
     env_file: .env.local
+    extra_hosts:
+      # Route the verified Production HTTPS tunnel through Docker Desktop's
+      # host gateway while retaining the Production hostname/SNI.
+      - "www.jiyuan.online:host-gateway"
     ports:
       - "127.0.0.1:8081:80"
     volumes:

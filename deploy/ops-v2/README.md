@@ -14,7 +14,7 @@ This project runs Appsmith, Metabase, Prometheus, and Grafana on the founder Mac
 1. Copy `.env.example` to `.env.local` and generate unique local values.
 2. Set a distinct `OPS_METRICS_TOKEN` and create `.secrets/ops_metrics_token` locally with that exact value; it is read-only mounted into Prometheus and never added to Git.
 3. Start the protected metrics tunnel with `./deploy/ops-v2/tunnels/start-production-tunnels.sh`. It binds only `127.0.0.1:9464`. After the limited `analytics_readonly` database role exists, add `--analytics-db` to create the separate local-only `127.0.0.1:5433` database tunnel.
-4. Run `docker compose -f deploy/ops-v2/compose.yaml up -d` from this repo.
+4. Run `docker compose --env-file deploy/ops-v2/.env.local -f deploy/ops-v2/compose.yaml up -d` from this repo. Keep using the same `--env-file` option for subsequent `config`, `ps`, `logs`, and `down` commands.
 
 ## Security boundary
 
