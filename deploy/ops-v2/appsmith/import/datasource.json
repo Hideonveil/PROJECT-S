@@ -1,0 +1,10 @@
+{
+  "name": "Jiyuan OPS V2 API",
+  "type": "REST",
+  "baseUrl": "http://127.0.0.1:8080",
+  "headers": {
+    "x-jiyuan-ops-key": "{{appsmith.serverEnvironment.OPS_V2_API_KEY}}",
+    "x-jiyuan-operator": "{{appsmith.user.email}}"
+  },
+  "notes": "Bind baseUrl to the local SSH tunnel. Keep the key server-side and never export it in a page."
+}

@@ -1,0 +1,24 @@
+{
+  "page": "CONTACTS",
+  "queries": [
+    {
+      "name": "listContacts",
+      "method": "GET",
+      "path": "/api/internal/ops-v2/contacts"
+    },
+    {
+      "name": "updateContactStatus",
+      "method": "PATCH",
+      "path": "/api/internal/ops-v2/contacts/:feedbackId/status",
+      "body": {
+        "status": "{{selectedStatus}}"
+      },
+      "requires": "operator reason"
+    }
+  ],
+  "statuses": [
+    "unread",
+    "read",
+    "resolved"
+  ]
+}

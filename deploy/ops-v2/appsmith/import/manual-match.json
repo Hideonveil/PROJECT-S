@@ -1,0 +1,43 @@
+{
+  "page": "MANUAL MATCH",
+  "queries": [
+    {
+      "name": "previewRanked",
+      "method": "POST",
+      "path": "/api/internal/ops-v2/ranked/preview"
+    },
+    {
+      "name": "forceRanked",
+      "method": "POST",
+      "path": "/api/internal/ops-v2/ranked/force-match",
+      "action": "ADMIN_FORCE_RANKED_MATCH",
+      "requires": "preview result and operator reason"
+    },
+    {
+      "name": "previewCasualAttach",
+      "method": "POST",
+      "path": "/api/internal/ops-v2/casual/preview-attach"
+    },
+    {
+      "name": "attachCasual",
+      "method": "POST",
+      "path": "/api/internal/ops-v2/casual/attach",
+      "action": "ADMIN_ATTACH_CASUAL_USER",
+      "requires": "preview result and operator reason"
+    },
+    {
+      "name": "lockCasualRoom",
+      "method": "POST",
+      "path": "/api/internal/ops-v2/casual/lock",
+      "action": "ADMIN_LOCK_CASUAL_ROOM",
+      "requires": "preview result and operator reason"
+    }
+  ],
+  "guardrails": [
+    "Preview before Force",
+    "No direct database datasource",
+    "All mutations are audited",
+    "No arbitrary SQL",
+    "No automatic cleanup"
+  ]
+}
