@@ -1,0 +1,158 @@
+{
+  "annotations": { "list": [] },
+  "editable": false,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "type": "row",
+      "title": "PRODUCTION HEALTH",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "id": 1
+    },
+    {
+      "type": "stat",
+      "title": "DB CPU",
+      "datasource": { "type": "prometheus", "uid": "jiyuan-production-prometheus" },
+      "targets": [{ "refId": "A", "expr": "jiyuan_db_cpu_percent", "legendFormat": "DB CPU" }],
+      "fieldConfig": { "defaults": { "unit": "percent", "noValue": "No data" }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "values": false }, "orientation": "auto", "textMode": "auto", "colorMode": "value", "graphMode": "none", "justifyMode": "auto" },
+      "gridPos": { "h": 5, "w": 4, "x": 0, "y": 1 },
+      "id": 2
+    },
+    {
+      "type": "stat",
+      "title": "DB connections",
+      "datasource": { "type": "prometheus", "uid": "jiyuan-production-prometheus" },
+      "targets": [{ "refId": "A", "expr": "jiyuan_db_connections", "legendFormat": "connections" }],
+      "fieldConfig": { "defaults": { "noValue": "No data" }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "values": false }, "orientation": "auto", "textMode": "auto", "colorMode": "value", "graphMode": "none", "justifyMode": "auto" },
+      "gridPos": { "h": 5, "w": 4, "x": 4, "y": 1 },
+      "id": 3
+    },
+    {
+      "type": "stat",
+      "title": "App health",
+      "datasource": { "type": "prometheus", "uid": "jiyuan-production-prometheus" },
+      "targets": [{ "refId": "A", "expr": "jiyuan_app_health", "legendFormat": "health" }],
+      "fieldConfig": { "defaults": { "noValue": "No data", "mappings": [{ "type": "value", "options": { "1": { "text": "HEALTHY", "color": "green" }, "0": { "text": "UNHEALTHY", "color": "red" } } }] }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "values": false }, "orientation": "auto", "textMode": "auto", "colorMode": "background", "graphMode": "none", "justifyMode": "auto" },
+      "gridPos": { "h": 5, "w": 4, "x": 8, "y": 1 },
+      "id": 4
+    },
+    {
+      "type": "timeseries",
+      "title": "API failures",
+      "datasource": { "type": "prometheus", "uid": "jiyuan-production-prometheus" },
+      "targets": [
+        { "refId": "A", "expr": "sum(rate(jiyuan_api_requests_total{status=~\"5..\"}[5m]))", "legendFormat": "5xx / sec" },
+        { "refId": "B", "expr": "sum(rate(jiyuan_api_timeouts_total[5m]))", "legendFormat": "timeout / sec" }
+      ],
+      "fieldConfig": { "defaults": { "noValue": "No data" }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "single", "sort": "none" } },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 1 },
+      "id": 5
+    },
+    {
+      "type": "row",
+      "title": "MATCHING HEALTH",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 9 },
+      "id": 6
+    },
+    {
+      "type": "timeseries",
+      "title": "Matcher attempts, success, and retries",
+      "datasource": { "type": "prometheus", "uid": "jiyuan-production-prometheus" },
+      "targets": [
+        { "refId": "A", "expr": "sum(rate(jiyuan_matcher_attempts_total[1m]))", "legendFormat": "attempts / sec" },
+        { "refId": "B", "expr": "sum(rate(jiyuan_matcher_success_total[1m]))", "legendFormat": "success / sec" },
+        { "refId": "C", "expr": "sum(rate(jiyuan_matcher_retries_total[1m]))", "legendFormat": "retries / sec" }
+      ],
+      "fieldConfig": { "defaults": { "noValue": "No data" }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "single", "sort": "none" } },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 10 },
+      "id": 7
+    },
+    {
+      "type": "timeseries",
+      "title": "SQL 40001 and Business conflicts",
+      "datasource": { "type": "prometheus", "uid": "jiyuan-production-prometheus" },
+      "targets": [
+        { "refId": "A", "expr": "sum(rate(jiyuan_matcher_actual_sql_40001_total[1m]))", "legendFormat": "SQL 40001 / sec" },
+        { "refId": "B", "expr": "sum(rate(jiyuan_matcher_business_conflicts_total[1m]))", "legendFormat": "Business conflicts / sec" }
+      ],
+      "fieldConfig": { "defaults": { "noValue": "No data" }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "single", "sort": "none" } },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 10 },
+      "id": 8
+    },
+    {
+      "type": "stat",
+      "title": "Storm state",
+      "datasource": { "type": "prometheus", "uid": "jiyuan-production-prometheus" },
+      "targets": [{ "refId": "A", "expr": "jiyuan_matcher_storm_state", "legendFormat": "storm" }],
+      "fieldConfig": { "defaults": { "noValue": "No data", "mappings": [{ "type": "value", "options": { "0": { "text": "NORMAL", "color": "green" }, "1": { "text": "STORM", "color": "red" } } }] }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "values": false }, "orientation": "auto", "textMode": "auto", "colorMode": "background", "graphMode": "none", "justifyMode": "auto" },
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 18 },
+      "id": 9
+    },
+    {
+      "type": "stat",
+      "title": "Matcher instances",
+      "datasource": { "type": "prometheus", "uid": "jiyuan-production-prometheus" },
+      "targets": [{ "refId": "A", "expr": "jiyuan_matcher_instances_alive", "legendFormat": "instances" }],
+      "fieldConfig": { "defaults": { "noValue": "No data" }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "values": false }, "orientation": "auto", "textMode": "auto", "colorMode": "value", "graphMode": "none", "justifyMode": "auto" },
+      "gridPos": { "h": 5, "w": 6, "x": 6, "y": 18 },
+      "id": 10
+    },
+    {
+      "type": "row",
+      "title": "Realtime / Presence",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 23 },
+      "id": 11
+    },
+    {
+      "type": "timeseries",
+      "title": "Realtime and presence errors",
+      "datasource": { "type": "prometheus", "uid": "jiyuan-production-prometheus" },
+      "targets": [
+        { "refId": "A", "expr": "sum(rate(jiyuan_realtime_errors_total[5m]))", "legendFormat": "realtime errors / sec" },
+        { "refId": "B", "expr": "sum(rate(jiyuan_presence_errors_total[5m]))", "legendFormat": "presence errors / sec" }
+      ],
+      "fieldConfig": { "defaults": { "noValue": "No data" }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "single", "sort": "none" } },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 24 },
+      "id": 12
+    },
+    {
+      "type": "timeseries",
+      "title": "Restart / OOM",
+      "datasource": { "type": "prometheus", "uid": "jiyuan-production-prometheus" },
+      "targets": [
+        { "refId": "A", "expr": "sum(increase(jiyuan_container_restarts_total[15m]))", "legendFormat": "restarts" },
+        { "refId": "B", "expr": "sum(increase(jiyuan_oom_events_total[15m]))", "legendFormat": "OOM events" }
+      ],
+      "fieldConfig": { "defaults": { "noValue": "No data" }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "single", "sort": "none" } },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 24 },
+      "id": 13
+    }
+  ],
+  "refresh": "15s",
+  "schemaVersion": 39,
+  "tags": ["jiyuan", "production", "ops-v2"],
+  "templating": { "list": [] },
+  "time": { "from": "now-30m", "to": "now" },
+  "timezone": "browser",
+  "title": "JIYUAN PRODUCTION",
+  "uid": "jiyuan-production",
+  "version": 1,
+  "weekStart": ""
+}
