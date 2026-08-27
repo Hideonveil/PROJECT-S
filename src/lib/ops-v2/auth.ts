@@ -16,3 +16,11 @@ export async function requireOpsV2Authorization(request: Request): Promise<OpsV2
   }
   return { operator: (request.headers.get("x-jiyuan-operator") || "appsmith").slice(0, 100) };
 }
+
+export async function requireOpsMetricsAuthorization(request: Request): Promise<void> {
+  const authorization = request.headers.get("authorization") || "";
+  const supplied = authorization.toLowerCase().startsWith("bearer ") ? authorization.slice(7).trim() : "";
+  if (!sameSecret(env("OPS_METRICS_TOKEN"), supplied)) {
+    throw new AppError("OPS_UNAUTHORIZED", "未授权的监控请求", 401, false);
+  }
+}
