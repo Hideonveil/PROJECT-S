@@ -1,4 +1,9 @@
-import { getSupabaseClient, getState } from "./api.js";
+import { getSupabaseClient, getState } from "./api.js?v=20260828-room-reliability-01";
+
+// Realtime accelerates Room updates, but the server snapshot remains the
+// source of truth. This sparse watchdog closes silent event gaps without
+// recreating a high-frequency polling loop.
+const ACTIVE_ROOM_RECONCILE_MS = 12_000;
 
 function terminalSessionFromChange(payload) {
   const row = payload?.new;
@@ -17,6 +22,7 @@ export async function openRealtime(handlers) {
   let closed = false;
   let refreshTimer = 0;
   let pollTimer = 0;
+  let roomReconcileTimer = 0;
   let pollDelay = 4000;
   const clearRefresh = () => {
     if (refreshTimer) {
@@ -29,6 +35,24 @@ export async function openRealtime(handlers) {
       window.clearTimeout(pollTimer);
       pollTimer = 0;
     }
+  };
+  const clearRoomReconciliation = () => {
+    if (!roomReconcileTimer) return;
+    window.clearTimeout(roomReconcileTimer);
+    roomReconcileTimer = 0;
+  };
+  const startRoomReconciliation = (initialDelay = ACTIVE_ROOM_RECONCILE_MS) => {
+    if (closed || roomReconcileTimer) return;
+    const tick = () => {
+      roomReconcileTimer = 0;
+      if (closed) return;
+      if (handlers.roomActive?.()) handlers.roomEvent?.({ source: "watchdog" });
+      if (!closed) {
+        const jitterMs = Math.floor(Math.random() * 2_000);
+        roomReconcileTimer = window.setTimeout(tick, ACTIVE_ROOM_RECONCILE_MS + jitterMs);
+      }
+    };
+    roomReconcileTimer = window.setTimeout(tick, initialDelay);
   };
   const refresh = async () => {
     if (closed) return false;
@@ -67,6 +91,7 @@ export async function openRealtime(handlers) {
     closed = true;
     clearRefresh();
     clearPoll();
+    clearRoomReconciliation();
     if (channel && sb) sb.removeChannel(channel);
   };
 
@@ -97,6 +122,9 @@ export async function openRealtime(handlers) {
     if (status === "SUBSCRIBED") {
       clearPoll();
       pollDelay = 4000;
+      // The first short pass covers a match commit that races Room-shell
+      // navigation; subsequent passes stay deliberately low-frequency.
+      startRoomReconciliation(1_200 + Math.floor(Math.random() * 900));
     } else if (["CHANNEL_ERROR", "TIMED_OUT", "CLOSED"].includes(status)) {
       startPolling();
     }

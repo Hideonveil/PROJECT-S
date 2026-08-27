@@ -251,7 +251,7 @@ export async function sendRoomMessage(roomId, content, senderId) {
 export function openEvents(handlers) {
   let closeFn = null;
   let closed = false;
-  import("./realtime.js")
+  import("./realtime.js?v=20260828-room-reliability-01")
     .then(({ openRealtime }) => {
       if (closed) return null;
       return openRealtime(handlers);

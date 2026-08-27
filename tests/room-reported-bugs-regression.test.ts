@@ -7,6 +7,8 @@ import { mergeRoomMessages } from "../public/js/chat-merge.js";
 const app = readFileSync("public/js/app.js", "utf8");
 const api = readFileSync("src/lib/api.ts", "utf8");
 const stateRoute = readFileSync("src/app/api/state/route.ts", "utf8");
+const realtime = readFileSync("public/js/realtime.js", "utf8");
+const http = readFileSync("src/lib/http.ts", "utf8");
 
 const self = { id: "user-a", nickname: "玩家A", username: "player-a", avatarKey: "a", online: true };
 const teammate = { id: "user-b", nickname: "玩家B", username: "player-b", avatarKey: "b", online: true };
@@ -83,5 +85,22 @@ describe("reported Room lifecycle regressions", () => {
     expect(source).toContain("api.getState()");
     expect(source).toContain("!authoritativeSnapshot.room");
     expect(source).toContain('navigate("#/home")');
+  });
+
+  it("keeps a bounded authoritative Room watchdog even while Realtime is subscribed", () => {
+    expect(realtime).toContain("ACTIVE_ROOM_RECONCILE_MS");
+    expect(realtime).toContain("startRoomReconciliation");
+    expect(realtime).toContain("handlers.roomActive?.()");
+  });
+
+  it("reconciles mutual Goodbye while the first requester is waiting for its peer", () => {
+    expect(app).toContain("startGoodbyeReconciliation");
+    expect(app).toContain("stopGoodbyeReconciliation");
+    expect(app).toContain("goodbyeRequests.some");
+  });
+
+  it("classifies Room-first Goodbye state conflicts instead of returning an opaque 500", () => {
+    expect(http).toContain("SESSION_NOT_PLAYING");
+    expect(http).toContain("SESSION_MEMBER_INACTIVE");
   });
 });

@@ -3,6 +3,10 @@ import { describe, expect, it } from "vitest";
 
 const migrationName = readdirSync("supabase/migrations").find((name) => name.includes("mutual_goodbye_and_friend_requests"));
 const sql = migrationName ? readFileSync(`supabase/migrations/${migrationName}`, "utf8") : "";
+const reliabilityMigrationName = readdirSync("supabase/migrations").find((name) => name.includes("room_goodbye_reliability"));
+const reliabilitySql = reliabilityMigrationName
+  ? readFileSync(`supabase/migrations/${reliabilityMigrationName}`, "utf8")
+  : "";
 
 describe("mutual goodbye and friend request migration", () => {
   it("creates one service-owned goodbye request per session member", () => {
@@ -18,6 +22,14 @@ describe("mutual goodbye and friend request migration", () => {
     expect(sql).toContain("for update");
     expect(sql).toContain("mutual_goodbye");
     expect(sql).toContain("phase1_complete_session");
+  });
+
+  it("accepts Goodbye from both ready and playing Room-first Sessions", () => {
+    expect(reliabilityMigrationName).toBeDefined();
+    expect(reliabilitySql).toContain("v_session.status not in ('ready', 'playing')");
+    expect(reliabilitySql).toContain("create or replace function public.phase1_request_goodbye");
+    expect(reliabilitySql).toContain("create or replace function public.phase1_finalize_session");
+    expect(reliabilitySql).not.toContain("v_session.status <> 'playing'");
   });
 
   it("makes friend request and response transitions atomic", () => {

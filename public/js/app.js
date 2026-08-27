@@ -6,7 +6,7 @@ import { button, esc, needSummary, setProductRailHeldOpen, toast } from "./ui.js
 import { state, update, resetState } from "./store.js";
 import { DEVICES, GAME_BY_ID, GAMES, GENRES } from "./data.js";
 import { FLOW } from "./flow.js";
-import * as api from "./api.js?v=20260826-auth-session-01";
+import * as api from "./api.js?v=20260828-room-reliability-01";
 import { authPage } from "./pages/auth.js";
 import { HERO_PREVIEW_DIRECTORY, heroDirectoryMarkup, heroDirectoryPersonMarkup, heroPreviewPage, landingPage } from "./pages/landing.js?v=20260822-directory-readonly-01";
 import { welcomePage } from "./pages/welcome.js";
@@ -89,6 +89,9 @@ let roomHydrationPromise = null;
 let presenceHeartbeatHandle = 0;
 let chatSendPending = false;
 let goodbyeRequestPending = false;
+let goodbyeReconcileTimer = 0;
+let goodbyeReconcileAttempt = 0;
+let goodbyeReconcileRoomCode = "";
 let exitRequestPending = false;
 const roomLikePendingTargets = new Set();
 let roomRatingPending = false;
@@ -171,6 +174,52 @@ function clearTimers() {
   targetCursorCleanup = null;
   staggeredRailCleanup?.();
   staggeredRailCleanup = null;
+}
+
+function stopGoodbyeReconciliation() {
+  if (goodbyeReconcileTimer) window.clearTimeout(goodbyeReconcileTimer);
+  goodbyeReconcileTimer = 0;
+  goodbyeReconcileAttempt = 0;
+  goodbyeReconcileRoomCode = "";
+}
+
+function startGoodbyeReconciliation(roomCode) {
+  stopGoodbyeReconciliation();
+  if (!roomCode) return;
+  goodbyeReconcileRoomCode = roomCode;
+  const delays = [800, 1_500, 2_500, 4_000, 6_000, 8_000];
+  const scheduleNext = () => {
+    if (!goodbyeReconcileRoomCode || goodbyeReconcileAttempt >= delays.length) {
+      stopGoodbyeReconciliation();
+      return;
+    }
+    const delay = delays[goodbyeReconcileAttempt++] + Math.floor(Math.random() * 400);
+    goodbyeReconcileTimer = window.setTimeout(async () => {
+      goodbyeReconcileTimer = 0;
+      if (parseRoute().name !== "room" || state.room?.code !== goodbyeReconcileRoomCode) {
+        stopGoodbyeReconciliation();
+        return;
+      }
+      try {
+        const snapshot = await api.getState();
+        if (snapshot?.session && ["completed", "cancelled"].includes(snapshot.session.status)) {
+          stopGoodbyeReconciliation();
+          handleServerGameOver(snapshot.session);
+          return;
+        }
+        applyServerSnapshot(snapshot);
+        const goodbyeRequests = snapshot?.room?.goodbyeRequests || [];
+        if (!goodbyeRequests.some((request) => request.userId === state.user.id)) {
+          stopGoodbyeReconciliation();
+          return;
+        }
+      } catch {
+        // A transient read failure is safe: keep the same bounded schedule.
+      }
+      scheduleNext();
+    }, delay);
+  };
+  scheduleNext();
 }
 
 function initProductTicker() {
@@ -2178,6 +2227,7 @@ function handleServerRoom(room) {
 
 function handleServerGameOver(session) {
   if (!["completed", "cancelled"].includes(session?.status)) return;
+  stopGoodbyeReconciliation();
   if (state.session && state.session.roomCode === session.roomCode && parseRoute().name === "gameover") {
     const memberModel = sessionMemberSnapshot(session);
     update({ session: {
@@ -2267,6 +2317,7 @@ function connectEvents() {
       if (parseRoute().name === "friends") render();
     },
     room: (data) => handleServerRoom(data.room),
+    roomActive: () => parseRoute().name === "room" && Boolean(state.room?.code),
     roomEvent: () => refreshLiveRoomSnapshot(),
     "game-over": (data) => handleServerGameOver(data.session),
   });
@@ -2846,6 +2897,8 @@ async function setGoodbyeRequest(requested) {
       handleServerGameOver(result.session);
       return;
     }
+    if (requested) startGoodbyeReconciliation(room.code);
+    else stopGoodbyeReconciliation();
     const latestRoom = result.room ? normalizeServerRoom(result.room) : room;
     const latestMembers = sessionMembers(latestRoom, state.user.id);
     const waitingFor = Math.max(0, latestMembers.goodbyeDenominator - latestMembers.goodbyeCount);

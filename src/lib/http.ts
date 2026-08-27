@@ -97,6 +97,8 @@ function mapDatabaseError(raw: string, fallback: string) {
     APPLICATION_FORBIDDEN: { code: "APPLICATION_FORBIDDEN", message: "这个申请不能由你处理", status: 403, retryable: false },
     APPLICATION_ALREADY_RESOLVED: { code: "APPLICATION_ALREADY_RESOLVED", message: "这个申请已经处理过了", status: 409, retryable: false },
     SESSION_FORBIDDEN: { code: "SESSION_FORBIDDEN", message: "你不是这个 Session 的成员", status: 403, retryable: false },
+    SESSION_NOT_PLAYING: { code: "SESSION_NOT_PLAYING", message: "房间状态仍在同步，请稍后重试", status: 409, retryable: true },
+    SESSION_MEMBER_INACTIVE: { code: "SESSION_MEMBER_INACTIVE", message: "你已不在这个房间中", status: 409, retryable: false },
     SESSION_STATE_CONFLICT: { code: "SESSION_STATE_CONFLICT", message: "当前 Session 状态不允许这个操作", status: 409, retryable: false },
     SESSION_NOT_COMPLETED: { code: "SESSION_NOT_COMPLETED", message: "Session 结束后才能选择再玩一次", status: 409, retryable: false },
     REMATCH_CHOICE_INVALID: { code: "REMATCH_CHOICE_INVALID", message: "再玩选择无效", status: 422, retryable: false },
