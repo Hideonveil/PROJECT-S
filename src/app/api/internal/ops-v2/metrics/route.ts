@@ -22,15 +22,15 @@ export async function GET(request: Request) {
     const success = total("pair_success") + total("group_success");
     const conflicts = total("pair_business_conflicts") + total("group_business_conflicts");
     const lines = [
-      metric("jiyuan_matcher_attempts_total", attempts, "Matcher attempts in the last five minutes"),
-      metric("jiyuan_matcher_success_total", success, "Matcher successes in the last five minutes"),
-      metric("jiyuan_matcher_business_conflicts_total", conflicts, "Expected business conflicts in the last five minutes"),
-      metric("jiyuan_matcher_actual_sql_40001_total", total("actual_sql_40001"), "Actual SQL serialization failures in the last five minutes"),
-      metric("jiyuan_matcher_retries_total", total("matcher_retries"), "Bounded matcher retries in the last five minutes"),
+      metric("jiyuan_matcher_attempts_5m", attempts, "Matcher attempts observed over the trailing five minutes"),
+      metric("jiyuan_matcher_success_5m", success, "Matcher successes observed over the trailing five minutes"),
+      metric("jiyuan_matcher_business_conflicts_5m", conflicts, "Expected business conflicts observed over the trailing five minutes"),
+      metric("jiyuan_matcher_actual_sql_40001_5m", total("actual_sql_40001"), "Actual SQL serialization failures observed over the trailing five minutes"),
+      metric("jiyuan_matcher_retries_5m", total("matcher_retries"), "Bounded matcher retries observed over the trailing five minutes"),
       metric("jiyuan_matcher_instances_alive", Number(instances || 0), "Matcher instances with a recent heartbeat"),
       metric("jiyuan_matcher_storm_state", conflicts > Math.max(50, success * 20) ? 1 : 0, "One means elevated business conflict storm"),
-      metric("jiyuan_matcher_ticks", total("matcher_ticks"), "Matcher ticks in the last five minutes"),
-      metric("jiyuan_database_errors_total", total("database_errors"), "Database errors in the last five minutes"),
+      metric("jiyuan_matcher_ticks_5m", total("matcher_ticks"), "Matcher ticks observed over the trailing five minutes"),
+      metric("jiyuan_database_errors_5m", total("database_errors"), "Database errors observed over the trailing five minutes"),
     ];
     return new Response(lines.join("\n"), { headers: { "content-type": "text/plain; version=0.0.4; charset=utf-8", "x-request-id": rid, "cache-control": "no-store" } });
   } catch (error) {

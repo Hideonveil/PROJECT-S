@@ -5,7 +5,7 @@ This project runs Appsmith, Metabase, Prometheus, and Grafana on the founder Mac
 | Service | Local URL | Purpose |
 | --- | --- | --- |
 | Appsmith | `http://127.0.0.1:8081` | LIVE operations and audited actions |
-| Metabase | `http://127.0.0.1:3000` | LIVE and GROWTH read-only dashboards |
+| Metabase | `http://127.0.0.1:3002` | LIVE and GROWTH read-only dashboards |
 | Grafana | `http://127.0.0.1:3001` | Production technical health |
 | Prometheus | `http://127.0.0.1:9090` | Local metrics storage |
 

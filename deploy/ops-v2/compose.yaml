@@ -8,7 +8,7 @@ services:
     volumes:
       - appsmith_stacks:/appsmith-stacks
     healthcheck:
-      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1/api/v1/health | grep -q ."]
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1/api/v1/health | grep -q 'All systems are up'"]
       interval: 30s
       timeout: 10s
       retries: 10
@@ -46,7 +46,7 @@ services:
       MB_DB_PASS: ${METABASE_APP_DB_PASSWORD}
       JAVA_OPTS: ${METABASE_JAVA_OPTS:--Xmx2g}
     ports:
-      - "127.0.0.1:3000:3000"
+      - "127.0.0.1:3002:3000"
 
   prometheus:
     image: prom/prometheus:latest

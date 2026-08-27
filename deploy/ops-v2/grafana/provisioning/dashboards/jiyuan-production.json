@@ -69,9 +69,9 @@
       "title": "Matcher attempts, success, and retries",
       "datasource": { "type": "prometheus", "uid": "jiyuan-production-prometheus" },
       "targets": [
-        { "refId": "A", "expr": "sum(rate(jiyuan_matcher_attempts_total[1m]))", "legendFormat": "attempts / sec" },
-        { "refId": "B", "expr": "sum(rate(jiyuan_matcher_success_total[1m]))", "legendFormat": "success / sec" },
-        { "refId": "C", "expr": "sum(rate(jiyuan_matcher_retries_total[1m]))", "legendFormat": "retries / sec" }
+        { "refId": "A", "expr": "jiyuan_matcher_attempts_5m", "legendFormat": "attempts / 5m" },
+        { "refId": "B", "expr": "jiyuan_matcher_success_5m", "legendFormat": "success / 5m" },
+        { "refId": "C", "expr": "jiyuan_matcher_retries_5m", "legendFormat": "retries / 5m" }
       ],
       "fieldConfig": { "defaults": { "noValue": "No data" }, "overrides": [] },
       "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "single", "sort": "none" } },
@@ -83,8 +83,8 @@
       "title": "SQL 40001 and Business conflicts",
       "datasource": { "type": "prometheus", "uid": "jiyuan-production-prometheus" },
       "targets": [
-        { "refId": "A", "expr": "sum(rate(jiyuan_matcher_actual_sql_40001_total[1m]))", "legendFormat": "SQL 40001 / sec" },
-        { "refId": "B", "expr": "sum(rate(jiyuan_matcher_business_conflicts_total[1m]))", "legendFormat": "Business conflicts / sec" }
+        { "refId": "A", "expr": "jiyuan_matcher_actual_sql_40001_5m", "legendFormat": "SQL 40001 / 5m" },
+        { "refId": "B", "expr": "jiyuan_matcher_business_conflicts_5m", "legendFormat": "Business conflicts / 5m" }
       ],
       "fieldConfig": { "defaults": { "noValue": "No data" }, "overrides": [] },
       "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "single", "sort": "none" } },

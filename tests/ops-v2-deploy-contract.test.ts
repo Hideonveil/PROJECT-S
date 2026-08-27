@@ -10,7 +10,7 @@ describe("local 2+1 cockpit deployment", () => {
     const compose = readFileSync(composePath, "utf8");
     const env = readFileSync(envPath, "utf8");
     expect(compose).toContain("127.0.0.1:8081:80");
-    expect(compose).toContain("127.0.0.1:3000:3000");
+    expect(compose).toContain("127.0.0.1:3002:3000");
     expect(compose).toContain("127.0.0.1:3001:3000");
     expect(compose).toContain("appsmith/appsmith-ce:release");
     expect(compose).toContain("metabase/metabase");

@@ -8,8 +8,9 @@ describe("OPS V2 metrics bridge", () => {
     const source = readFileSync(path, "utf8");
     expect(source).toContain("requireOpsMetricsAuthorization");
     expect(source).toContain("matchmaking_runtime_minute");
-    expect(source).toContain("jiyuan_matcher_attempts_total");
-    expect(source).toContain("jiyuan_matcher_actual_sql_40001_total");
+    expect(source).toContain("jiyuan_matcher_attempts_5m");
+    expect(source).toContain("jiyuan_matcher_actual_sql_40001_5m");
+    expect(source).not.toContain("jiyuan_matcher_attempts_total");
     expect(source).not.toMatch(/\.insert\(|\.update\(|\.delete\(/);
     expect(source).not.toContain("export async function POST");
   });

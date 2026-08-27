@@ -566,7 +566,16 @@ export async function forceOpsRankedMatch(userA: string, userB: string, reason: 
     if (presentError) throw presentError;
     await autoConnectPair(pair.id, `ops-v2:${requestId}`);
   }
-  return { pairId: pair.id, roomId: pair.room_id || null, status: "matched" };
+  // Reservation can precede automatic confirmation. Read the canonical pair
+  // once that lifecycle path completes so the operator audit is attached to
+  // the real Room rather than a stale pre-connect RPC snapshot.
+  const { data: connectedPair, error: connectedPairError } = await supabaseAdmin()
+    .from("matchmaking_pairs")
+    .select("room_id")
+    .eq("id", pair.id)
+    .maybeSingle();
+  if (connectedPairError) throw connectedPairError;
+  return { pairId: pair.id, roomId: connectedPair?.room_id || pair.room_id || null, status: "matched" };
 }
 
 export async function previewOpsCasualAttach(userId: string, groupId: string) {

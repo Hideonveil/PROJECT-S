@@ -14,6 +14,8 @@ describe("OPS V2 local Grafana cockpit", () => {
     expect(dashboard).toContain("No data");
     expect(dashboard).toContain("Realtime / Presence");
     expect(dashboard).toContain("Restart / OOM");
+    expect(dashboard).toContain("jiyuan_matcher_attempts_5m");
+    expect(dashboard).not.toContain("rate(jiyuan_matcher_attempts_total");
   });
 
   it("keeps Prometheus scraping the local SSH tunnel instead of production directly", () => {
@@ -29,6 +31,7 @@ describe("OPS V2 local Grafana cockpit", () => {
 
     expect(smoke).toContain("127.0.0.1");
     expect(smoke).toContain("authorization");
+    expect(smoke).toContain("OPS_METRICS_TOKEN");
     expect(smoke).toContain("NO_DATA");
     expect(smoke).not.toMatch(/service_role|refresh_token|access_token/i);
   });

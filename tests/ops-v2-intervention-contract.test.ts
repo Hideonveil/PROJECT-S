@@ -7,6 +7,7 @@ describe("OPS V2 matching interventions", () => {
     for (const path of paths) expect(existsSync(path)).toBe(true);
     const service = readFileSync("src/lib/matchmaking/service.ts", "utf8");
     expect(service).toContain("matchmaking_reserve_pair");
+    expect(service).toContain('select("room_id")');
     expect(service).toContain("matchmaking_reserve_group_member");
     expect(service).not.toMatch(/from\("rooms"\)\.insert/);
     expect(service).not.toMatch(/from\("sessions"\)\.insert/);
