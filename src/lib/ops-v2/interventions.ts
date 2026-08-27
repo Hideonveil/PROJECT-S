@@ -1,5 +1,5 @@
 import { AppError } from "../http";
-import { forceOpsCasualAttach, forceOpsRankedMatch, previewOpsCasualAttach, previewOpsRankedMatch } from "../matchmaking/service";
+import { forceOpsCasualAttach, forceOpsCasualLock, forceOpsRankedMatch, previewOpsCasualAttach, previewOpsRankedMatch } from "../matchmaking/service";
 import { appendOpsAudit } from "./audit";
 
 export async function previewRankedMatch(userA: string, userB: string) {
@@ -36,6 +36,18 @@ export async function attachCasualUser(input: { operator: string; userId: string
     return result;
   } catch (error) {
     await appendOpsAudit({ operator: input.operator, action: "ADMIN_ATTACH_CASUAL_USER", targetUserId: input.userId, beforeState, result: { status: "failed", code: error instanceof AppError ? error.code : "INTERNAL_ERROR" }, reason: input.reason });
+    throw error;
+  }
+}
+
+export async function lockCasualRoom(input: { operator: string; groupId: string; reason: string; requestId: string }) {
+  if (!input.reason.trim()) throw new AppError("OPS_REASON_REQUIRED", "请填写人工操作原因", 422, false);
+  try {
+    const result = await forceOpsCasualLock(input.groupId, input.reason, input.requestId);
+    await appendOpsAudit({ operator: input.operator, action: "ADMIN_LOCK_CASUAL_ROOM", targetRoomId: result.roomId, beforeState: { groupId: input.groupId }, result, reason: input.reason });
+    return result;
+  } catch (error) {
+    await appendOpsAudit({ operator: input.operator, action: "ADMIN_LOCK_CASUAL_ROOM", beforeState: { groupId: input.groupId }, result: { status: "failed", code: error instanceof AppError ? error.code : "INTERNAL_ERROR" }, reason: input.reason });
     throw error;
   }
 }

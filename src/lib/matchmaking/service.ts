@@ -604,6 +604,26 @@ export async function forceOpsCasualAttach(userId: string, groupId: string, reas
   return { groupId, roomId: data?.room_id || preview.group.room_id || null, status: "attached" };
 }
 
+export async function forceOpsCasualLock(groupId: string, reason: string, requestId: string) {
+  const admin = supabaseAdmin();
+  const { data: group, error: groupError } = await admin
+    .from("matchmaking_groups")
+    .select("id,owner_user_id,state,room_id")
+    .eq("id", groupId)
+    .maybeSingle();
+  if (groupError || !group) throw groupError || new AppError("OPS_CASUAL_LOCK_UNAVAILABLE", "休闲 Room 已不存在", 409, true);
+  if (!["forming", "backfilling", "searching", "partial_ready"].includes(String(group.state))) {
+    throw new AppError("OPS_CASUAL_LOCK_UNAVAILABLE", "休闲 Room 已不在可停止招募状态", 409, true);
+  }
+  const { data, error } = await admin.rpc("matchmaking_lock_forming_group", {
+    p_group_id: groupId,
+    p_user_id: group.owner_user_id,
+    p_request_id: `ops-v2:${requestId}:${reason.slice(0, 64)}`,
+  });
+  if (error) throw error;
+  return { groupId, roomId: data?.room_id || group.room_id || null, status: "locked" };
+}
+
 async function groupSnapshot(groupId: string, viewerId: string) {
   const admin = supabaseAdmin();
   const { data: groupRow, error: groupError } = await admin.from("matchmaking_groups").select("*").eq("id", groupId).maybeSingle();
