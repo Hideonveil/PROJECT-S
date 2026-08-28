@@ -44,6 +44,9 @@ function ticketFromRow(row: TicketRow): MatchTicket {
     expiresAt: row.expires_at,
     desiredTeammates: Number(row.desired_teammates || 1),
     minTeammates: Number(row.min_teammates || 1),
+    preferredTotalPlayers: Number.isInteger(Number(metadata.preferredTotalPlayers))
+      ? Number(metadata.preferredTotalPlayers)
+      : undefined,
     groupId: row.group_id || null,
   };
 }
@@ -840,6 +843,7 @@ async function startTicketInternal(userId: string, input: MatchmakingInput, requ
           ...currentMetadata,
           ownRoles: input.ownRoles || [],
           teammateRoles: input.teammateRoles || [],
+          preferredTotalPlayers: input.preferredTotalPlayers,
         },
         // Search tickets remain active until the player explicitly cancels
         // or leaves the site. This is deliberately not a lease.

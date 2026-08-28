@@ -126,23 +126,35 @@ describe("Deadlock matchmaking skeleton", () => {
     }
   });
 
-  it("normalizes casual teammate targets without letting the minimum exceed the target", () => {
+  it("normalizes every Casual ticket into one recruiting pool", () => {
     expect(normalizeMatchmakingInput({
       mode: "casual",
-      desiredTeammates: 3,
-      minTeammates: 99,
+      desiredTeammates: 1,
+      minTeammates: 1,
+      recruitmentMode: "rush",
+      preferredTotalPlayers: 2,
       microphonePreference: "any",
-    })).toMatchObject({ desiredTeammates: 3, minTeammates: 3 });
-    expect(normalizeMatchmakingInput({ mode: "casual", desiredTeammates: 0, minTeammates: 0 }))
-      .toMatchObject({ desiredTeammates: 1, minTeammates: 1 });
-    expect(normalizeMatchmakingInput({ mode: "casual", desiredTeammates: 3 }))
-      .toMatchObject({ desiredTeammates: 3, minTeammates: 3 });
+    })).toMatchObject({
+      desiredTeammates: 5,
+      minTeammates: 1,
+      recruitmentMode: "open",
+      preferredTotalPlayers: 2,
+    });
   });
 
   it("keeps casual teammate counts as preferences", () => {
     const casual = ticket({ mode: "casual", rankCode: null, desiredTeammates: 1, minTeammates: 1 });
     expect(evaluateCompatibility(casual, ticket({ mode: "casual", rankCode: null, desiredTeammates: 3, minTeammates: 3 }), rules).compatible).toBe(true);
     expect(evaluateCompatibility(casual, ticket({ mode: "casual", rankCode: null, desiredTeammates: 3, minTeammates: 1 }), rules).compatible).toBe(true);
+  });
+
+  it("sorts Casual candidates by preferred total without splitting compatibility", () => {
+    const source = ticket({ mode: "casual", rankCode: null, preferredTotalPlayers: 3 });
+    const otherSize = ticket({ mode: "casual", rankCode: null, preferredTotalPlayers: 6 });
+    const sameSize = ticket({ mode: "casual", rankCode: null, preferredTotalPlayers: 3 });
+    const ranked = rankCandidates(source, [otherSize, sameSize], rules);
+    expect(ranked.map(({ ticket: candidate }) => candidate.id)).toEqual([sameSize.id, otherSize.id]);
+    expect(ranked.every(({ compatibility }) => compatibility.compatible)).toBe(true);
   });
 
   it("keeps ranked mode as a duo queue", () => {

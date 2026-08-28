@@ -9,7 +9,7 @@ import {
 } from "../tools/capacity/distributed-plan.mjs";
 import { writeAgentBundles } from "../tools/capacity/distributed-bundles.mjs";
 import { runDistributedAgent } from "../tools/capacity/distributed-agent.mjs";
-import { isMatchedRoomState } from "../tools/capacity/production-agent-driver.mjs";
+import { actorMatched, isMatchedRoomState } from "../tools/capacity/production-agent-driver.mjs";
 
 function actors(count = 200) {
   return Array.from({ length: count }, (_, index) => ({
@@ -26,6 +26,14 @@ function nodes(count = 10) {
 }
 
 describe("distributed capacity coordinator contract", () => {
+  it("treats a Casual Room with one peer as matched despite a six-player soft preference", () => {
+    expect(actorMatched({ room: { members: [{ status: "active" }, { status: "active" }] }, session: null }, {
+      mode: "casual",
+      minTeammates: 5,
+      preferredTotalPlayers: 6,
+    })).toBe(true);
+  });
+
   it("plans 200 matchable users across ten independent agents for three cycles", () => {
     const plan = buildDistributedRunPlan({
       runId: "cap200-three-cycle",

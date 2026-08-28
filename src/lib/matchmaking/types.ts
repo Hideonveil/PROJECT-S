@@ -46,6 +46,8 @@ export interface MatchmakingInput {
   minTeammates?: number;
   /** Casual mode only. Controls recruitment priority, not compatibility rules. */
   recruitmentMode?: "open" | "rush" | "fill";
+  /** Casual mode only. Soft preference for total Room size, including the player. */
+  preferredTotalPlayers?: number;
 }
 
 export interface MatchTicket extends MatchmakingInput {

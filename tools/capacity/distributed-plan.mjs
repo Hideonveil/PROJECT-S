@@ -59,10 +59,8 @@ function rankedMatch(index, cycleNumber) {
 }
 
 function casualMatch(index, cycleNumber) {
-  const intentIndex = (index + cycleNumber - 1) % 4;
-  const intent = ["default", "hurry", "fill", "advanced"][intentIndex];
-  const desiredTeammates = intent === "hurry" ? 1 : intent === "fill" ? 5 : intent === "advanced" ? 3 + (index % 3) : 2 + (index % 3);
-  const minTeammates = intent === "advanced" ? Math.max(1, desiredTeammates - 2) : intent === "hurry" ? 1 : desiredTeammates;
+  const preferredTotals = [null, 2, 3, 4, 5, 6];
+  const preferredTotalPlayers = preferredTotals[(index + cycleNumber - 1) % preferredTotals.length];
   return {
     gameId: "deadlock",
     mode: "casual",
@@ -71,10 +69,10 @@ function casualMatch(index, cycleNumber) {
     ownRoles: [],
     teammateRoles: [],
     microphonePreference: ["any", "on", "off"][(index + cycleNumber) % 3],
-    recruitmentMode: intent === "hurry" ? "rush" : intent === "fill" ? "fill" : "open",
-    desiredTeammates,
-    minTeammates,
-    intent,
+    recruitmentMode: "open",
+    desiredTeammates: 5,
+    minTeammates: 1,
+    preferredTotalPlayers,
   };
 }
 

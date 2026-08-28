@@ -54,16 +54,9 @@ const DEADLOCK_PATHS = {
   ],
   casual: [
     { key: "goal", label: "游戏目的" },
-    { key: "intent", label: "组队方式" },
     { key: "voice", label: "是否开麦" },
   ],
 };
-
-const CASUAL_INTENTS = [
-  ["default", "随缘", "不急着凑满，遇到合适的人就一起玩。", "dices"],
-  ["hurry", "速度", "先找到一位就可以开聊，快点开一局。", "zap"],
-  ["fill", "满人", "优先继续招募，尽量凑到游戏人数上限。", "users"],
-];
 
 function option(value, label, on, action, iconName = "", multiple = false) {
   return `<button type="button" class="cursor-target home-filter-tag match-option ${on ? "is-on" : ""}" data-action="${action}" data-value="${esc(value)}" aria-pressed="${on}">
@@ -159,24 +152,6 @@ function wizardContent(filter, stepKey) {
       ${roleOptions(DEADLOCK_ROLES, filter.teammateRoles, "home-teammate-role", "希望队友位置")}
     </div>`;
   }
-  if (stepKey === "intent") {
-    const intent = filter.casualIntent || "default";
-    const min = Math.min(5, Math.max(1, Number(filter.teamMin ?? 1) || 1));
-    const max = Math.max(min, Math.min(5, Number(filter.teamMax ?? min) || min));
-    const summary = min === max ? `严格匹配 ${min} 位队友` : `接受 ${min}–${max} 位队友`;
-    return `<div class="match-casual-intent-options">
-      <div class="match-options match-options--voice match-options--casual-intents" role="group" aria-label="组队意图">
-        ${CASUAL_INTENTS.map(([value, label, _description, iconName]) => option(value, label, intent === value, "home-casual-intent", iconName)).join("")}
-        <button type="button" class="cursor-target home-filter-tag match-option match-casual-more-option ${filter.advancedOpen ? "is-on" : ""}" data-action="home-toggle-casual-advanced" aria-label="更多（高级选项）" aria-pressed="${Boolean(filter.advancedOpen)}" aria-expanded="${Boolean(filter.advancedOpen)}" aria-controls="home-casual-advanced-panel">
-          <span class="match-option-icon">${icon("slidersHorizontal", 20)}</span><span>更多</span><span class="match-option-check">${icon("check", 12)}</span>
-        </button>
-      </div>
-      <div id="home-casual-advanced-panel" class="match-casual-advanced-panel" ${filter.advancedOpen ? "" : "hidden"} aria-label="高级人数设置">
-        <div class="match-casual-advanced-panel__head"><div><b>队友人数</b><span data-casual-advanced-summary>${summary}</span></div><small>拖动范围调整</small></div>
-        ${teamRangeMarkup(filter)}
-      </div>
-    </div>`;
-  }
   if (stepKey === "voice") {
     return `<div class="match-choice-stack">
       ${filter.goal === "rank" ? `<p class="match-rank-note" role="note">${icon("mic", 18)}<span><b>冲分最好开麦哦</b><small>及时沟通位置与团战信息，配合会更稳定。</small></span></p>` : ""}
@@ -185,6 +160,14 @@ function wizardContent(filter, stepKey) {
         ${option("off", "不开麦", filter.voice === "off", "home-voice", "volumeX")}
         ${option("any", "无所谓", filter.voice === "any", "home-voice", "circleDot")}
       </div>
+      ${filter.goal === "casual" ? `<section class="match-casual-preference" aria-labelledby="casual-preferred-total-title">
+        <div class="match-role-multi"><strong id="casual-preferred-total-title">偏好人数</strong><b>可选</b><span>只影响优先顺序，不会错过合适玩家</span></div>
+        <div class="match-options match-options--voice" role="group" aria-label="偏好房间总人数">
+          ${option("any", "不限", !filter.preferredTotalPlayers, "home-preferred-total", "users")}
+          ${[2, 3, 4, 5, 6].map((total) => option(String(total), `${total} 人`, Number(filter.preferredTotalPlayers) === total, "home-preferred-total")).join("")}
+        </div>
+        <p class="match-rank-policy-note" role="note">${icon("info", 16)}<span>系统仍会优先补进已有 Room；人数偏好不是硬门槛。</span></p>
+      </section>` : ""}
     </div>`;
   }
   if (stepKey === "team") return teamRangeMarkup(filter);
@@ -218,7 +201,6 @@ function wizardCopy(stepKey, goal) {
     rank: ["你的当前段位？", ""],
     roles: ["你想玩几号位？", ""],
     team: ["想找几位队友？", ""],
-    intent: ["选择组队方式", "先选你的节奏；人数偏好可以放进更多高级选项。"],
     voice: ["要不要开麦？", ""],
   };
   return copy[stepKey] || copy.goal;

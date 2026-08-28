@@ -41,12 +41,12 @@ describe("room connection flow contract", () => {
     expect(realtime).toContain('handlers["game-over"]?.({ session })');
   });
 
-  it("uses ranked role groups and a casual teammate count", () => {
+  it("uses ranked role groups and one Casual pool with a soft size preference", () => {
     const home = read("public/js/pages/home.js");
     expect(home).toContain('{ key: "roles", label: "位置" }');
-    expect(home).toContain('{ key: "intent", label: "组队方式" }');
-    expect(home).toContain('"home-casual-intent"');
-    expect(home).toContain('更多（高级选项）');
+    expect(home).not.toContain('{ key: "intent", label: "组队方式" }');
+    expect(home).toContain('"home-preferred-total"');
+    expect(home).toContain("人数偏好不是硬门槛");
     expect(home).toContain("我的位置");
     expect(home).toContain("希望队友位置");
   });

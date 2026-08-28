@@ -21,6 +21,7 @@ import { dismissHeroBoot, withProjectTransition } from "./transition.js";
 import { memberDisplayName, sessionMembers } from "./session-members.js";
 import { mergeRoomMessages } from "./chat-merge.js";
 import { rosterDelta } from "./room-roster.js";
+import { sessionBelongsToRoom } from "./session-scope.js";
 
 const app = document.getElementById("app");
 
@@ -56,6 +57,7 @@ const DRAFT = {
   teamMin: 1,
   teamMax: 1,
   casualIntent: "default",
+  preferredTotalPlayers: null,
   onboardStep: 0,
   onboardDirection: 1,
   dirty: false,
@@ -74,6 +76,7 @@ const HOME_FILTER = {
   teamMin: "1",
   teamMax: "1",
   casualIntent: "default",
+  preferredTotalPlayers: "",
   advancedOpen: false,
   voice: "on",
 };
@@ -205,7 +208,8 @@ function startGoodbyeReconciliation(roomCode) {
       }
       try {
         const snapshot = await api.getState();
-        if (snapshot?.session && ["completed", "cancelled"].includes(snapshot.session.status)) {
+        if (snapshot?.session && ["completed", "cancelled"].includes(snapshot.session.status)
+            && sessionBelongsToRoom(snapshot.session, snapshot.room || state.room || { code: goodbyeReconcileRoomCode })) {
           stopGoodbyeReconciliation();
           handleServerGameOver(snapshot.session);
           return;
@@ -742,6 +746,7 @@ function resetHomeFilter() {
   HOME_FILTER.teamMin = "1";
   HOME_FILTER.teamMax = "1";
   HOME_FILTER.casualIntent = "default";
+  HOME_FILTER.preferredTotalPlayers = "";
   HOME_FILTER.advancedOpen = false;
   HOME_FILTER.voice = "on";
 }
@@ -1283,7 +1288,7 @@ function prepareNeedDraft() {
 function homeWizardPath() {
   if (!HOME_FILTER.goal) return ["goal"];
   return HOME_FILTER.goal === "casual"
-    ? ["goal", "intent", "voice"]
+    ? ["goal", "voice"]
     : ["goal", "rank", "roles", "voice"];
 }
 
@@ -1514,12 +1519,15 @@ function syncHomeFilterToDraft() {
   DRAFT.teamMin = HOME_FILTER.goal === "casual" ? teamRange.min : 1;
   DRAFT.teamMax = HOME_FILTER.goal === "casual" ? teamRange.max : 1;
   DRAFT.casualIntent = HOME_FILTER.goal === "casual" ? HOME_FILTER.casualIntent : "default";
+  DRAFT.preferredTotalPlayers = HOME_FILTER.goal === "casual" && HOME_FILTER.preferredTotalPlayers
+    ? Number(HOME_FILTER.preferredTotalPlayers)
+    : null;
   DRAFT.needed = DRAFT.teamMax;
   DRAFT.voice = HOME_FILTER.voice !== "off";
   DRAFT.voicePref = HOME_FILTER.voice;
   DRAFT.role = "";
   DRAFT.selectedTags = HOME_FILTER.goal === "casual"
-    ? [`组队方式：${DRAFT.casualIntent}`, `队友人数：${DRAFT.teamMin === DRAFT.teamMax ? DRAFT.teamMax : `${DRAFT.teamMin}–${DRAFT.teamMax}`}`]
+    ? [DRAFT.preferredTotalPlayers ? `偏好人数：${DRAFT.preferredTotalPlayers}` : "偏好人数：不限"]
     : [
         ...HOME_FILTER.ownRoles.map((role) => `我的位置：${role}`),
         ...HOME_FILTER.teammateRoles.map((role) => `希望队友：${role}`),
@@ -2088,9 +2096,13 @@ function applyServerSnapshot(data) {
   }
   if (data.session && ["completed", "cancelled"].includes(data.session.status)) {
     const session = data.session;
+    const scopedRoom = data.room || state.room;
+    if (scopedRoom && !sessionBelongsToRoom(session, scopedRoom)) {
+      data = { ...data, session: undefined };
+    } else {
     if (!state.session || state.session.roomCode !== session.roomCode) {
       update(patch);
-      handleServerGameOver(session);
+      handleServerGameOver(session, scopedRoom);
       return;
     }
     const memberModel = sessionMemberSnapshot(session);
@@ -2104,6 +2116,7 @@ function applyServerSnapshot(data) {
       targetTotalPlayers: memberModel.targetTotalPlayers,
       partner: sessionPartnerFor(session),
     };
+    }
   }
   // A successful recruitment exit is authoritative even after navigation has
   // reached home. Ignore late snapshots for that exact Room instead of
@@ -2226,7 +2239,7 @@ async function slipCurrentRoom() {
     const result = await api.slipRoom(room.code);
     update({ room: null, match: { ...state.match, status: "idle", lifecycle: null, pair: null, group: null, candidate: null } });
     navigate("#/home");
-    if (result.session && ["completed", "cancelled"].includes(result.session.status)) handleServerGameOver(result.session);
+    if (result.session && ["completed", "cancelled"].includes(result.session.status)) handleServerGameOver(result.session, room);
     else toast("已离开 Room，结算仍会正常保留");
   } catch (error) {
     toast(error.message || "离开失败，请稍后重试");
@@ -2306,8 +2319,9 @@ function handleServerRoom(room) {
   }
 }
 
-function handleServerGameOver(session) {
+function handleServerGameOver(session, expectedRoom = state.room) {
   if (!["completed", "cancelled"].includes(session?.status)) return;
+  if (expectedRoom && !sessionBelongsToRoom(session, expectedRoom)) return;
   stopGoodbyeReconciliation();
   if (state.session && state.session.roomCode === session.roomCode && parseRoute().name === "gameover") {
     const memberModel = sessionMemberSnapshot(session);
@@ -2400,7 +2414,7 @@ function connectEvents() {
     room: (data) => handleServerRoom(data.room),
     roomActive: () => parseRoute().name === "room" && Boolean(state.room?.code),
     roomEvent: () => refreshLiveRoomSnapshot(),
-    "game-over": (data) => handleServerGameOver(data.session),
+    "game-over": (data) => handleServerGameOver(data.session, state.room),
   });
 }
 
@@ -2833,17 +2847,15 @@ async function startMatch() {
     ownRoles,
     teammateRoles,
     microphonePreference: ["on", "off", "any"].includes(DRAFT.voicePref) ? DRAFT.voicePref : (DRAFT.voice === false ? "off" : "on"),
-    desiredTeammates: DRAFT.goal === "娱乐" ? Math.min(5, Math.max(1, Number(DRAFT.teamMax || DRAFT.needed) || 1)) : undefined,
-    minTeammates: DRAFT.goal === "娱乐" ? Math.min(
-      Math.min(5, Math.max(1, Number(DRAFT.teamMax || DRAFT.needed) || 1)),
-      Math.max(1, Number(DRAFT.teamMin || DRAFT.teamMax || DRAFT.needed) || 1),
-    ) : undefined,
-    recruitmentMode: DRAFT.goal === "娱乐"
-      ? ({ hurry: "rush", fill: "fill" }[DRAFT.casualIntent] || "open")
+    desiredTeammates: DRAFT.goal === "娱乐" ? 5 : undefined,
+    minTeammates: DRAFT.goal === "娱乐" ? 1 : undefined,
+    recruitmentMode: DRAFT.goal === "娱乐" ? "open" : undefined,
+    preferredTotalPlayers: DRAFT.goal === "娱乐" && DRAFT.preferredTotalPlayers
+      ? Number(DRAFT.preferredTotalPlayers)
       : undefined,
   };
   const need = {
-    game: "deadlock", mode: DRAFT.mode, goal: DRAFT.goal, current: 1, target: DRAFT.goal === "娱乐" ? 1 + Number(matchInput.desiredTeammates || 1) : 2,
+    game: "deadlock", mode: DRAFT.mode, goal: DRAFT.goal, current: 1, target: DRAFT.goal === "娱乐" ? Number(matchInput.preferredTotalPlayers || 6) : 2,
     desiredTeammates: matchInput.desiredTeammates,
     minTeammates: matchInput.minTeammates,
     time: "现在", duration: "", voice: matchInput.microphonePreference !== "off",
@@ -3014,7 +3026,7 @@ async function setGoodbyeRequest(requested) {
       updateSessionView(normalized);
     }
     if (result.session && ["completed", "cancelled"].includes(result.session.status)) {
-      handleServerGameOver(result.session);
+      handleServerGameOver(result.session, room);
       return;
     }
     if (requested) startGoodbyeReconciliation(room.code);
@@ -3959,6 +3971,7 @@ document.addEventListener("click", (event) => {
     HOME_FILTER.teamMin = "1";
     HOME_FILTER.teamMax = "1";
     HOME_FILTER.casualIntent = "default";
+    HOME_FILTER.preferredTotalPlayers = "";
     HOME_FILTER.advancedOpen = false;
     HOME_FILTER.time = "现在";
     prewarmMatchArtwork();
@@ -4002,6 +4015,14 @@ document.addEventListener("click", (event) => {
       HOME_FILTER.teamMax = "1";
     }
     updateCasualIntentView();
+    return;
+  }
+
+  if (action === "home-preferred-total") {
+    HOME_FILTER.preferredTotalPlayers = value === "any"
+      ? ""
+      : String(Math.min(6, Math.max(2, Number(value) || 2)));
+    selectHomeChoice(actionEl);
     return;
   }
 
@@ -4057,7 +4078,6 @@ document.addEventListener("click", (event) => {
       stepKey === "rank" && !HOME_FILTER.rank ? "请选择当前段位" :
       stepKey === "roles" && !HOME_FILTER.ownRoles.length ? "请选择自己的位置，或选择不限" :
       stepKey === "roles" && !HOME_FILTER.teammateRoles.length ? "请选择希望队友的位置，或选择不限" :
-      stepKey === "intent" && !HOME_FILTER.casualIntent ? "请选择组队方式" :
       stepKey === "team" && (!Number(HOME_FILTER.teamMin) || !Number(HOME_FILTER.teamMax) || Number(HOME_FILTER.teamMin) > Number(HOME_FILTER.teamMax)) ? "请设置有效的队友人数范围" : "";
     if (error) {
       toast(error);
@@ -4397,6 +4417,7 @@ async function handleAuthSuccess() {
       applyServerSnapshot(snapshot);
       hasActiveRoom = !isRecruitmentExitRoom(snapshot.room) && isActiveSessionRoom(snapshot.room);
       destination = snapshot.session?.status === "completed"
+          && (!snapshot.room || sessionBelongsToRoom(snapshot.session, snapshot.room))
           ? "#/gameover"
           : state.match.status === "active"
             ? "#/home"

@@ -55,18 +55,13 @@ describe("casual group matchmaking wiring", () => {
     expect(sql).toContain("where group_id in (select id from public.matchmaking_groups");
   });
 
-  it("renders a dual-thumb casual teammate range and carries both bounds", () => {
-    expect(homePage).toContain("data-home-team-range-input=\"min\"");
-    expect(homePage).toContain("data-home-team-range-input=\"max\"");
-    expect(homePage).toContain("data-team-range-detent");
-    expect(homePage).toContain("严格匹配");
-    expect(homePage).not.toContain("可接受队友人数</b>");
-    expect(homePage).not.toContain("拖动方块吸附到刻度");
-    expect(homePage).not.toContain("只加入人数范围与你有交集的队伍");
-    expect(app).toContain("DRAFT.teamMin");
-    expect(app).toContain("DRAFT.teamMax");
-    expect(app).toContain("stepHomeTeamDetent");
-    expect(app).toContain("minTeammates: matchInput.minTeammates");
+  it("uses one Casual pool with an optional soft total-player preference", () => {
+    expect(homePage).toContain("偏好人数");
+    expect(homePage).toContain("只影响优先顺序，不会错过合适玩家");
+    expect(homePage).toContain('"home-preferred-total"');
+    expect(app).toContain('desiredTeammates: DRAFT.goal === "娱乐" ? 5');
+    expect(app).toContain('recruitmentMode: DRAFT.goal === "娱乐" ? "open"');
+    expect(app).toContain("preferredTotalPlayers");
   });
 
   it("enforces the range intersection inside the locked group RPCs", () => {

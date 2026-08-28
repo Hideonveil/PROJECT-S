@@ -54,16 +54,15 @@ export function normalizeMatchmakingInput(input: Partial<MatchmakingInput>): Mat
   const microphonePreference = ["on", "off", "any"].includes(String(input.microphonePreference))
     ? input.microphonePreference!
     : "any";
-  const desiredTeammates = mode === "casual"
-    ? Math.min(5, Math.max(1, Number(input.desiredTeammates) || 1))
+  // Casual has one recruiting pool. These legacy transport fields stay at
+  // their canonical values so old clients cannot accidentally split it.
+  const desiredTeammates = mode === "casual" ? 5 : undefined;
+  const minTeammates = mode === "casual" ? 1 : undefined;
+  const recruitmentMode = mode === "casual" ? "open" : undefined;
+  const requestedTotalPlayers = Number(input.preferredTotalPlayers);
+  const preferredTotalPlayers = mode === "casual" && Number.isInteger(requestedTotalPlayers)
+    ? Math.min(6, Math.max(2, requestedTotalPlayers))
     : undefined;
-  const requestedMinimum = Number(input.minTeammates);
-  const minTeammates = mode === "casual"
-    ? Math.min(desiredTeammates!, Number.isFinite(requestedMinimum) && requestedMinimum >= 1 ? Math.max(1, requestedMinimum) : desiredTeammates!)
-    : undefined;
-  const recruitmentMode = mode === "casual" && ["open", "rush", "fill"].includes(String(input.recruitmentMode))
-    ? input.recruitmentMode as "open" | "rush" | "fill"
-    : mode === "casual" ? "open" : undefined;
   return {
     gameId: "deadlock",
     mode,
@@ -75,6 +74,7 @@ export function normalizeMatchmakingInput(input: Partial<MatchmakingInput>): Mat
     desiredTeammates,
     minTeammates,
     recruitmentMode,
+    preferredTotalPlayers,
   };
 }
 
@@ -112,6 +112,14 @@ function roleSignal(a: MatchTicket, b: MatchTicket) {
   if (aSatisfied && bSatisfied) return "exact" as const;
   if (aSatisfied || bSatisfied) return "compatible" as const;
   return "mismatch" as const;
+}
+
+function preferredTotalPlayersSignal(a: MatchTicket, b: MatchTicket) {
+  const source = Number(a.preferredTotalPlayers);
+  const candidate = Number(b.preferredTotalPlayers);
+  if (!Number.isInteger(source) || !Number.isInteger(candidate)) return "neutral" as const;
+  if (source === candidate) return "exact" as const;
+  return Math.abs(source - candidate) <= 1 ? "compatible" as const : "mismatch" as const;
 }
 
 export function evaluateCompatibility(
@@ -159,6 +167,7 @@ export function evaluateCompatibility(
     softSignals: {
       desiredRoles: roleSignal(a, b),
       microphonePreference: microphoneSignal(a, b),
+      preferredTotalPlayers: preferredTotalPlayersSignal(a, b),
     },
   };
 }
@@ -182,6 +191,11 @@ export function rankCandidates(
     .sort((left, right) => {
       for (const preference of rules.softPreferences.priority) {
         const difference = signalOrder[left.compatibility.softSignals[preference]] - signalOrder[right.compatibility.softSignals[preference]];
+        if (difference) return difference;
+      }
+      if (source.mode === "casual") {
+        const difference = signalOrder[left.compatibility.softSignals.preferredTotalPlayers]
+          - signalOrder[right.compatibility.softSignals.preferredTotalPlayers];
         if (difference) return difference;
       }
       return new Date(left.ticket.searchStartedAt).getTime() - new Date(right.ticket.searchStartedAt).getTime();

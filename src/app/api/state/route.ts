@@ -5,6 +5,7 @@ import { errorResponse, requestId } from "@/lib/http";
 import { mapSession } from "@/lib/session";
 import { matchmakingStatus } from "@/lib/matchmaking/service";
 import { friendRequestsFor } from "@/lib/friendships";
+import { selectSnapshotSession } from "@/lib/state-snapshot";
 
 export async function GET(request: Request) {
   const rid = requestId(request);
@@ -12,12 +13,12 @@ export async function GET(request: Request) {
     const profile = await requireRequestProfile(request);
     const readContext = createStateReadContext();
 
-    const [counts, friends, friendRequests, room, session, recentConnections, matchmaking] = await Promise.all([
+    const [counts, friends, friendRequests, room, activeSession, recentConnections, matchmaking] = await Promise.all([
       poolSummary(),
       friendsFor(profile.id, readContext),
       friendRequestsFor(profile.id, readContext),
       activeRoomFor(profile.id, readContext),
-      activeSessionFor(profile.id, readContext).then((active) => active ? mapSession(active) : completedSessionViewFor(profile.id, readContext)),
+      activeSessionFor(profile.id, readContext).then((active) => active ? mapSession(active) : null),
       recentConnectionsFor(profile.id, readContext),
       // A state snapshot is read-only. Updating matchmaking here creates a
       // realtime feedback loop: table change -> snapshot -> table change.
@@ -25,6 +26,13 @@ export async function GET(request: Request) {
       // status reads are now intrinsically read-only.
       matchmakingStatus(profile.id),
     ]);
+    // A completed Session is history, not part of a live pre-Session Room.
+    // Fetch it only when no Room is currently resumable so one response can
+    // never combine a new Room shell with the previous game's settlement.
+    const completedSession = !room && !activeSession
+      ? await completedSessionViewFor(profile.id, readContext)
+      : null;
+    const session = selectSnapshotSession({ room, activeSession, completedSession });
 
     return NextResponse.json({
       user: await profileWithGames(profile, readContext),

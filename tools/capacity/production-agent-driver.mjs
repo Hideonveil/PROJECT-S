@@ -37,15 +37,10 @@ function sampledActor(runId, actorId, cycle, purpose, percent = 10) {
   return value % 100 < percent;
 }
 
-function requiredRoomMembers(match) {
-  if (match?.mode !== "casual") return 2;
-  return Math.min(6, Math.max(2, Number(match.minTeammates || 1) + 1));
-}
-
-function actorMatched(state, match) {
+export function actorMatched(state, _match) {
   if (!isMatchedRoomState(state)) return false;
   if (ACTIVE_SESSION_STATES.has(String(state.session?.status || "").toLowerCase())) return true;
-  return memberCount(state.room) >= requiredRoomMembers(match);
+  return memberCount(state.room) >= 2;
 }
 
 function actorTerminal(state) {

@@ -32,14 +32,15 @@ describe("matching UI performance and recruiting polish", () => {
     expect(caddy).toContain('Cache-Control "public, max-age=604800"');
   });
 
-  it("uses compact voice-style cards for casual intent and keeps More expandable", () => {
+  it("uses compact voice-style cards for the optional Casual size preference", () => {
     const home = read("public/js/pages/home.js");
     const styles = read("public/styles/product-shell.css");
 
-    expect(home).toContain('match-options--voice match-options--casual-intents');
-    expect(home).toContain('data-action="home-toggle-casual-advanced"');
+    expect(home).toContain('aria-label="偏好房间总人数"');
+    expect(home).toContain('"home-preferred-total"');
+    expect(home).toContain("人数偏好不是硬门槛");
     expect(home).not.toContain("match-casual-intent-card__art");
-    expect(styles).toContain(".match-options--casual-intents");
+    expect(styles).toContain(".match-options--voice");
   });
 
   it("does not repaint a Room for unstable metadata and keeps solo recruitment visually quiet", () => {
