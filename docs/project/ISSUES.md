@@ -53,19 +53,32 @@ Gate Evidence 额外允许：`PENDING` · `PASS` · `FAIL`。
 | JIY-P0-002 | `ROOM_SESSION_TERMINAL_LIFECYCLE_GHOST` | P0 | CLOSED |
 | JIY-P0-003 | `REFRESH_PAGEHIDE_FALSE_EXIT` | P0 | CLOSED |
 | JIY-P0-004 | `MATCHMAKING_RESERVATION_ROLLBACK_STORM` | P0 | FIX_IN_PROGRESS |
+| JIY-P0-005 | `ROOM_FIRST_ORPHAN_ACTIVE_RESIDUE` | P0 | CONFIRMED |
 | JIY-P1-001 | `DEPLOYMENT_STALE_FILE_RSYNC_HYGIENE` | P1 | CONFIRMED |
 | JIY-P1-002 | `LEGACY_RLS_SURFACE_PROVENANCE_GAP` | P1 | PRODUCTION_QA_PENDING |
 | JIY-P1-003 | `REALTIME_RECONNECT_STALE_STATE_RESILIENCE` | P1 | INVESTIGATING |
 | JIY-P1-004 | `PRESENCE_ABNORMAL_CLOSE_STALENESS` | P1 | PRODUCTION_QA_PENDING |
 | JIY-P1-005 | `OPS_AUTH_RATE_LIMITING_GAP` | P1 | CONFIRMED |
+| JIY-P1-006 | `PEER_CHAT_ASYMMETRIC_DELIVERY_UNDER_LOAD` | P1 | CONFIRMED |
 | JIY-P2-001 | `MIGRATION_DOCUMENTATION_CONSTRAINT_DRIFT` | P2 | CONFIRMED |
 | JIY-HIST-001 | `HISTORICAL_GHOST_ROOMS_BASELINE` | HIST / P1 baseline | DEFERRED |
 | JIY-GATE-001 | `FINAL_PRIVATE_PILOT_GATE_EVIDENCE` | GATE | PENDING |
 | JIY-GATE-002 | `PROGRESSIVE_STATEFUL_CAPACITY_VALIDATION` | GATE | PENDING |
+| JIY-GATE-003 | `DISTRIBUTED_200_USER_SINGLE_CYCLE` | GATE | FAIL |
 
 ---
 
 ## P0 Issues
+
+### JIY-P0-005 — `ROOM_FIRST_ORPHAN_ACTIVE_RESIDUE`
+
+- **Severity:** P0
+- **Status:** CONFIRMED
+- **Owner:** ENG-00｜机缘主工程；03｜QA 与上线负责人
+- **Found date:** 2026-08-28
+- **Evidence:** Production run `capacity-200-r3-20260828` 使用 10 个独立 GitHub egress、200 个普通 synthetic identities、单轮混合 Ranked/Casual workload。测试后正常收敛窗口结束，health 为 `matching=0`、`playing=0`，但只读 Room Inspector 仍发现本轮新建的 25 个 `status=connecting / formation_state=forming` 单人 Room 保留 active member，同时 `activeTickets=0`、group/session 均为空。
+- **Impact:** 用户退出或匹配超时后 Room shell 与 active membership 没有一同终结，形成不可恢复的 orphan active residue；该结果使 200-user Gate 失败。
+- **Constraints:** 不执行 raw SQL 清理，不删除证据；必须通过 Room-first 正常 exit/cancel/reconciliation 修复并增加回归测试。
 
 ### JIY-P0-004 — `MATCHMAKING_RESERVATION_ROLLBACK_STORM`
 
@@ -143,6 +156,16 @@ Gate Evidence 额外允许：`PENDING` · `PASS` · `FAIL`。
 - **Closed date:** 2026-08-23
 
 ## P1 Issues
+
+### JIY-P1-006 — `PEER_CHAT_ASYMMETRIC_DELIVERY_UNDER_LOAD`
+
+- **Severity:** P1
+- **Status:** CONFIRMED
+- **Owner:** ENG-00｜机缘主工程
+- **Found date:** 2026-08-28
+- **Evidence:** Production run `capacity-200-r3-20260828` 中 190 次 `chat.send` 均返回 HTTP 200，但 38 个已进入 Room 的 actor 未观察到 peer chat；与人工反馈的“A 看得到 B、B 看不到 A”一致。
+- **Impact:** HTTP 写入成功不能证明双方 Room snapshot/Realtime 已同步；Room 内聊天、快捷消息和拜拜等互动存在单向不可见风险。
+- **Next action:** 以 `room_id + message_id` 为事实源，验证订阅建立前后的 catch-up、去重与确认机制；不得仅靠发送接口 200 判定成功。
 
 ### JIY-P1-001 — `DEPLOYMENT_STALE_FILE_RSYNC_HYGIENE`
 
@@ -311,6 +334,13 @@ Gate Evidence 额外允许：`PENDING` · `PASS` · `FAIL`。
 - **Production status:** PRODUCTION QA PENDING；本次未执行 migration、部署、SQL 清理或手工 Production 数据修改。
 - **Next action:** 保留现有日志与健康快照，补齐可归因的失败证据后再由 03 决定是否重新运行；不得把该 Gate 标为 PASS。
 - **Closed date:** UNKNOWN
+
+### JIY-GATE-003 — `DISTRIBUTED_200_USER_SINGLE_CYCLE`
+
+- **Severity:** GATE
+- **Status:** FAIL
+- **Evidence:** 10/10 agent jobs 成功、10 个 unique egress；200 人中 172 人登录成功，95 人进入匹配后段，51 人完成全链路并退出。失败分类：Auth 401=`28`、matching timeout=`77`、peer chat not observed=`38`、session wait timeout=`3`、lifecycle timeout=`2`、goodbye 409=`1`。共 7794 个请求事件：HTTP 200=`7684`、401=`28`、409=`81`、502=`1`；SQLSTATE 40001=`0`、reservation conflict=`0`。
+- **Capacity conclusion:** 200-user workload 未造成 app restart/OOM 或 reservation storm，但功能完成率仅 `51/200`，远低于 90% 验收线；200 concurrent users `NOT VALIDATED`。
 
 ## FACT SOURCE CONFLICT
 

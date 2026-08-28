@@ -2,6 +2,14 @@
 
 > 只记录已经影响 Production、或已完成 Production 验收的事件。测试中的本地改动、未部署方案和未授权修复不写入本表。
 
+## 2026-08-28 — chat containment release and distributed 200-user single-cycle result
+
+- Production 部署 `e98e1c0`：Room 聊天面板桌面高度固定为 516px，消息列表内部滚动，长聊天不再拉长整个 Room；线上 `/api/health/live` 与 `/api/health` 均通过，app healthy、restart `0`、OOM `false`。同 commit 将 capacity runner 的 Room 状态读取改为 Realtime 驱动 + 12 秒带 jitter 的稀疏 reconciliation，移除 2 秒同步轮询放大。
+- Runner commit `057e825` 支持显式单轮分布式容量计划。本轮 `capacity-200-r3-20260828` 使用 10 个 unique GitHub egress、200 个普通 synthetic identities，Ranked/Casual 各 100，Room hold 120 秒；10/10 agent jobs 成功，无 fatal node。
+- 结果为 FAIL：200 人中 172 人普通登录成功，95 人进入匹配后段，51 人完成全链路并正常退出，低于 180 人门槛。失败分类：401=`28`、matching timeout=`77`、peer chat not observed=`38`、session wait timeout=`3`、lifecycle timeout=`2`、goodbye 409=`1`。
+- 7794 个请求事件中 HTTP 200=`7684`、401=`28`、409=`81`、502=`1`；SQLSTATE 40001=`0`、reservation conflict=`0`。观察到 app CPU 约 `21.83%`、内存约 `199MiB`，无 restart/OOM；DB CPU 未由 Runner 独立采集，不做推断。
+- 收敛后 Production health 为 ready、`matching=0`、`playing=0`，但只读 Room Inspector 确认本轮新增 25 个 orphan active residue：Room 为 `connecting/forming`、active member=1、无 active ticket/group/session。未执行 raw SQL 清理或删除证据。
+
 ## 2026-08-25 — Auth bottleneck correction and 40-user stateful checkpoint
 
 - 根因确认：此前 `BP056` 的第 31 个 `HTTP 429` 来自 Production `/api/auth/login` 的应用层内存限流 `30 次 / source IP / 15 分钟`，不是 Supabase Auth、数据库或 Production 基础设施。Production 已部署 `0df1454`，将集中正常用户 IP 容量改为可配置 `AUTH_LOGIN_IP_LIMIT`，默认 `300 / 15 分钟`；单账号 `10 / 15 分钟` 保护、Supabase Auth 与防暴力破解保护均保留，未关闭 rate limit。Supabase 项目级 Auth Management API 配置未取得管理 token，未修改。
