@@ -5,6 +5,7 @@ const read = (file: string) => readFileSync(file, "utf8");
 
 describe("active Session refresh recovery", () => {
   const app = read("public/js/app.js");
+  const authController = read("public/js/auth-controller.js");
   const api = read("public/js/api.js");
   const offline = read("src/app/api/offline/route.ts");
   const dataApi = read("src/lib/room-read-model.ts");
@@ -25,7 +26,7 @@ describe("active Session refresh recovery", () => {
   it("restores active rooms from the server snapshot on resume", () => {
     expect(app).toContain('const snapshot = await api.getState();');
     expect(app).toContain('if (restoreRoute && !isRecruitmentExitRoom(snapshot.room) && isActiveSessionRoom(snapshot.room)');
-    expect(app).toContain('["home", "auth", "welcome", "matching"].includes(parseRoute().name)');
+    expect(authController).toContain('["home", "auth", "welcome", "matching"].includes(getRouteName())');
     expect(app).toContain('replaceCanonicalRoute("#/room")');
     expect(app).toContain("history.replaceState");
   });

@@ -5,12 +5,13 @@ const read = (file: string) => readFileSync(file, "utf8");
 
 describe("active Room recovery contract", () => {
   const app = read("public/js/app.js");
+  const authController = read("public/js/auth-controller.js");
   const api = read("src/lib/room-read-model.ts");
 
   it("requires an explicit server-side resume signal before taking over the UI route", () => {
     expect(app).toContain("room.resumeEligible === true");
     expect(app).toContain("isActiveSessionRoom(snapshot.room)");
-    expect(app).toContain("hasActiveRoom = !isRecruitmentExitRoom(snapshot.room) && isActiveSessionRoom(snapshot.room);");
+    expect(authController).toContain("hasActiveRoom = !isRecruitmentExitRoom(snapshot.room) && isActiveSessionRoom(snapshot.room);");
   });
 
   it("does not restore an active member-only Room without a live ticket, group, or Session", () => {

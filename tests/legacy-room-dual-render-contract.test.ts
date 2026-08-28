@@ -5,6 +5,7 @@ const read = (path: string) => readFileSync(path, "utf8");
 
 describe("canonical Active Session route contract", () => {
   const app = read("public/js/app.js");
+  const authController = read("public/js/auth-controller.js");
   const matching = read("public/js/pages/matching.js");
   const session = read("public/js/pages/session-preview.js");
 
@@ -43,7 +44,7 @@ describe("canonical Active Session route contract", () => {
   });
 
   it("restores in-place refreshes but asks before reconnecting from Home or a new device", () => {
-    expect(app).toContain("scheduleResumeRoomPrompt(state.room)");
+    expect(authController).toContain("scheduleResumeRoomPrompt(state.room)");
     expect(app).toContain('replaceCanonicalRoute("#/room")');
     expect(app).toContain("data-resume-countdown");
     expect(app).toContain("Date.now() + 40_000");
