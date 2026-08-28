@@ -52,6 +52,20 @@ alter table public.profile_active_clients enable row level security;
 create policy "profile_active_clients_read_own" on public.profile_active_clients
   for select to authenticated using (profile_id = public.current_profile_id());
 
+-- Data API access is explicit: clients may only read the lifecycle facts that
+-- their RLS policies permit; all writes remain server-side service operations.
+revoke all on table public.room_recruitment_votes from anon, authenticated;
+revoke all on table public.session_participant_settlements from anon, authenticated;
+revoke all on table public.room_state_events from anon, authenticated;
+revoke all on table public.profile_active_clients from anon, authenticated;
+grant select on table public.room_recruitment_votes to authenticated, service_role;
+grant select on table public.session_participant_settlements to authenticated, service_role;
+grant select on table public.room_state_events to authenticated, service_role;
+grant select, insert, update, delete on table public.profile_active_clients to service_role;
+grant insert, update, delete on table public.room_recruitment_votes to service_role;
+grant insert, update, delete on table public.session_participant_settlements to service_role;
+grant insert, update, delete on table public.room_state_events to service_role;
+
 create index if not exists room_state_events_room_version_idx
   on public.room_state_events(room_id, room_version desc);
 
@@ -85,6 +99,9 @@ begin
   return v_version;
 end;
 $$;
+
+revoke all on function public.append_room_state_event(uuid,text,uuid,text,jsonb) from public,anon,authenticated;
+grant execute on function public.append_room_state_event(uuid,text,uuid,text,jsonb) to service_role;
 
 create or replace function public.room_membership_v2_changed()
 returns trigger language plpgsql security definer set search_path = public as $$

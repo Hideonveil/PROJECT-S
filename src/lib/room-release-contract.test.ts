@@ -34,6 +34,8 @@ describe("Room lifecycle V2 release contract", () => {
   it("enforces one active client and preserves the 180-second timeout as participant settlement", () => {
     const sql = readFileSync(migrationPath, "utf8").toLowerCase();
     expect(sql).toContain("profile_active_clients");
+    expect(sql).toContain("revoke all on function public.append_room_state_event");
+    expect(sql).toContain("grant select on table public.room_recruitment_votes to authenticated, service_role");
     expect(sql).toContain("create or replace function public.phase1_timeout_leave");
     expect(sql).toContain("'disconnect_timeout'");
     expect(sql).not.toContain("completion_reason = 'system_timeout_leave'");
