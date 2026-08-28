@@ -17,6 +17,7 @@ import {
   statefulRequest,
   startHeartbeat,
   subscribeChannel,
+  verifyRoomShape,
   waitForTerminal,
   waitForRooms,
 } from "../tools/capacity/stateful-adapter.mjs";
@@ -70,6 +71,39 @@ function abortableHang(init = {}) {
 }
 
 describe("stateful evidence ledger", () => {
+  it("preserves typed business-conflict codes from an HTTP response", async () => {
+    const { directory, ledger } = await ledgerFixture();
+    globalThis.fetch = vi.fn(async () => new Response(JSON.stringify({ error: { code: "ROOM_NOT_RECRUITING" } }), {
+      status: 409,
+      headers: { "content-type": "application/json" },
+    }));
+    try {
+      await expect(statefulRequest({
+        runtime: runtime(),
+        options: options({ requestTimeoutMs: 1_000 }),
+        stage: "10",
+        action: "room.recruitment.vote",
+        method: "POST",
+        requestPath: "/api/room/12345/recruitment",
+        body: { requested: true },
+        ledger,
+      })).rejects.toMatchObject({ code: "HTTP_409", domainCode: "ROOM_NOT_RECRUITING" });
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("accepts system-chosen Casual room packing instead of enforcing legacy three-person rooms", async () => {
+    const session = (id, targetTotalPlayers) => ({ state: { session: { id, targetTotalPlayers } } });
+    const groups = new Map([
+      ["ranked-1", [session("session-ranked-1", 2), session("session-ranked-1", 2)]],
+      ["ranked-2", [session("session-ranked-2", 2), session("session-ranked-2", 2)]],
+      ["casual-1", Array.from({ length: 6 }, () => session("session-casual-1", 6))],
+    ]);
+
+    await expect(verifyRoomShape(groups, "10")).resolves.toBeUndefined();
+  });
+
   it("appends complete action records before a final summary exists", async () => {
     const { directory, ledger } = await ledgerFixture();
     try {

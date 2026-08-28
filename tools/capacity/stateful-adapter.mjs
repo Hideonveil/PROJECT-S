@@ -170,10 +170,11 @@ async function recordEvent(runtime, event, ledger = runtime.ledger) {
   });
 }
 
-function httpError(action, status) {
+function httpError(action, status, domainCode = null) {
   const error = new Error(`${action} returned HTTP ${status}`);
   error.name = "HttpError";
   error.code = `HTTP_${status}`;
+  error.domainCode = domainCode;
   return error;
 }
 
@@ -295,7 +296,7 @@ export async function statefulRequest({ runtime, options, stage, action, method 
     });
     status = response.status;
     try { data = await response.json(); } catch { /* body intentionally omitted */ }
-    const error = response.ok ? null : httpError(action, status);
+    const error = response.ok ? null : httpError(action, status, data?.error?.code || null);
     await appendLedgerEvent(ledger, buildActionEvent({
       runId: options.runId,
       actorId: runtime.actorId,
@@ -557,7 +558,12 @@ async function controlGroups(runtimes, options, stage, ledger, controls) {
     const voteKey = `${room?.id || ""}:${runtime.userId}`;
     if (room?.code && room.recruiting === true && activeCount >= needed && !controls.started.has(voteKey)) {
       controls.started.add(voteKey);
-      await statefulRequest({ runtime, options, stage, action: "room.recruitment.vote", method: "POST", requestPath: `/api/room/${room.code}/recruitment`, body: { requested: true }, ledger });
+      try {
+        await statefulRequest({ runtime, options, stage, action: "room.recruitment.vote", method: "POST", requestPath: `/api/room/${room.code}/recruitment`, body: { requested: true }, ledger });
+      } catch (error) {
+        if (error?.domainCode !== "ROOM_NOT_RECRUITING") throw error;
+        await refreshState(runtime, options, stage, ledger, "state.after_recruitment_closed");
+      }
     }
     if (group?.state === "waiting_confirmation") {
       for (const member of liveMembers) {
@@ -599,8 +605,8 @@ function roomGroups(runtimes) {
   return groups;
 }
 
-async function verifyRoomShape(groups, expectedRooms, stage) {
-  if (groups.size !== expectedRooms) throw new Error(`CAPACITY_STATEFUL: stage ${stage} expected ${expectedRooms} rooms, saw ${groups.size}`);
+export async function verifyRoomShape(groups, stage) {
+  if (!groups.size) throw new Error(`CAPACITY_STATEFUL: stage ${stage} formed no rooms`);
   const seenSessions = new Set();
   for (const [code, members] of groups) {
     const sessionIds = new Set(members.map((runtime) => runtime.state?.session?.id).filter(Boolean));
@@ -781,14 +787,13 @@ async function cancelRemaining(runtimes, options, stage, ledger) {
 
 async function runStage({ stage, runtimes, options, ledger, messageLedger }) {
   const expectedActive = stage.count - stage.fragmented;
-  const expectedRooms = stage.ranked / 2 + stage.casual / 3;
   const activeRuntimes = new Map([...runtimes].filter(([, runtime]) => runtime.role !== "fragmented"));
   await Promise.all([...runtimes.values()].map((runtime) => closeClient(runtime)));
   await runWithConcurrency([...runtimes.values()], options.realtimeConcurrency, (runtime) => subscribeActor(runtime, stage.name));
   await Promise.all([...runtimes.values()].map((runtime) => startActor(runtime, options, stage.name, ledger)));
   await waitForRooms(runtimes, expectedActive, options, stage.name, ledger);
   const groups = roomGroups(activeRuntimes);
-  await verifyRoomShape(groups, expectedRooms, stage.name);
+  await verifyRoomShape(groups, stage.name);
   await Promise.all([...groups.values()].map((group) => sendRoomMessages(group, group[0], options, stage.name, ledger, messageLedger)));
 
   const refreshTargets = stage.name === "5" ? [activeRuntimes.values().next().value] : [...activeRuntimes.values()].slice(0, 2);
@@ -818,7 +823,7 @@ async function runStage({ stage, runtimes, options, ledger, messageLedger }) {
     stage: stage.name,
     status: "PASS",
     users: stage.count,
-    expectedRooms,
+    rooms: groups.size,
     activeUsers: expectedActive,
     actorIds: [...runtimes.keys()],
     realtimeSubscriptions: [...runtimes.values()].map((runtime) => runtime.realtime.filter((event) => event.status === "SUBSCRIBED").length),

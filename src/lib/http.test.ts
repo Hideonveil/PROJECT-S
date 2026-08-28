@@ -14,6 +14,14 @@ describe("errorResponse", () => {
     expect(body.error).toMatchObject({ code: "GROUP_FORBIDDEN", retryable: false, requestId: "req-1" });
   });
 
+  it("classifies a late recruitment vote as a business-state conflict", async () => {
+    const response = errorResponse({ message: "ROOM_NOT_RECRUITING", code: "P0001" }, "req-room", "停止招募失败");
+    const body = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(body.error).toMatchObject({ code: "ROOM_NOT_RECRUITING", retryable: true });
+  });
+
   it("forwards server error business context", async () => {
     const response = errorResponse(
       new Error("database unavailable"),

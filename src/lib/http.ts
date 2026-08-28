@@ -116,6 +116,7 @@ function mapDatabaseError(raw: string, fallback: string) {
     GROUP_FORBIDDEN: { code: "GROUP_FORBIDDEN", message: "你不能操作这支队伍", status: 403, retryable: false },
     GROUP_STATE_CONFLICT: { code: "GROUP_STATE_CONFLICT", message: "这支队伍状态已经变化，请重新查看", status: 409, retryable: true },
     GROUP_CONFIRMATION_EXPIRED: { code: "GROUP_CONFIRMATION_EXPIRED", message: "队伍确认已超时，正在重新寻找队友", status: 409, retryable: true },
+    ROOM_NOT_RECRUITING: { code: "ROOM_NOT_RECRUITING", message: "房间已经停止招募，正在同步最新状态", status: 409, retryable: true },
     GROUP_MODE_REQUIRED: { code: "GROUP_MODE_REQUIRED", message: "只有休闲模式支持多人组队", status: 422, retryable: false },
     PAIR_STATE_CONFLICT: { code: "PAIR_STATE_CONFLICT", message: "这次候选状态已经变化", status: 409, retryable: true },
     PAIR_CONFIRMATION_EXPIRED: { code: "PAIR_CONFIRMATION_EXPIRED", message: "确认已超时，已经重新进入匹配池", status: 409, retryable: true },

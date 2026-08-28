@@ -630,7 +630,10 @@ export async function completedSessionViewFor(profileId: string, context?: ReadC
     .from("sessions")
     .select("*")
     .eq("status", "completed")
-    .contains("players", [profileId])
+    // `players` is jsonb. postgrest-js serializes a JavaScript array as the
+    // PostgreSQL array literal `cs.{...}`, which is invalid JSON for jsonb.
+    // Passing serialized JSON produces the required `cs.["..."]` filter.
+    .contains("players", JSON.stringify([profileId]))
     .order("ended_at", { ascending: false })
     .order("created_at", { ascending: false })
     .limit(1)

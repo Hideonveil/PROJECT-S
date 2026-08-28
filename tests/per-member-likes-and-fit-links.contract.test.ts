@@ -36,6 +36,7 @@ describe("per-member Session likes contract", () => {
     const api = read("src/lib/api.ts");
     const route = read("src/app/api/state/route.ts");
     expect(api).toContain("completedSessionViewFor");
+    expect(api).toContain('.contains("players", JSON.stringify([profileId]))');
     expect(api).toContain("likedByMe");
     expect(api).toContain("session_member_likes");
     expect(route).toContain("completedSessionViewFor");
