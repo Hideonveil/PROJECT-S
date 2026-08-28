@@ -47,6 +47,7 @@ describe("distributed capacity coordinator contract", () => {
       cycles: 3,
       requiredCompletedActors: 180,
       minimumUniqueEgress: 7,
+      authStaggerMs: 15_000,
     });
     expect(plan.assignments).toHaveLength(10);
     expect(plan.assignments.map((assignment) => assignment.actorIds.length)).toEqual(Array(10).fill(20));
@@ -175,6 +176,37 @@ describe("distributed capacity coordinator contract", () => {
 
     await runDistributedAgent({ job, credentials, driver });
     expect(maximumActive).toBe(6);
+  });
+
+  it("paces concentrated password logins in waves before running actors concurrently", async () => {
+    const actorIds = actors(3).map((actor) => actor.actorId);
+    const job = {
+      runId: "cap-auth-waves",
+      nodeId: "node-01",
+      authStaggerMs: 25,
+      cycles: [{
+        cycle: 1,
+        roomHoldMs: 0,
+        actors: actorIds.map((actorId) => ({ actorId, match: { mode: "ranked" } })),
+      }],
+    };
+    const credentials = actorIds.map((actorId) => ({ identity: actorId, identifier: actorId, password: "only-in-test-driver" }));
+    const startedAt = [];
+    const driver = {
+      async egressId() { return "egress-test-01"; },
+      async authenticate(credential) {
+        startedAt.push({ actorId: credential.identity, at: Date.now() });
+        return { actorId: credential.identity };
+      },
+      async runCycle() { return { exited: true }; },
+      async exit() {},
+    };
+
+    await runDistributedAgent({ job, credentials, driver });
+
+    expect(startedAt).toHaveLength(3);
+    expect(startedAt[1].at - startedAt[0].at).toBeGreaterThanOrEqual(20);
+    expect(startedAt[2].at - startedAt[1].at).toBeGreaterThanOrEqual(20);
   });
 
   it("does not mistake a one-person Room-first shell for a completed match", () => {

@@ -158,6 +158,7 @@ export function buildDistributedRunPlan({
     requiredCompletedActors: completionThreshold,
     minimumUniqueEgress: egressThreshold,
     authStartAt: startAt ? new Date(startAt).toISOString() : null,
+    authStaggerMs: 15_000,
     assignments,
     workload: { cycles: workloadCycles },
     safety: {

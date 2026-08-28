@@ -80,6 +80,7 @@ export function buildAgentJob({ plan, nodeId } = {}) {
     nodeId: assignment.nodeId,
     users: assignment.actorIds.length,
     authStartAt: plan.authStartAt,
+    authStaggerMs: plan.authStaggerMs,
     cycles: plan.workload.cycles.map((cycle) => ({
       cycle: cycle.cycle,
       startAt: cycle.startAt,

@@ -48,7 +48,9 @@ export async function runDistributedAgent({ job, credentials, driver, concurrenc
 
   try {
     await waitForStart(job.authStartAt);
-    await runPool(actorIds, actorConcurrency, async (actorId) => {
+    await runPool(actorIds, actorConcurrency, async (actorId, actorIndex) => {
+      const authDelayMs = Math.max(0, Number(job.authStaggerMs) || 0) * actorIndex;
+      if (authDelayMs > 0) await new Promise((resolve) => setTimeout(resolve, authDelayMs));
       const credential = credentialByActor.get(actorId);
       if (!credential) {
         nonFatalErrors += 1;
