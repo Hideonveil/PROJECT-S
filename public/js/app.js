@@ -19,12 +19,17 @@ import { connectionsPage } from "./pages/connections.js";
 import { mePage } from "./pages/me.js";
 import { dismissHeroBoot, withProjectTransition } from "./transition.js";
 import { memberDisplayName, sessionMembers } from "./session-members.js";
-import { mergeRoomMessages } from "./chat-merge.js";
 import { rosterDelta } from "./room-roster.js";
 import { sessionBelongsToRoom } from "./session-scope.js";
 import { isLiveMatchmakingSnapshot, matchmakingShape, mergeMatchmakingSnapshot, mergePartialMatchmakingSnapshot } from "./matchmaking-snapshot.js";
+import { createRoomChatController } from "./room-chat-controller.js";
 
 const app = document.getElementById("app");
+const roomChat = createRoomChatController({
+  getRouteName: () => parseRoute().name,
+  applyServerSnapshot,
+  announceLive: announceSessionLive,
+});
 
 const DRAFT = {
   nickname: state.user.nickname,
@@ -86,12 +91,9 @@ let activeField = null;
 let timers = [];
 let ONLINE = false;
 let eventSourceClose = null;
-let chatClose = null;
-let chatGeneration = 0;
 let roomHydrationRoomId = "";
 let roomHydrationPromise = null;
 let presenceHeartbeatHandle = 0;
-let chatSendPending = false;
 let goodbyeRequestPending = false;
 let goodbyeReconcileTimer = 0;
 let goodbyeReconcileAttempt = 0;
@@ -102,9 +104,6 @@ let roomRatingPending = false;
 let routeFocusPending = false;
 let lastGoodbyeAnnouncementKey = "";
 let lastSessionAnnouncementKey = "";
-let chatAnnouncementRoomId = "";
-const announcedChatMessages = new Set();
-let roomChatMessages = [];
 let wizardAdvanceTimer = null;
 let roomExitReadyAt = 0;
 let matchStartObserver = null;
@@ -1068,11 +1067,7 @@ function render() {
   clearTimers();
   clearWizardAdvance();
   destroyField();
-  chatGeneration += 1;
-  if (chatClose) {
-    chatClose();
-    chatClose = null;
-  }
+  roomChat.reset();
   const route = parseRoute();
   const localOnboardingPreview = isLocalOnboardingPreview(route);
   const localMatchingPreview = isLocalMatchingPreview(route);
@@ -1238,7 +1233,7 @@ function render() {
   }
   if (route.name === "room" && state.room?.status === "playing") startRoomTimer();
   if (route.name === "room" && state.room?.id) {
-    initRoomChat();
+    roomChat.init();
     if (state.room.shell === true) hydrateRoomAfterShell(state.room.id);
   }
 }
@@ -2434,129 +2429,6 @@ function initRoomExitCountdown() {
   timers.push(timer);
 }
 
-async function initRoomChat() {
-  const room = state.room;
-  if (!room?.id || !state.authenticated) return;
-  const generation = chatGeneration;
-  const isCurrent = () => generation === chatGeneration && ["room", "matching"].includes(parseRoute().name) && state.room?.id === room.id;
-  let sb = null;
-  let channel = null;
-  let recoveryTimer = 0;
-  let historyTimer = 0;
-  let roomSnapshotTimer = 0;
-  let realtimeSubscribed = false;
-  let browserSessionReady = false;
-  if (chatAnnouncementRoomId !== room.id) {
-    chatAnnouncementRoomId = room.id;
-    announcedChatMessages.clear();
-    roomChatMessages = [];
-    lastSessionAnnouncementKey = "";
-  }
-  const reconcileChatHistory = async () => {
-    const messages = await api.fetchRoomMessages(room.code);
-    if (!isCurrent()) return;
-    const currentRoomMessages = roomChatMessages.filter((message) => !message?.room_id || message.room_id === room.id);
-    renderChatMessages(mergeRoomMessages(currentRoomMessages, messages, room.id));
-  };
-  const reconcileRoomSnapshot = async () => {
-    const snapshot = await api.getRoomSnapshot(room.code);
-    if (!isCurrent() || snapshot?.room?.id !== room.id) return;
-    applyServerSnapshot(snapshot);
-  };
-  const scheduleRoomSnapshot = (delay = 180) => {
-    if (!isCurrent() || roomSnapshotTimer) return;
-    roomSnapshotTimer = window.setTimeout(() => {
-      roomSnapshotTimer = 0;
-      reconcileRoomSnapshot().catch(() => {});
-    }, delay);
-  };
-  const close = () => {
-    if (recoveryTimer) window.clearTimeout(recoveryTimer);
-    if (historyTimer) window.clearTimeout(historyTimer);
-    if (roomSnapshotTimer) window.clearTimeout(roomSnapshotTimer);
-    if (channel && sb) sb.removeChannel(channel);
-    if (chatClose === close) chatClose = null;
-  };
-  const scheduleHistoryCheck = () => {
-    if (!isCurrent() || historyTimer) return;
-    // Realtime is an accelerator, not the chat source of truth. During the
-    // short browser-session hydration race, reconcile quickly so the second
-    // player cannot miss chat, quick replies, or lifecycle announcements.
-    const baseDelay = realtimeSubscribed && browserSessionReady ? 30_000 : 4_000;
-    const jitterRange = realtimeSubscribed && browserSessionReady ? 15_000 : 2_000;
-    historyTimer = window.setTimeout(async () => {
-      historyTimer = 0;
-      if (!isCurrent()) return;
-      try { await reconcileChatHistory(); } catch { /* next bounded pass retries */ }
-      if (!browserSessionReady && sb?.auth?.getSession) {
-        try {
-          const { data } = await sb.auth.getSession();
-          browserSessionReady = Boolean(data?.session);
-        } catch { /* keep the recovery cadence */ }
-      }
-      scheduleHistoryCheck();
-    }, baseDelay + Math.floor(Math.random() * jitterRange));
-  };
-  try { await reconcileChatHistory(); } catch { /* history recovery will retry after reconnect */ }
-  if (!isCurrent()) return;
-  chatClose = close;
-  scheduleHistoryCheck();
-  try {
-    sb = await api.getSupabaseClient();
-    if (!isCurrent()) return;
-    try {
-      const { data } = await sb.auth.getSession();
-      browserSessionReady = Boolean(data?.session);
-    } catch { /* authoritative chat history remains available */ }
-    channel = sb.channel(`room-chat-${room.id}`);
-    channel.on("postgres_changes", { event: "INSERT", schema: "public", table: "messages", filter: `room_id=eq.${room.id}` }, (payload) => {
-      if (!isCurrent()) return;
-      appendChatMessage(payload.new);
-    });
-    channel.on("postgres_changes", { event: "*", schema: "public", table: "room_state_events", filter: `room_id=eq.${room.id}` }, () => {
-      scheduleRoomSnapshot();
-    });
-    const scheduleRecovery = () => {
-      if (recoveryTimer || !isCurrent()) return;
-      recoveryTimer = window.setTimeout(() => {
-        recoveryTimer = 0;
-        reconcileChatHistory().catch(() => {});
-      }, 800);
-    };
-    channel.subscribe((status) => {
-      if (!isCurrent()) return;
-      if (status === "SUBSCRIBED") {
-        realtimeSubscribed = true;
-        reconcileChatHistory().catch(() => {});
-        scheduleRoomSnapshot(0);
-      }
-      if (["CHANNEL_ERROR", "TIMED_OUT", "CLOSED"].includes(status)) {
-        realtimeSubscribed = false;
-        const statusEl = document.querySelector("[data-chat-send-status]");
-        if (statusEl) statusEl.textContent = "聊天连接正在恢复";
-        scheduleRecovery();
-      }
-    });
-    if (!isCurrent()) {
-      sb.removeChannel(channel);
-      return;
-    }
-  } catch {
-    // Realtime chat is best-effort; the bounded authoritative history pass
-    // established above remains active.
-  }
-  if (!isCurrent()) return;
-  const form = document.querySelector('[data-form="room-chat"]');
-  form?.addEventListener("submit", (event) => {
-    event.preventDefault();
-    sendRoomChat();
-  });
-  document.querySelectorAll("[data-chat-quick-reply]").forEach((quickReply) => {
-    quickReply.addEventListener("click", () => {
-      sendRoomChat(quickReply.dataset.chatQuickReply || "");
-    });
-  });
-}
 
 function hydrateRoomAfterShell(roomId) {
   if (!roomId) return null;
@@ -2584,124 +2456,6 @@ function hydrateRoomAfterShell(roomId) {
   return request;
 }
 
-function setChatLoading(loading) {
-  const form = document.querySelector('[data-form="room-chat"]');
-  const input = document.getElementById("chat-input");
-  const submit = form?.querySelector("button[type='submit']");
-  if (!form || !submit) return;
-  form.classList.toggle("is-loading", loading);
-  form.setAttribute("aria-busy", String(loading));
-  submit.disabled = loading;
-  submit.setAttribute("aria-busy", String(loading));
-  submit.setAttribute("aria-label", loading ? "消息发送中" : "发送");
-  submit.innerHTML = loading ? icon("refreshCw", 17, "is-spinning") : icon("send", 17);
-  if (input) input.disabled = loading;
-  document.querySelectorAll("[data-chat-quick-reply]").forEach((quickReply) => {
-    quickReply.disabled = loading;
-  });
-  const status = document.querySelector("[data-chat-send-status]");
-  if (status) status.textContent = loading ? "消息发送中" : "";
-}
-
-function renderChatMessages(messages) {
-  const el = document.getElementById("room-chat");
-  if (!el) return;
-  const roomId = state.room?.id || "";
-  if (roomId !== chatAnnouncementRoomId) {
-    chatAnnouncementRoomId = roomId;
-    announcedChatMessages.clear();
-    roomChatMessages = [];
-    lastSessionAnnouncementKey = "";
-  }
-  roomChatMessages = mergeRoomMessages([], messages, roomId);
-  roomChatMessages.forEach((message) => announcedChatMessages.add(chatMessageKey(message)));
-  if (!roomChatMessages.length) {
-    el.innerHTML = '<div class="chat-empty">还没有消息，打个招呼吧</div>';
-    return;
-  }
-  el.innerHTML = roomChatMessages.map(chatMessageHtml).join("");
-  el.scrollTop = el.scrollHeight;
-}
-
-function chatMessageHtml(m) {
-  const mine = m.sender_id === state.user.id;
-  const system = m.kind && m.kind !== "chat";
-  const senderMember = (state.room?.members || []).find((member) => member.id === m.sender_id || member.userId === m.sender_id);
-  const senderName = mine ? "你" : memberDisplayName(senderMember, "玩家");
-  const time = m.created_at
-    ? new Date(m.created_at).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })
-    : "";
-  const pending = m.delivery_status === "pending" ? " · 发送中" : "";
-  const failed = m.delivery_status === "failed";
-  return `<div class="chat-msg ${mine ? "chat-msg--mine" : ""} ${system ? "chat-msg--system" : ""} ${failed ? "is-failed" : ""}"><div class="chat-bubble">${system ? `<strong>${esc(senderName)}：</strong>` : ""}${esc(m.content || "")}</div><div class="chat-time">${time}${pending}${failed ? ` · <button type="button" data-action="retry-chat" data-value="${esc(m.client_operation_id || "")}">重试</button>` : ""}</div></div>`;
-}
-
-function chatMessageKey(message) {
-  return String(message?.client_operation_id || message?.id || `${message?.sender_id || ""}:${message?.created_at || ""}:${message?.content || ""}`);
-}
-
-function appendChatMessage(m) {
-  const el = document.getElementById("room-chat");
-  if (!el) return;
-  const roomId = state.room?.id || "";
-  if (m?.room_id && m.room_id !== roomId) return;
-  if (roomId !== chatAnnouncementRoomId) {
-    chatAnnouncementRoomId = roomId;
-    announcedChatMessages.clear();
-    lastSessionAnnouncementKey = "";
-  }
-  const messageKey = chatMessageKey(m);
-  if (announcedChatMessages.has(messageKey)) {
-    renderChatMessages(mergeRoomMessages(roomChatMessages, [m], roomId));
-    return;
-  }
-  roomChatMessages = mergeRoomMessages(roomChatMessages, [m], roomId);
-  const empty = el.querySelector(".chat-empty");
-  if (empty) empty.remove();
-  el.insertAdjacentHTML("beforeend", chatMessageHtml(m));
-  el.scrollTop = el.scrollHeight;
-  announcedChatMessages.add(messageKey);
-  const sender = m.sender_id === state.user.id ? "你" : "队友";
-  announceSessionLive(`新消息：${sender}：${String(m.content || "")}`, `chat:${messageKey}`);
-}
-
-async function sendRoomChat(message = null, existingOperationId = "") {
-  const room = state.room;
-  const input = document.getElementById("chat-input");
-  const text = String(message ?? input?.value ?? "").trim();
-  if (!room?.id || !room?.code || !text || chatSendPending) return;
-  const operationId = existingOperationId || window.crypto?.randomUUID?.() || `chat-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-  const optimistic = {
-    id: `pending:${operationId}`,
-    room_id: room.id,
-    sender_id: state.user.id,
-    content: text,
-    kind: "chat",
-    client_operation_id: operationId,
-    created_at: new Date().toISOString(),
-    delivery_status: "pending",
-  };
-  appendChatMessage(optimistic);
-  chatSendPending = true;
-  setChatLoading(true);
-  try {
-    const created = await api.sendRoomMessage(room.code, text, operationId);
-    appendChatMessage({ ...created, delivery_status: "sent" });
-    if (input) input.value = "";
-    announceSessionLive("消息已发送", `chat-sent:${Date.now()}`);
-  } catch (err) {
-    appendChatMessage({ ...optimistic, delivery_status: "failed" });
-    toast(err.message || "消息发送失败");
-  } finally {
-    chatSendPending = false;
-    setChatLoading(false);
-  }
-}
-
-function retryRoomChat(operationId) {
-  const message = roomChatMessages.find((item) => item.client_operation_id === operationId);
-  if (message) sendRoomChat(message.content, operationId);
-}
 
 async function completeOnboard() {
   syncDraftFromDom("onboard");
@@ -4128,7 +3882,7 @@ document.addEventListener("click", (event) => {
     "say-goodbye": () => setGoodbyeRequest(true),
     "withdraw-goodbye": () => setGoodbyeRequest(false),
     "slip-room": () => slipCurrentRoom(),
-    "retry-chat": (value) => retryRoomChat(value),
+    "retry-chat": (value) => roomChat.retry(value),
     "accept-resume-room": () => acceptResumeRoom(),
     "decline-resume-room": () => declineResumeRoom(),
     "set-room-like": (value) => setRoomLiked(actionEl?.dataset.targetUserId, value === "yes"),
@@ -4298,7 +4052,7 @@ window.addEventListener("jiyuan:device-replaced", async () => {
   clearResumePrompt();
   stopGoodbyeReconciliation();
   stopPresenceHeartbeat();
-  if (chatClose) chatClose();
+  roomChat.reset();
   if (eventSourceClose) eventSourceClose();
   await api.signOut().catch(() => {});
   resetState();
@@ -4309,8 +4063,7 @@ window.addEventListener("beforeunload", () => {
   stopPresenceHeartbeat();
   clearTimers();
   destroyField();
-  chatGeneration += 1;
-  if (chatClose) chatClose();
+  roomChat.reset();
   if (eventSourceClose) eventSourceClose();
 });
 window.addEventListener("pageshow", () => {

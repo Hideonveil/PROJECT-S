@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { mergeRoomMessages } from "../public/js/chat-merge.js";
 
 const app = readFileSync("public/js/app.js", "utf8");
+const chatController = readFileSync("public/js/room-chat-controller.js", "utf8");
 const api = readFileSync("public/js/api.js", "utf8");
 const messageRoute = readFileSync("src/app/api/room/[code]/messages/route.ts", "utf8");
 
@@ -30,9 +31,8 @@ describe("Room chat reconciliation", () => {
   });
 
   it("uses the Room authority stream to repair missed roster and chat events", () => {
-    const start = app.indexOf("async function initRoomChat()");
-    const source = app.slice(start, app.indexOf("function hydrateRoomAfterShell", start));
-    expect(source).toContain('table: "room_state_events"');
-    expect(source).toContain("api.getRoomSnapshot(room.code)");
+    expect(app).toContain("roomChat.init()");
+    expect(chatController).toContain('table: "room_state_events"');
+    expect(chatController).toContain("api.getRoomSnapshot(room.code)");
   });
 });

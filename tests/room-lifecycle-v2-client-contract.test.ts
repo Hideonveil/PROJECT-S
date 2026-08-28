@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 
 const app = readFileSync("public/js/app.js", "utf8");
 const api = readFileSync("public/js/api.js", "utf8");
+const chatController = readFileSync("public/js/room-chat-controller.js", "utf8");
 const driver = readFileSync("tools/capacity/production-agent-driver.mjs", "utf8");
 
 describe("Room lifecycle V2 client contract", () => {
@@ -16,9 +17,9 @@ describe("Room lifecycle V2 client contract", () => {
   it("uses operation ids and acknowledgement states for chat", () => {
     expect(api).toContain("clientInstanceId");
     expect(api).toContain("operationId");
-    expect(app).toContain('delivery_status: "pending"');
-    expect(app).toContain('delivery_status: "failed"');
-    expect(app).toContain('"retry-chat"');
+    expect(chatController).toContain('delivery_status: "pending"');
+    expect(chatController).toContain('delivery_status: "failed"');
+    expect(chatController).toContain('data-action="retry-chat"');
   });
 
   it("keeps the capacity runner on the same production APIs as a player", () => {

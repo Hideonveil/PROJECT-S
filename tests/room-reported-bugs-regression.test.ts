@@ -5,6 +5,7 @@ import { sessionPage } from "../public/js/pages/session-preview.js";
 import { mergeRoomMessages } from "../public/js/chat-merge.js";
 
 const app = readFileSync("public/js/app.js", "utf8");
+const chatController = readFileSync("public/js/room-chat-controller.js", "utf8");
 const api = readFileSync("src/lib/api.ts", "utf8");
 const stateRoute = readFileSync("src/app/api/state/route.ts", "utf8");
 const realtime = readFileSync("public/js/realtime.js", "utf8");
@@ -63,12 +64,9 @@ describe("reported Room lifecycle regressions", () => {
   });
 
   it("reconciles chat history on the first successful subscription", () => {
-    const start = app.indexOf("async function initRoomChat()");
-    const source = app.slice(start, app.indexOf("function hydrateRoomAfterShell", start));
-
-    expect(source).toContain('if (status === "SUBSCRIBED") {');
-    expect(source).toContain("reconcileChatHistory().catch(() => {});");
-    expect(source).not.toContain("if (hasSubscribed) reconcileChatHistory().catch(() => {});");
+    expect(chatController).toContain('if (status === "SUBSCRIBED") {');
+    expect(chatController).toContain("reconcileHistory().catch(() => {});");
+    expect(chatController).not.toContain("if (hasSubscribed) reconcileHistory().catch(() => {});");
   });
 
   it("uses a versioned Room response for global state reconciliation", () => {
