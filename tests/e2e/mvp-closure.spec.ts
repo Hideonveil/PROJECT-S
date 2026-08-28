@@ -1219,6 +1219,29 @@ test("two-member fit links keep real geometry at all required desktop viewports"
   }
 });
 
+test("Room chat scrolls inside its own panel instead of growing the whole Room", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/index.html#/session-preview");
+  await expect(page.locator("[data-session-preview]")).toBeVisible();
+
+  const metrics = await page.locator("#room-chat").evaluate((chat) => {
+    chat.insertAdjacentHTML("beforeend", Array.from({ length: 40 }, (_, index) => (
+      `<div class="session-preview-message"><span>玩家 B</span><p>第 ${index + 1} 条测试消息</p><time>现在</time></div>`
+    )).join(""));
+    const style = getComputedStyle(chat);
+    return {
+      overflowY: style.overflowY,
+      clientHeight: chat.clientHeight,
+      scrollHeight: chat.scrollHeight,
+    };
+  });
+
+  expect(metrics.overflowY).toBe("auto");
+  expect(metrics.scrollHeight).toBeGreaterThan(metrics.clientHeight);
+  expect(metrics.clientHeight).toBeLessThanOrEqual(321);
+  await expect(page.locator("#chat-input")).toBeVisible();
+});
+
 test("three independent clients keep the same active Session across refresh and return", async ({ browser }) => {
   const sharedProfileFields = {
     friendCode: "TEST-RECOVERY",

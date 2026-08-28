@@ -6,7 +6,7 @@ import { button, esc, needSummary, setProductRailHeldOpen, toast } from "./ui.js
 import { state, update, resetState } from "./store.js";
 import { DEVICES, GAME_BY_ID, GAMES, GENRES } from "./data.js";
 import { FLOW } from "./flow.js";
-import * as api from "./api.js?v=20260828-room-reliability-01";
+import * as api from "./api.js?v=20260828-peer-sync-01";
 import { authPage } from "./pages/auth.js";
 import { HERO_PREVIEW_DIRECTORY, heroDirectoryMarkup, heroDirectoryPersonMarkup, heroPreviewPage, landingPage } from "./pages/landing.js?v=20260822-directory-readonly-01";
 import { welcomePage } from "./pages/welcome.js";
@@ -2516,6 +2516,12 @@ async function initRoomChat() {
   if (!room?.id || !state.authenticated) return;
   const generation = chatGeneration;
   const isCurrent = () => generation === chatGeneration && ["room", "matching"].includes(parseRoute().name) && state.room?.id === room.id;
+  let sb = null;
+  let channel = null;
+  let recoveryTimer = 0;
+  let historyTimer = 0;
+  let realtimeSubscribed = false;
+  let browserSessionReady = false;
   if (chatAnnouncementRoomId !== room.id) {
     chatAnnouncementRoomId = room.id;
     announcedChatMessages.clear();
@@ -2528,17 +2534,48 @@ async function initRoomChat() {
     const currentRoomMessages = roomChatMessages.filter((message) => !message?.room_id || message.room_id === room.id);
     renderChatMessages(mergeRoomMessages(currentRoomMessages, messages, room.id));
   };
+  const close = () => {
+    if (recoveryTimer) window.clearTimeout(recoveryTimer);
+    if (historyTimer) window.clearTimeout(historyTimer);
+    if (channel && sb) sb.removeChannel(channel);
+    if (chatClose === close) chatClose = null;
+  };
+  const scheduleHistoryCheck = () => {
+    if (!isCurrent() || historyTimer) return;
+    // Realtime is an accelerator, not the chat source of truth. During the
+    // short browser-session hydration race, reconcile quickly so the second
+    // player cannot miss chat, quick replies, or lifecycle announcements.
+    const baseDelay = realtimeSubscribed && browserSessionReady ? 30_000 : 4_000;
+    const jitterRange = realtimeSubscribed && browserSessionReady ? 15_000 : 2_000;
+    historyTimer = window.setTimeout(async () => {
+      historyTimer = 0;
+      if (!isCurrent()) return;
+      try { await reconcileChatHistory(); } catch { /* next bounded pass retries */ }
+      if (!browserSessionReady && sb?.auth?.getSession) {
+        try {
+          const { data } = await sb.auth.getSession();
+          browserSessionReady = Boolean(data?.session);
+        } catch { /* keep the recovery cadence */ }
+      }
+      scheduleHistoryCheck();
+    }, baseDelay + Math.floor(Math.random() * jitterRange));
+  };
   try { await reconcileChatHistory(); } catch { /* history recovery will retry after reconnect */ }
+  if (!isCurrent()) return;
+  chatClose = close;
+  scheduleHistoryCheck();
   try {
-    const sb = await api.getSupabaseClient();
+    sb = await api.getSupabaseClient();
     if (!isCurrent()) return;
-    const channel = sb.channel(`room-chat-${room.id}`);
+    try {
+      const { data } = await sb.auth.getSession();
+      browserSessionReady = Boolean(data?.session);
+    } catch { /* authoritative chat history remains available */ }
+    channel = sb.channel(`room-chat-${room.id}`);
     channel.on("postgres_changes", { event: "INSERT", schema: "public", table: "messages", filter: `room_id=eq.${room.id}` }, (payload) => {
       if (!isCurrent()) return;
       appendChatMessage(payload.new);
     });
-    let recoveryTimer = 0;
-    let historyTimer = 0;
     const scheduleRecovery = () => {
       if (recoveryTimer || !isCurrent()) return;
       recoveryTimer = window.setTimeout(() => {
@@ -2549,36 +2586,23 @@ async function initRoomChat() {
     channel.subscribe((status) => {
       if (!isCurrent()) return;
       if (status === "SUBSCRIBED") {
+        realtimeSubscribed = true;
         reconcileChatHistory().catch(() => {});
       }
       if (["CHANNEL_ERROR", "TIMED_OUT", "CLOSED"].includes(status)) {
+        realtimeSubscribed = false;
         const statusEl = document.querySelector("[data-chat-send-status]");
         if (statusEl) statusEl.textContent = "聊天连接正在恢复";
         scheduleRecovery();
       }
     });
-    const scheduleHistoryCheck = () => {
-      if (!isCurrent()) return;
-      historyTimer = window.setTimeout(async () => {
-        historyTimer = 0;
-        try { await reconcileChatHistory(); } catch { /* next sparse pass retries */ }
-        scheduleHistoryCheck();
-      }, 30_000 + Math.floor(Math.random() * 15_000));
-    };
-    scheduleHistoryCheck();
     if (!isCurrent()) {
       sb.removeChannel(channel);
       return;
     }
-    const close = () => {
-      if (recoveryTimer) window.clearTimeout(recoveryTimer);
-      if (historyTimer) window.clearTimeout(historyTimer);
-      sb.removeChannel(channel);
-      if (chatClose === close) chatClose = null;
-    };
-    chatClose = close;
   } catch {
-    // realtime chat is best-effort
+    // Realtime chat is best-effort; the bounded authoritative history pass
+    // established above remains active.
   }
   if (!isCurrent()) return;
   const form = document.querySelector('[data-form="room-chat"]');

@@ -1,4 +1,4 @@
-import { getSupabaseClient, getState } from "./api.js?v=20260828-room-reliability-01";
+import { getSupabaseClient, getState } from "./api.js?v=20260828-peer-sync-01";
 
 // Realtime accelerates Room updates, but the server snapshot remains the
 // source of truth. This sparse watchdog closes silent event gaps without
@@ -113,7 +113,14 @@ export async function openRealtime(handlers) {
     startPolling();
     return () => cleanup();
   }
-  if (closed || !session) return () => cleanup();
+  if (closed) return () => cleanup();
+  // A freshly authenticated tab can reach the Room shell before Supabase has
+  // hydrated its browser session. Realtime is only an accelerator; never
+  // leave the client without an authoritative state path during that race.
+  if (!session) {
+    startPolling();
+    return () => cleanup();
+  }
 
   const channel = sb.channel("node-events");
   const onStatus = (status) => {

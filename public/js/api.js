@@ -257,7 +257,7 @@ export async function sendRoomMessage(roomCode, content, operationId) {
 export function openEvents(handlers) {
   let closeFn = null;
   let closed = false;
-  import("./realtime.js?v=20260828-room-reliability-01")
+  import("./realtime.js?v=20260828-peer-sync-01")
     .then(({ openRealtime }) => {
       if (closed) return null;
       return openRealtime(handlers);

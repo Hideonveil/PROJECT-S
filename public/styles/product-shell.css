@@ -3039,7 +3039,19 @@ html:not([data-initial-route="hero"]) .hero-boot { display: none; }
 .session-preview-chat__divider { margin-top: 24px; display: flex; align-items: center; gap: 10px; color: var(--session-ink); font: 800 10px/1 var(--font-mono); letter-spacing: .11em; text-transform: uppercase; }
 .session-preview-chat__divider i { height: 1px; flex: 1; background: rgba(20,18,27,.14); }
 .session-preview-chat__divider small { color: rgba(20,18,27,.4); font-size: 8px; font-weight: 700; letter-spacing: .05em; }
-.session-preview-messages { min-height: 142px; margin-top: 14px; display: flex; flex-direction: column; justify-content: flex-end; gap: 10px; }
+.session-preview-messages {
+  min-height: 142px;
+  max-height: clamp(220px, 32vh, 320px);
+  margin-top: 14px;
+  padding-right: 4px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: 10px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
 .session-preview-message { width: fit-content; max-width: min(70%, 360px); padding: 9px 12px 8px; border: 1px solid rgba(20,18,27,.12); background: #fff; }
 .session-preview-message--me { align-self: flex-end; border-color: rgba(129,102,232,.24); background: #ece7ff; }
 .session-preview-message span { display: block; color: rgba(20,18,27,.45); font: 800 8px/1 var(--font-mono); letter-spacing: .06em; }
