@@ -12,24 +12,26 @@
 
 ## Phase 2 — Matching business modules
 
-- [ ] Extract Ranked candidate/reservation flow.
+- [x] Extract Ranked candidate/reservation flow.
 - [ ] Extract Casual group/backfill flow.
 - [ ] Extract direct public join flow.
-- [ ] Extract OPS matching interventions.
-- [ ] Keep one per-user single-flight owner.
+- [ ] Extract OPS matching interventions. (Ranked complete; Casual remains.)
+- [x] Keep one per-user single-flight owner.
 - [ ] Keep `service.ts` as a small orchestration interface, not a second implementation.
 
 ## Phase 3 — Room read model
 
 - [ ] Move Room enrichment and membership projection behind one module.
 - [ ] Move resume candidate resolution behind the same module.
-- [ ] Separate shell reads from full hydration reads.
+- [x] Centralize the shared shell/hydration presentation rules.
+- [ ] Separate shell reads from full hydration reads at the database-query boundary.
 - [ ] Remove route-local Room reconstruction.
 - [ ] Replace source-placement tests with interface-level tests where feasible.
 
 ## Phase 4 — Browser Room controller
 
-- [ ] Extract authoritative snapshot reconciliation from `app.js`.
+- [x] Extract pure matchmaking snapshot validation and partial-response merging from `app.js`.
+- [ ] Extract authoritative Room snapshot reconciliation from `app.js`.
 - [ ] Extract Room-scoped subscriptions and refresh scheduling.
 - [ ] Extract chat load/send/reconcile behavior.
 - [ ] Extract explicit leave and local tombstone behavior.
@@ -56,3 +58,12 @@
 - [ ] Add a lightweight architecture hotspot check.
 - [ ] Classify source-text tests: security artifact, migration artifact, or replaceable behavior test.
 - [ ] Run final typecheck, full tests, build and two-axis review.
+
+## 2026-08-29 checkpoint
+
+- `matchmaking/service.ts`: 1,218 → 682 lines.
+- `api.ts`: 701 → 638 lines, with shared Room presentation rules isolated.
+- `app.js`: 4,726 → 4,649 lines, with matchmaking snapshot merging isolated.
+- Regression baseline: 89 files / 395 tests → 95 files / 412 tests.
+- All completed slices pass typecheck, the full test suite and Production build.
+- Capacity evidence under `output/` remains untouched.
