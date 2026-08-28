@@ -13,18 +13,18 @@
 ## Phase 2 — Matching business modules
 
 - [x] Extract Ranked candidate/reservation flow.
-- [ ] Extract Casual group/backfill flow.
-- [ ] Extract direct public join flow.
-- [ ] Extract OPS matching interventions. (Ranked complete; Casual remains.)
+- [x] Extract Casual group/backfill flow.
+- [x] Extract direct public join flow.
+- [x] Extract OPS matching interventions.
 - [x] Keep one per-user serial mutation owner without swallowing distinct operations.
-- [ ] Keep `service.ts` as a small orchestration interface, not a second implementation.
+- [x] Keep `service.ts` as a small orchestration interface, not a second implementation.
 
 ## Phase 3 — Room read model
 
-- [ ] Move Room enrichment and membership projection behind one module.
-- [ ] Move resume candidate resolution behind the same module.
+- [x] Move Room enrichment and membership projection behind one module.
+- [x] Move resume candidate resolution behind the same module.
 - [x] Centralize the shared shell/hydration presentation rules.
-- [ ] Separate shell reads from full hydration reads at the database-query boundary.
+- [x] Separate shell reads from full hydration reads at the database-query boundary.
 - [ ] Remove route-local Room reconstruction.
 - [ ] Replace source-placement tests with interface-level tests where feasible.
 
@@ -33,7 +33,7 @@
 - [x] Extract pure matchmaking snapshot validation and partial-response merging from `app.js`.
 - [ ] Extract authoritative Room snapshot reconciliation from `app.js`.
 - [ ] Extract Room-scoped subscriptions and refresh scheduling.
-- [ ] Extract chat load/send/reconcile behavior.
+- [x] Extract chat load/send/reconcile behavior.
 - [ ] Extract explicit leave and local tombstone behavior.
 - [ ] Verify no full-page render for member/chat/recruitment updates.
 
@@ -41,23 +41,32 @@
 
 - [ ] Extract routing and navigation.
 - [ ] Split the global click handler into domain command handlers.
-- [ ] Extract authentication and session restoration.
+- [x] Extract authentication and session restoration.
 - [ ] Remove retired matching-page dependencies after contract verification.
 - [ ] Reduce `app.js` below 1,500 lines.
 
 ## Phase 6 — OPS
 
-- [ ] Split dashboard polling, session, manual match and presentation modules.
+- [ ] Split dashboard polling, session, manual match and presentation modules. (Presentation and data model complete; hooks remain.)
 - [ ] Remove duplicate legacy manual-match logic if no caller remains.
 - [ ] Keep mutation paths behind protected Admin operations.
 
 ## Phase 7 — Repository hygiene
 
-- [ ] Reconcile README structure with the current Room-first product.
+- [x] Reconcile README structure with the current Room-first product.
 - [ ] Mark compatibility adapters with removal conditions.
-- [ ] Add a lightweight architecture hotspot check.
+- [x] Add a lightweight architecture hotspot check.
 - [ ] Classify source-text tests: security artifact, migration artifact, or replaceable behavior test.
-- [ ] Run final typecheck, full tests, build and two-axis review.
+- [x] Run final typecheck, full tests and Production build for completed slices.
+
+## Phase 8 — Multi-game extension boundary
+
+- [x] Record the game-expansion contract in the project fact source (DEC-015).
+- [ ] Add one shared `GameDefinition` registry used by client and server.
+- [ ] Move Deadlock rank, role, team-size and compatibility rules behind a Deadlock adapter.
+- [ ] Remove scattered Deadlock branches from generic orchestration before a second Production game.
+- [ ] Add a second fake-game contract suite before integrating real game assets or rules.
+- [ ] Make the capacity runner select scenarios through the same game definition boundary.
 
 ## 2026-08-29 checkpoint
 
@@ -70,3 +79,14 @@
   durable cooldown/quarantine state.
 - All completed slices pass typecheck, the full test suite and Production build.
 - Capacity evidence under `output/` remains untouched.
+
+## 2026-08-29 continuation
+
+- `matchmaking/service.ts`: 682 → 218 lines; Casual, status and direct join now have explicit owners.
+- `api.ts`: 638 → 326 lines; Room eligibility, shell reads and full hydration now live in `room-read-model.ts`.
+- `app.js`: 4,649 → 4,110 lines; Room chat and authentication/session restoration now use dedicated controllers.
+- `ops/page.tsx`: 617 → 426 lines; presentation components and data/formatting types are separate.
+- Architecture ratchets prevent these four hotspots from silently returning to their former size.
+- Remaining work is explicit: authoritative Room reconciliation/leave controller, route/action splitting, and OPS data hooks.
+- Final regression baseline for this checkpoint: 98 files / 422 tests; typecheck and Production build pass.
+- Multi-game expansion is now governed by DEC-015; implementation is intentionally deferred until a second game enters scope.

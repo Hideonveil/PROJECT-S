@@ -94,3 +94,12 @@
 - 决策：ENG-00 可按容量测试实际需要自行创建、管理和复用明确标记为 `synthetic_test` / `capacity` 的普通测试账号，不因账号数量向 00 请求人工输入。账号可以长期保留为 capacity pool。
 - 约束：账号必须走与真实用户相同的 Auth / RLS / API / RPC 路径；service/admin 权限仅用于 provisioning，实际玩家行为必须使用普通用户 session；不关闭邮箱、Auth 或 rate limit 保护；测试账号不得与真实用户 matching；业务实体只能通过正常 lifecycle/reconciliation 收敛。
 - Registry：`docs/project/SYNTHETIC_ACCOUNT_REGISTRY.md` 只记录 `synthetic_id`、匿名 `user_id`（如已取得）、purpose、created_at、status、last_run_id 等无秘密事实；严禁记录 password、access token、refresh token、service role 或 Authorization header。当前身份映射不完整时，允许建立新的可追踪 pool，不得把缺少旧 manifest 当作继续索取账号的理由。
+
+## DEC-015 — 新游戏必须通过统一扩展边界接入
+
+- 状态：ACTIVE
+- 决策：第二款及后续游戏不得通过在页面、Matcher、Room 或 Session 通用流程中继续散落游戏名判断来接入。新增游戏前必须建立共享 `GameDefinition` 注册表和游戏规则适配器；Deadlock 是第一个适配器，不是通用流程里的永久特例。
+- `GameDefinition` 至少描述：稳定 game id、名称与资源、支持的 Ranked/Casual 模式、配置步骤、段位和位置词汇、麦克风与人数偏好、队伍 hard max、兼容性 hard/soft rules、Room 展示文案以及容量测试场景。
+- 共享事实：Auth → Ticket → Room → Session → terminal lifecycle、Room 恢复资格、成员/聊天/退出一致性、幂等与防重复约束继续由通用领域模块负责。游戏适配器只能提供规则和展示配置，不得绕过或复制这些生命周期。
+- 接入门槛：真实第二款游戏开发前，先用一个最小 fake game 完成注册、配置页渲染、候选兼容、Room shell/hydration、Session 收敛和容量 runner 合同测试；通过后再接真实资产和规则。
+- 迁移约束：当前 Deadlock hardcode 属于兼容债务，可在 Deadlock 稳定运行期间保留；但在第二款 Production 游戏进入开发前必须收敛到注册表/适配器。不得为了未来可能性提前重写当前稳定的 Matching V2。
