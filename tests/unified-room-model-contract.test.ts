@@ -6,7 +6,7 @@ const read = (file: string) => readFileSync(file, "utf8");
 
 describe("unified Room recruitment contract", () => {
   const types = read("src/lib/types.ts");
-  const api = read("src/lib/api.ts");
+  const api = read("src/lib/room-read-model.ts");
   const app = read("public/js/app.js");
   const room = read("public/js/pages/session-preview.js");
   const home = read("public/js/pages/home.js");

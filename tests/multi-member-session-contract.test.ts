@@ -82,7 +82,7 @@ describe("multi-member Session contract", () => {
   });
 
   it("restores every casual group ticket condition through the room DTO", () => {
-    const api = read("src/lib/api.ts");
+    const api = read("src/lib/room-read-model.ts");
     expect(api).toContain('from("matchmaking_groups")');
     expect(api).toContain('from("matchmaking_group_members")');
     expect(api).toContain("desired_teammates,min_teammates");

@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 
 const read = (file: string) => readFileSync(file, "utf8");
 
-const api = read("src/lib/api.ts");
+const api = read("src/lib/room-read-model.ts");
 const startRpc = read("supabase/migrations/20260826090000_room_resume_eligibility.sql");
 const reserveGroupRpc = read("supabase/migrations/20260826090000_room_resume_eligibility.sql");
 const groupLifecycle = read("supabase/migrations/20260825193000_matchmaking_v2_minimal_forming.sql");

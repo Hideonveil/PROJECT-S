@@ -5,7 +5,7 @@ const read = (file: string) => readFileSync(file, "utf8");
 
 describe("active Room recovery contract", () => {
   const app = read("public/js/app.js");
-  const api = read("src/lib/api.ts");
+  const api = read("src/lib/room-read-model.ts");
 
   it("requires an explicit server-side resume signal before taking over the UI route", () => {
     expect(app).toContain("room.resumeEligible === true");

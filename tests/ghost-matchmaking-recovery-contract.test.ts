@@ -7,6 +7,7 @@ const sql = readFileSync(
 );
 const ticketStore = readFileSync("src/lib/matchmaking/ticket-store.ts", "utf8");
 const api = readFileSync("src/lib/api.ts", "utf8");
+const roomReadModel = readFileSync("src/lib/room-read-model.ts", "utf8");
 const app = readFileSync("public/js/app.js", "utf8");
 const matchmakingSnapshot = readFileSync("public/js/matchmaking-snapshot.js", "utf8");
 const lifecycleMigration = readFileSync(
@@ -52,16 +53,16 @@ describe("ghost matchmaking recovery", () => {
   });
 
   it("resolves the active Session from the newest live room", () => {
-    expect(api).toContain('.in("status", ["connecting", "ready", "playing"])');
-    expect(api).toContain("loadActiveRoomCandidate");
-    expect(api).toContain('.select("*")');
+    expect(roomReadModel).toContain('.in("status", ["connecting", "ready", "playing"])');
+    expect(roomReadModel).toContain("loadActiveRoomCandidate");
+    expect(roomReadModel).toContain('.select("*")');
     expect(api).toContain("return candidate.session as Session;");
   });
 
   it("does not restore a room whose latest Session is terminal", () => {
-    expect(api).toContain("latestSessionByRoom");
-    expect(api).toContain('sessionStatus === "ready" || sessionStatus === "playing"');
-    expect(api).toContain("otherwise a refresh can");
-    expect(api).toContain("reopen the previous room");
+    expect(roomReadModel).toContain("latestSessionByRoom");
+    expect(roomReadModel).toContain('sessionStatus === "ready" || sessionStatus === "playing"');
+    expect(roomReadModel).toContain("otherwise a refresh can");
+    expect(roomReadModel).toContain("reopen the previous room");
   });
 });

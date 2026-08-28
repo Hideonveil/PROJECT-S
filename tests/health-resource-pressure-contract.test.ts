@@ -51,10 +51,11 @@ describe("resource-pressure minimum safe fix", () => {
 
   it("shares active room discovery and public profile reads within one state snapshot", () => {
     const api = read("src/lib/api.ts");
+    const roomReadModel = read("src/lib/room-read-model.ts");
     const state = read("src/app/api/state/route.ts");
     const data = read("src/lib/data.ts");
     expect(api).toContain("createStateReadContext");
-    expect(api).toContain("activeRoomCandidate");
+    expect(roomReadModel).toContain("activeRoomCandidate");
     expect(state).toContain("const readContext = createStateReadContext()");
     expect(data).toContain("createReadContext");
     expect(data).toContain("context?.publicProfiles");

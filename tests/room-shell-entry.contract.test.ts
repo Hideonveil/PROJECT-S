@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 const app = readFileSync("public/js/app.js", "utf8");
 const service = readFileSync("src/lib/matchmaking/service.ts", "utf8");
 const startRoute = readFileSync("src/app/api/matchmaking/start/route.ts", "utf8");
-const api = readFileSync("src/lib/api.ts", "utf8");
+const api = readFileSync("src/lib/room-read-model.ts", "utf8");
 const sessionPage = readFileSync("public/js/pages/session-preview.js", "utf8");
 const instrumentation = readFileSync("src/instrumentation.ts", "utf8");
 

@@ -7,7 +7,7 @@ describe("active Session refresh recovery", () => {
   const app = read("public/js/app.js");
   const api = read("public/js/api.js");
   const offline = read("src/app/api/offline/route.ts");
-  const dataApi = read("src/lib/api.ts");
+  const dataApi = read("src/lib/room-read-model.ts");
 
   it("does not convert pagehide or beforeunload into an explicit exit", () => {
     expect(app).not.toMatch(/window\.addEventListener\("pagehide",[\s\S]*?markPresenceOffline\(\)/);
