@@ -1,14 +1,15 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 describe("OPS V2 matching interventions", () => {
   it("requires protected preview and action routes without direct Room or Session inserts", () => {
     const paths = ["src/app/api/internal/ops-v2/ranked/preview/route.ts", "src/app/api/internal/ops-v2/ranked/force-match/route.ts", "src/app/api/internal/ops-v2/casual/preview-attach/route.ts", "src/app/api/internal/ops-v2/casual/attach/route.ts"];
     for (const path of paths) expect(existsSync(path)).toBe(true);
-    const matchingSources = [
-      readFileSync("src/lib/matchmaking/service.ts", "utf8"),
-      readFileSync("src/lib/matchmaking/ranked.ts", "utf8"),
-    ].join("\n");
+    const matchingSources = readdirSync("src/lib/matchmaking", { withFileTypes: true })
+      .filter((entry) => entry.isFile() && entry.name.endsWith(".ts") && !entry.name.endsWith(".test.ts"))
+      .map((entry) => readFileSync(join("src/lib/matchmaking", entry.name), "utf8"))
+      .join("\n");
     expect(matchingSources).toContain("matchmaking_reserve_pair");
     expect(matchingSources).toContain('select("room_id")');
     expect(matchingSources).toContain("matchmaking_reserve_group_member");

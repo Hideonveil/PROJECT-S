@@ -65,27 +65,49 @@ export function nextMatcherCooldownMs(
   return MATCHER_SCHEDULER_POLICY.idleCooldownMs + Math.floor(random() * 1_000);
 }
 
-async function persistMatchAttemptState(sourceRow: SchedulerTicketRow, context: MatcherAttemptContext) {
-  if (!sourceRow.id || sourceRow.state !== "searching") return;
+export function nextMatcherIntervalMs(random: () => number = Math.random) {
+  return MATCHER_SCHEDULER_POLICY.intervalMs
+    + Math.floor(random() * MATCHER_SCHEDULER_POLICY.intervalJitterMs);
+}
+
+export function buildMatchAttemptState(
+  sourceRow: SchedulerTicketRow,
+  context: MatcherAttemptContext,
+  now = Date.now(),
+  random: () => number = Math.random,
+) {
   const previousConflicts = Number(sourceRow.consecutive_conflicts || 0);
   const previousErrors = Number(sourceRow.consecutive_match_errors || 0);
-  const cooldownMs = nextMatcherCooldownMs(context.outcome, previousConflicts, previousErrors);
+  const cooldownMs = nextMatcherCooldownMs(context.outcome, previousConflicts, previousErrors, random);
   const consecutiveConflicts = context.outcome === "BUSINESS_CONFLICT" ? previousConflicts + 1 : 0;
   const consecutiveErrors = context.outcome === "DATABASE_ERROR" ? previousErrors + 1 : 0;
   const quarantined = consecutiveErrors >= MATCHER_SCHEDULER_POLICY.errorQuarantineThreshold;
-  const nextAttemptAt = new Date(Date.now() + cooldownMs).toISOString();
-  const { error } = await supabaseAdmin()
-    .from("matchmaking_tickets")
-    .update({
-      last_match_attempt_at: new Date().toISOString(),
-      next_match_attempt_at: nextAttemptAt,
+  const timestamp = new Date(now).toISOString();
+  return {
+    cooldownMs,
+    consecutiveConflicts,
+    consecutiveErrors,
+    quarantined,
+    patch: {
+      last_match_attempt_at: timestamp,
+      next_match_attempt_at: new Date(now + cooldownMs).toISOString(),
       last_match_outcome: context.outcome,
       last_match_target_id: context.targetId,
       consecutive_conflicts: consecutiveConflicts,
       consecutive_match_errors: consecutiveErrors,
-      matcher_quarantined_at: quarantined ? new Date().toISOString() : null,
-      updated_at: new Date().toISOString(),
-    })
+      matcher_quarantined_at: quarantined ? timestamp : null,
+      updated_at: timestamp,
+    },
+  };
+}
+
+async function persistMatchAttemptState(sourceRow: SchedulerTicketRow, context: MatcherAttemptContext) {
+  if (!sourceRow.id || sourceRow.state !== "searching") return;
+  const state = buildMatchAttemptState(sourceRow, context);
+  const { cooldownMs, consecutiveConflicts, consecutiveErrors, quarantined } = state;
+  const { error } = await supabaseAdmin()
+    .from("matchmaking_tickets")
+    .update(state.patch)
     .eq("id", sourceRow.id)
     .eq("state", "searching");
   if (error) throw error;
@@ -127,8 +149,22 @@ async function refreshMatcherPoolGauges() {
   setGauge("forming_rooms", Number(forming || 0));
 }
 
-async function runMatcherBatch(rows: SchedulerTicketRow[], tickId: string, processTicket: MatcherProcessTicket) {
+export async function runBoundedMatcherRows<T>(rows: T[], concurrency: number, processRow: (row: T) => Promise<void>) {
   let cursor = 0;
+  const worker = async () => {
+    while (cursor < rows.length) {
+      const row = rows[cursor++];
+      if (row) await processRow(row);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(Math.max(1, concurrency), rows.length) }, worker));
+}
+
+export function combineMatcherQueues<T>(freshRows: T[] = [], regularRows: T[] = []) {
+  return [...freshRows, ...regularRows];
+}
+
+async function runMatcherBatch(rows: SchedulerTicketRow[], tickId: string, processTicket: MatcherProcessTicket) {
   const processRow = async (row: SchedulerTicketRow) => {
     const context = createMatcherAttemptContext(tickId, row.id);
     recordTicketProcessed(row.id);
@@ -154,13 +190,7 @@ async function runMatcherBatch(rows: SchedulerTicketRow[], tickId: string, proce
       }
     }
   };
-  const worker = async () => {
-    while (cursor < rows.length) {
-      const row = rows[cursor++];
-      if (row) await processRow(row);
-    }
-  };
-  await Promise.all(Array.from({ length: Math.min(MATCHER_SCHEDULER_POLICY.processingConcurrency, rows.length) }, worker));
+  await runBoundedMatcherRows(rows, MATCHER_SCHEDULER_POLICY.processingConcurrency, processRow);
 }
 
 async function runMatchmakingSweep(processTicket: MatcherProcessTicket) {
@@ -193,7 +223,7 @@ async function runMatchmakingSweep(processTicket: MatcherProcessTicket) {
       .order("search_started_at", { ascending: true })
       .limit(MATCHER_SCHEDULER_POLICY.regularBatchSize);
     if (regularError) throw regularError;
-    const rows = [...(freshRows || []), ...(regularRows || [])];
+    const rows = combineMatcherQueues(freshRows || [], regularRows || []);
     setGauge("eligible_tickets", rows.length);
     await runMatcherBatch(rows as SchedulerTicketRow[], tickId, processTicket);
   } catch (error) {
@@ -217,8 +247,7 @@ export function startMatcherScheduler(processTicket: MatcherProcessTicket) {
   const scheduleNextSweep = (delayMs: number) => {
     matcherHandle = setTimeout(() => {
       void runMatchmakingSweep(processTicket).finally(() => {
-        scheduleNextSweep(MATCHER_SCHEDULER_POLICY.intervalMs
-          + Math.floor(Math.random() * MATCHER_SCHEDULER_POLICY.intervalJitterMs));
+        scheduleNextSweep(nextMatcherIntervalMs());
       });
     }, delayMs);
     matcherHandle.unref?.();

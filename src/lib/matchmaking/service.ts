@@ -1,5 +1,6 @@
 import { publicProfilesFor } from "../data";
 import { AppError } from "../http";
+import { KeyedSingleFlight } from "../single-flight";
 import { supabaseAdmin } from "../supabase";
 import type { MatcherAttemptContext } from "./attempt-context";
 import { autoConnectPair } from "./pair-lifecycle";
@@ -31,7 +32,7 @@ import type { MatchmakingInput } from "./types";
 
 export { forceOpsRankedMatch, previewOpsRankedMatch } from "./ranked";
 
-const matchmakingFlights = new Map<string, Promise<unknown>>();
+const matchmakingFlights = new KeyedSingleFlight();
 
 export function startPersistentMatcher() {
   startMatcherScheduler((row, context) => withMatchmakingFlight(row.user_id, () => row.mode === "casual"
@@ -40,14 +41,7 @@ export function startPersistentMatcher() {
 }
 
 function withMatchmakingFlight<T>(userId: string, work: () => Promise<T>): Promise<T> {
-  const running = matchmakingFlights.get(userId);
-  if (running) return running as Promise<T>;
-
-  const flight = Promise.resolve().then(work).finally(() => {
-    if (matchmakingFlights.get(userId) === flight) matchmakingFlights.delete(userId);
-  });
-  matchmakingFlights.set(userId, flight);
-  return flight;
+  return matchmakingFlights.run(userId, work);
 }
 
 export async function previewOpsCasualAttach(userId: string, groupId: string) {

@@ -7,6 +7,35 @@ const ROLE_NAMES: Record<string, string> = {
   "6": "功能",
 };
 
+export interface RoomPresentationTicket {
+  game_id?: string | null;
+  mode?: string | null;
+  rank_code?: string | null;
+  desired_roles?: unknown[] | null;
+  microphone_preference?: string | null;
+  desired_teammates?: number | null;
+  min_teammates?: number | null;
+  metadata?: {
+    ownRoles?: unknown[];
+    teammateRoles?: unknown[];
+    casualIntent?: string;
+    teamMax?: number | string;
+  } | null;
+}
+
+export interface RoomNeedInput extends Record<string, unknown> {
+  game?: string;
+  mode?: string;
+  target?: number | string;
+  rankCode?: string | null;
+  casualIntent?: string;
+  details?: {
+    rank?: string;
+    voicePreference?: string;
+    [key: string]: unknown;
+  };
+}
+
 export function roleLabels(roles: unknown): string {
   const values = Array.isArray(roles) ? roles : [];
   return values.length
@@ -15,8 +44,8 @@ export function roleLabels(roles: unknown): string {
 }
 
 export function roomMemberNeed(
-  ticket: Record<string, any> | undefined,
-  roomNeed: Record<string, any>,
+  ticket: RoomPresentationTicket | undefined,
+  roomNeed: RoomNeedInput,
   memberCount: number,
 ) {
   if (!ticket) return null;
@@ -44,7 +73,7 @@ export function roomMemberNeed(
   };
 }
 
-export function roomShellNeed(ticket: Record<string, any> | null, roomNeed: Record<string, any>) {
+export function roomShellNeed(ticket: RoomPresentationTicket | null, roomNeed: RoomNeedInput) {
   if (!ticket) return roomNeed;
   const metadata = ticket.metadata && typeof ticket.metadata === "object" ? ticket.metadata : {};
   const existingDetails = roomNeed.details && typeof roomNeed.details === "object" ? roomNeed.details : {};
