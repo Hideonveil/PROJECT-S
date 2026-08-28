@@ -64,6 +64,9 @@
 - `matchmaking/service.ts`: 1,218 → 682 lines.
 - `api.ts`: 701 → 638 lines, with shared Room presentation rules isolated.
 - `app.js`: 4,726 → 4,649 lines, with matchmaking snapshot merging isolated.
-- Regression baseline: 89 files / 395 tests → 95 files / 412 tests.
+- Regression baseline: 89 files / 395 tests → 96 files / 417 tests.
+- Review follow-up adds behavioral guards for per-user single-flight,
+  fresh/regular queue execution, bounded concurrency, recurring jitter and
+  durable cooldown/quarantine state.
 - All completed slices pass typecheck, the full test suite and Production build.
 - Capacity evidence under `output/` remains untouched.
