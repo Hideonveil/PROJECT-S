@@ -25,12 +25,15 @@ describe("OPS V2 matching interventions", () => {
     for (const path of paths) expect(existsSync(path)).toBe(true);
 
     const service = readFileSync("src/lib/matchmaking/service.ts", "utf8");
+    const casual = readFileSync("src/lib/matchmaking/casual.ts", "utf8");
     const interventions = readFileSync("src/lib/ops-v2/interventions.ts", "utf8");
     const contacts = readFileSync("src/app/api/internal/ops-v2/contacts/[contactId]/route.ts", "utf8");
-    expect(service).toContain("matchmaking_lock_forming_group");
+    expect(casual).toContain("matchmaking_lock_forming_group");
     expect(interventions).toContain("ADMIN_LOCK_CASUAL_ROOM");
     expect(contacts).toContain("CONTACT_STATUS_UPDATED");
     expect(service).not.toMatch(/from\("rooms"\)\.update/);
     expect(service).not.toMatch(/from\("sessions"\)\.update/);
+    expect(casual).not.toMatch(/from\("rooms"\)\.update/);
+    expect(casual).not.toMatch(/from\("sessions"\)\.update/);
   });
 });
