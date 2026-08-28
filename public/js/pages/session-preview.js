@@ -203,7 +203,7 @@ function playerRail(model) {
     ? `<article class="session-preview-player session-preview-player--joining" aria-live="polite"><span class="session-preview-player__index">02</span><span class="session-preview-player__joining-mark" aria-hidden="true"></span><div><b>加入中...</b><small>正在连接合适的玩家</small></div></article>`
     : "";
   return `<aside class="session-preview-rail" aria-label="用户栏">
-    <header class="session-preview-rail__head"><div><b>成员</b><small data-room-member-count>${model.activeMemberCount || visiblePlayers.length} / ${model.target} ${recruiting ? "招募中" : "已满"}</small></div></header>
+    <header class="session-preview-rail__head"><div><b>成员</b><small data-room-member-count>${model.activeMemberCount || visiblePlayers.length} / ${model.target} ${recruiting ? "招募中" : (model.activeMemberCount >= model.target ? "已满" : "已停止")}</small></div></header>
     <div class="session-preview-players">
       ${visiblePlayers.map((player, index) => `<article class="session-preview-player ${player.tone}"><span class="session-preview-player__index">${String(index + 1).padStart(2, "0")}</span>${avatarWrap(player.avatarKey, 58, player.online)}<div><b>${esc(player.name)}</b><small>${esc(player.handle)}</small><span>${index === 0 ? "已进入房间" : "已加入房间"}</span></div></article>`).join("")}
       ${waitingSlots}
@@ -253,7 +253,7 @@ function chatPanel(model) {
   const recruiting = model.recruiting === true;
   const fitTable = fitTableMarkup(model);
   return `<section class="session-preview-chat" aria-label="Room 聊天">
-    <header class="session-preview-chat__head"><div><span class="session-preview-kicker">${recruiting ? "正在匹配" : "成员的选择"}</span><h2>${recruiting ? "先聊起来" : "高度拟合"} <i aria-hidden="true">${icon(recruiting ? "users" : "star", 18)}</i></h2><p>${recruiting ? "新成员加入时会出现在左侧成员栏。" : "匹配条件已对齐，现在把这局玩起来。"}</p></div><span class="session-preview-live"><i aria-hidden="true"></i>LIVE</span></header>
+    <header class="session-preview-chat__head"><div><span class="session-preview-kicker" data-room-chat-kicker>${recruiting ? "正在匹配" : "成员的选择"}</span><h2 data-room-chat-title>${recruiting ? "先聊起来" : "高度拟合"} <i aria-hidden="true">${icon(recruiting ? "users" : "star", 18)}</i></h2><p data-room-chat-copy>${recruiting ? "新成员加入时会出现在左侧成员栏。" : "匹配条件已对齐，现在把这局玩起来。"}</p></div><span class="session-preview-live"><i aria-hidden="true"></i>LIVE</span></header>
     ${fitTable}
     <div class="session-preview-chat__divider"><span>聊天</span><i aria-hidden="true"></i><small>实时同步</small></div>
     <div id="room-chat" class="session-preview-messages" role="log" aria-live="polite" aria-relevant="additions" aria-atomic="false" aria-label="聊天记录">${seedMessages}</div>

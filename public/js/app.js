@@ -1084,7 +1084,7 @@ function render() {
     location.hash = "#/welcome";
     return;
   }
-  if (isActiveSessionRoom(state.room) && route.name !== "room") {
+  if (isActiveSessionRoom(state.room) && route.name === "matching") {
     replaceCanonicalRoute("#/room");
     return;
   }
@@ -1801,6 +1801,12 @@ function updateRecruitingRoomView(nextRoom, previousRoom = null) {
   updateRoomFragment(currentFooter, footer);
   const title = root.querySelector("#session-title");
   if (title) title.textContent = nextRoom.recruiting === true ? "招募中" : "开一把？";
+  const chatKicker = root.querySelector("[data-room-chat-kicker]");
+  const chatTitle = root.querySelector("[data-room-chat-title]");
+  const chatCopy = root.querySelector("[data-room-chat-copy]");
+  if (chatKicker) chatKicker.textContent = nextRoom.recruiting === true ? "正在匹配" : "成员的选择";
+  if (chatTitle) chatTitle.firstChild.textContent = nextRoom.recruiting === true ? "先聊起来 " : "高度拟合 ";
+  if (chatCopy) chatCopy.textContent = nextRoom.recruiting === true ? "新成员加入时会出现在左侧成员栏。" : "匹配条件已对齐，现在把这局玩起来。";
   root.classList.toggle("is-room-recruiting", nextRoom.recruiting === true);
   const delta = rosterDelta(previousRoom?.members, nextRoom.members);
   delta.joined.forEach((member) => {
@@ -2290,10 +2296,13 @@ function handleServerRoom(room) {
     need: room.need || state.need,
     session: null,
   });
-  if (isActiveSessionRoom(normalized) && parseRoute().name !== "room") {
+  const routeName = parseRoute().name;
+  if (isActiveSessionRoom(normalized) && routeName === "matching") {
     replaceCanonicalRoute("#/room");
-  } else if (parseRoute().name === "room") {
+  } else if (routeName === "room") {
     updateSessionView(normalized);
+  } else if (isActiveSessionRoom(normalized) && routeName === "home") {
+    scheduleResumeRoomPrompt(normalized);
   }
 }
 
@@ -2433,8 +2442,10 @@ async function refreshAuthenticatedState({ restoreRoute = false } = {}) {
     const snapshot = await api.getState();
     if (snapshot.user) update({ user: snapshot.user });
     applyServerSnapshot(snapshot);
-    if (restoreRoute && !isRecruitmentExitRoom(snapshot.room) && isActiveSessionRoom(snapshot.room) && ["home", "auth", "welcome", "matching"].includes(parseRoute().name)) {
-      replaceCanonicalRoute("#/room");
+    if (restoreRoute && !isRecruitmentExitRoom(snapshot.room) && isActiveSessionRoom(snapshot.room)) {
+      const routeName = parseRoute().name;
+      if (routeName === "matching") replaceCanonicalRoute("#/room");
+      else if (routeName === "home") scheduleResumeRoomPrompt(snapshot.room);
     }
   } catch {
     // Realtime will retry; a transient resume failure must not turn a live
@@ -2636,12 +2647,14 @@ function renderChatMessages(messages) {
 function chatMessageHtml(m) {
   const mine = m.sender_id === state.user.id;
   const system = m.kind && m.kind !== "chat";
+  const senderMember = (state.room?.members || []).find((member) => member.id === m.sender_id || member.userId === m.sender_id);
+  const senderName = mine ? "你" : memberDisplayName(senderMember, "玩家");
   const time = m.created_at
     ? new Date(m.created_at).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })
     : "";
   const pending = m.delivery_status === "pending" ? " · 发送中" : "";
   const failed = m.delivery_status === "failed";
-  return `<div class="chat-msg ${mine ? "chat-msg--mine" : ""} ${system ? "chat-msg--system" : ""} ${failed ? "is-failed" : ""}"><div class="chat-bubble">${system ? `<strong>${mine ? "你" : "玩家"}：</strong>` : ""}${esc(m.content || "")}</div><div class="chat-time">${time}${pending}${failed ? ` · <button type="button" data-action="retry-chat" data-value="${esc(m.client_operation_id || "")}">重试</button>` : ""}</div></div>`;
+  return `<div class="chat-msg ${mine ? "chat-msg--mine" : ""} ${system ? "chat-msg--system" : ""} ${failed ? "is-failed" : ""}"><div class="chat-bubble">${system ? `<strong>${esc(senderName)}：</strong>` : ""}${esc(m.content || "")}</div><div class="chat-time">${time}${pending}${failed ? ` · <button type="button" data-action="retry-chat" data-value="${esc(m.client_operation_id || "")}">重试</button>` : ""}</div></div>`;
 }
 
 function chatMessageKey(message) {

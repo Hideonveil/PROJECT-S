@@ -50,8 +50,6 @@ export async function requireRequestProfile(
   }
   if (!activeClient && clientInstanceId) {
     await admin.from("profile_active_clients").upsert({ profile_id: profile.id, client_instance_id: clientInstanceId }, { onConflict: "profile_id" });
-  } else if (activeClient && clientInstanceId) {
-    void admin.from("profile_active_clients").update({ last_seen_at: new Date().toISOString() }).eq("profile_id", profile.id).eq("client_instance_id", clientInstanceId);
   }
   return profile;
 }

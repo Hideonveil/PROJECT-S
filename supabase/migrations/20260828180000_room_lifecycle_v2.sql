@@ -92,6 +92,9 @@ declare v_room_id uuid; v_user_id uuid; v_left boolean := false;
 begin
   v_room_id := coalesce(new.room_id, old.room_id);
   v_user_id := coalesce(new.user_id, old.user_id);
+  if tg_op = 'UPDATE' and new.status is not distinct from old.status then
+    return new;
+  end if;
   v_left := tg_op = 'DELETE' or (tg_op = 'UPDATE' and coalesce(old.status,'active') = 'active' and coalesce(new.status,'active') <> 'active');
   if v_left then
     update public.rooms set room_membership_version = room_membership_version + 1 where id = v_room_id;

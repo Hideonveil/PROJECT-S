@@ -914,7 +914,7 @@ export function dryRunPlan({ options, manifest = { actors: [] } }) {
     durationSec: options.durationSec,
     readOnlyPaths: READ_ONLY_PATHS.map((pattern) => pattern.toString()),
     actorSlots: manifest.actors.length,
-    statefulExecution: "use --stateful --scenario dry-run for the progressive 5 -> 10 -> 20 -> 30 -> 40 -> 50 -> 75 -> 100 -> 125 -> 150 -> 200 -> 300 -> 400 -> 500 adapter plan",
+    statefulExecution: "current acceptance uses --stages 10,50,200; diagnostic levels remain 5 -> 10 -> 20 -> 30 -> 40 -> 50 -> 75 -> 100 -> 125 -> 150 -> 200 -> 300 -> 400 -> 500",
   };
 }
 
@@ -936,7 +936,7 @@ export async function writeEvidence({ directory, manifest, plan, result }) {
 }
 
 export function helpText() {
-  return `Usage:\n  pnpm capacity:run -- --dry-run --run-id <id>\n  pnpm capacity:run -- --prepare-auth --base-url <url> --run-id <id> --auth-secret-file <0600-file> --manifest-out <safe-file> --allow-production --production-ack <id>\n  pnpm capacity:run -- --execute-read-only --base-url <url> --run-id <id> --manifest <file> --auth-secret-file <0600-file> --max-users <n> --max-rps <n> --max-requests <n> --allow-production --production-ack <id>\n\nSafety:\n  dry-run is the default and performs no network request. Auth preparation accepts credentials only through hidden TTY stdin or a 0600 JSON file; credentials and access tokens never enter manifests, evidence, logs, or command arguments. Auth uses one normal /api/auth/login request per identity and reuses the returned session; identity logins are paced by --auth-delay-ms (default 10000ms). Read-only execution only permits GET/HEAD on the fixed allowlist. Production execution requires --allow-production and --production-ack=<run-id>. Stateful mode requires --stateful-approval=<run-id> and supports --stages 40,75,100,150,200 for accelerated checkpoints.\n`;
+  return `Usage:\n  pnpm capacity:run -- --dry-run --run-id <id>\n  pnpm capacity:run -- --prepare-auth --base-url <url> --run-id <id> --auth-secret-file <0600-file> --manifest-out <safe-file> --allow-production --production-ack <id>\n  pnpm capacity:run -- --execute-read-only --base-url <url> --run-id <id> --manifest <file> --auth-secret-file <0600-file> --max-users <n> --max-rps <n> --max-requests <n> --allow-production --production-ack <id>\n\nSafety:\n  dry-run is the default and performs no network request. Auth preparation accepts credentials only through hidden TTY stdin or a 0600 JSON file; credentials and access tokens never enter manifests, evidence, logs, or command arguments. Auth uses one normal /api/auth/login request per identity and reuses the returned session; identity logins are paced by --auth-delay-ms (default 10000ms). Read-only execution only permits GET/HEAD on the fixed allowlist. Production execution requires --allow-production and --production-ack=<run-id>. Stateful mode requires --stateful-approval=<run-id>; the current acceptance command uses --stages 10,50,200.\n`;
 }
 
 async function main() {

@@ -22,9 +22,9 @@ describe("canonical Active Session route contract", () => {
     expect(matching).not.toContain("if (state.room) return");
     expect(matching).not.toContain("sessionPage(state)");
     expect(app).not.toContain("sessionHandoff");
-    expect(app).toContain('isActiveSessionRoom(state.room) && route.name !== "room"');
+    expect(app).toContain('isActiveSessionRoom(state.room) && route.name === "matching"');
     expect(app).toContain('replaceCanonicalRoute("#/room")');
-    expect(app.indexOf('isActiveSessionRoom(state.room) && route.name !== "room"')).toBeLessThan(app.indexOf("startMatchingFlow();"));
+    expect(app.indexOf('isActiveSessionRoom(state.room) && route.name === "matching"')).toBeLessThan(app.indexOf("startMatchingFlow();"));
   });
 
   it("keeps the canonical Session renderer independent of the matching route", () => {
@@ -38,7 +38,7 @@ describe("canonical Active Session route contract", () => {
 
   it("normalizes match success and realtime Room hydration without business writes", () => {
     expect(app).toContain('if (patch.room && routeName === "matching" && isActiveSessionRoom(state.room))');
-    expect(app).toContain('if (isActiveSessionRoom(normalized) && parseRoute().name !== "room")');
+    expect(app).toContain('if (isActiveSessionRoom(normalized) && routeName === "matching")');
     expect(app).toContain('history.replaceState(history.state, "", nextUrl)');
   });
 
@@ -50,6 +50,6 @@ describe("canonical Active Session route contract", () => {
     expect(app).toContain('window.addEventListener("pageshow"');
     expect(app).toContain('document.addEventListener("visibilitychange"');
     expect(app).toContain('"open-room": () => replaceCanonicalRoute("#/room")');
-    expect(app).toContain('if (restoreRoute && !isRecruitmentExitRoom(snapshot.room) && isActiveSessionRoom(snapshot.room)');
+    expect(app).toContain('else if (routeName === "home") scheduleResumeRoomPrompt(snapshot.room)');
   });
 });
