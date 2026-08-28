@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const sql = readFileSync("supabase/migrations/0009_realtime_matchmaking.sql", "utf8");
-const service = readFileSync("src/lib/matchmaking/service.ts", "utf8");
+const rankedMatcher = readFileSync("src/lib/matchmaking/ranked.ts", "utf8");
 
 describe("realtime matchmaking database contract", () => {
   it.each([
@@ -46,7 +46,7 @@ describe("realtime matchmaking database contract", () => {
   });
 
   it("lets players meet again after a connection timeout while respecting explicit rejection", () => {
-    expect(service).toContain('.eq("cancel_reason", "rejected")');
-    expect(service).not.toContain('.in("cancel_reason", ["rejected", "confirmation_timeout"])');
+    expect(rankedMatcher).toContain('.eq("cancel_reason", "rejected")');
+    expect(rankedMatcher).not.toContain('.in("cancel_reason", ["rejected", "confirmation_timeout"])');
   });
 });

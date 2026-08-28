@@ -2,6 +2,7 @@ import { publicProfilesFor } from "../data";
 import { AppError } from "../http";
 import { supabaseAdmin } from "../supabase";
 import type { MatcherAttemptContext } from "./attempt-context";
+import { autoConnectPair } from "./pair-lifecycle";
 import {
   groupFromRow,
   rulesFromRow,
@@ -23,15 +24,19 @@ import {
   increment as incrementRuntimeMetric,
   observeLatency,
 } from "./runtime-telemetry";
+import { attemptRankedMatch } from "./ranked";
 import { startMatcherScheduler } from "./scheduler";
+import { activeTicketRow } from "./ticket-store";
 import type { MatchmakingInput } from "./types";
+
+export { forceOpsRankedMatch, previewOpsRankedMatch } from "./ranked";
 
 const matchmakingFlights = new Map<string, Promise<unknown>>();
 
 export function startPersistentMatcher() {
   startMatcherScheduler((row, context) => withMatchmakingFlight(row.user_id, () => row.mode === "casual"
     ? attemptCasualGroup(row.user_id, context)
-    : attemptMatch(row.user_id, context)));
+    : attemptRankedMatch(row.user_id, context)));
 }
 
 function withMatchmakingFlight<T>(userId: string, work: () => Promise<T>): Promise<T> {
@@ -43,187 +48,6 @@ function withMatchmakingFlight<T>(userId: string, work: () => Promise<T>): Promi
   });
   matchmakingFlights.set(userId, flight);
   return flight;
-}
-
-async function activeTicketRow(userId: string) {
-  const { data, error } = await supabaseAdmin()
-    .from("matchmaking_tickets")
-    .select("*")
-    .eq("user_id", userId)
-    .in("state", ["searching", "candidate_found", "waiting_confirmation", "matched", "playing"])
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  if (error) throw error;
-  const ticket = data as MatchmakingTicketRow | null;
-  if (!ticket) return null;
-  // ticket.expires_at is intentionally ignored. Active rows are closed only
-  // by an explicit cancel/leave/offline action.
-  return ticket;
-}
-
-async function attemptMatch(userId: string, context?: MatcherAttemptContext) {
-  const admin = supabaseAdmin();
-  const sourceRow = await activeTicketRow(userId);
-  if (!sourceRow || sourceRow.state !== "searching") return sourceRow;
-
-  const { data: ruleRow, error: ruleError } = await admin
-    .from("matchmaking_rule_sets")
-    .select("*")
-    .eq("id", sourceRow.rule_set_id)
-    .single();
-  if (ruleError || !ruleRow) throw ruleError || new Error("MATCH_RULE_SET_MISSING");
-
-  const { data: waitingRows, error: waitingError } = await admin
-    .from("matchmaking_tickets")
-    .select("*")
-    .eq("game_id", sourceRow.game_id)
-    .eq("state", "searching")
-    .neq("user_id", userId)
-    .order("search_started_at", { ascending: true })
-    .limit(100);
-  if (waitingError) throw waitingError;
-
-  const source = ticketFromRow(sourceRow);
-  const rules = rulesFromRow(ruleRow as MatchmakingRuleSetRow);
-  const cooldownSeconds = Math.max(0, Number(rules.waitStrategy.rejectedPairCooldownSeconds || 0));
-  const excludedUsers = new Set<string>();
-  if (cooldownSeconds > 0) {
-    const cutoff = new Date(Date.now() - cooldownSeconds * 1000).toISOString();
-    const { data: recentRejected } = await admin
-      .from("matchmaking_pairs")
-      .select("user_a_id,user_b_id")
-      .in("state", ["cancelled", "expired"])
-      // A timeout often means a dropped/slow connection, not an intentional
-      // rejection. Let those two players meet again immediately; only a clear
-      // rejection starts the short pair cooldown.
-      .eq("cancel_reason", "rejected")
-      .gte("updated_at", cutoff)
-      .or(`user_a_id.eq.${userId},user_b_id.eq.${userId}`);
-    for (const pair of recentRejected || []) {
-      excludedUsers.add(pair.user_a_id === userId ? pair.user_b_id : pair.user_a_id);
-    }
-  }
-  const ranked = rankCandidates(
-    source,
-    (waitingRows || []).map(ticketFromRow).filter((ticket) => !excludedUsers.has(ticket.userId)),
-    rules
-  );
-  let conflictCount = 0;
-  for (const candidate of ranked) {
-    if (conflictCount >= RESERVATION_CONFLICT_BUDGET) break;
-    if (context?.targetId && context.targetId === candidate.ticket.id) {
-      incrementRuntimeMetric("same_target_suppressed");
-      continue;
-    }
-    const compatibility = evaluateCompatibility(source, candidate.ticket, rules);
-    recordReservationAttempt("pair");
-    const { data: pair, error } = await admin.rpc("matchmaking_reserve_pair", {
-      p_ticket_a: source.id,
-      p_ticket_b: candidate.ticket.id,
-      p_hard_snapshot: { passed: true, ruleSetVersion: rules.version },
-      p_soft_snapshot: compatibility.softSignals,
-    });
-    if (error || isPairReservationConflict(null, pair)) {
-      if (isPairReservationConflict(error, pair)) {
-        conflictCount += 1;
-        context?.recordBusinessConflict("MATCH_RESERVATION_CONFLICT", candidate.ticket.id);
-        recordReservationConflict("pair");
-        continue;
-      }
-      throw error;
-    }
-    if (context) {
-      context.markSuccess(candidate.ticket.id);
-      observeLatency("time_to_pair", Date.now() - context.startedAt);
-      observeLatency("time_to_first_match", Date.now() - context.startedAt);
-    }
-    incrementRuntimeMetric("pair_success");
-    if (!["matched", "playing"].includes(String(pair.state))) {
-      const { error: presentError } = await admin.rpc("matchmaking_present_pair", { p_pair_id: pair.id });
-      if (presentError) throw presentError;
-    }
-    // Ranked pairs are direct connections: once a compatible second player
-    // enters the pair, both tickets are accepted server-side and the room is
-    // created atomically. The confirmation rows remain as an audit trail, but
-    // neither player needs to click a second consent button.
-    if (!["matched", "playing"].includes(String(pair.state))) await autoConnectPair(pair.id, requestIdForAutoConnect(source.id, candidate.ticket.id));
-    break;
-  }
-  return activeTicketRow(userId);
-}
-
-function requestIdForAutoConnect(ticketA: string, ticketB: string) {
-  return `auto-pair:${ticketA}:${ticketB}`;
-}
-
-async function autoConnectPair(pairId: string, requestId: string | null = null) {
-  const admin = supabaseAdmin();
-  const { data: pair, error: pairError } = await admin
-    .from("matchmaking_pairs")
-    .select("id,user_a_id,user_b_id,state")
-    .eq("id", pairId)
-    .maybeSingle();
-  if (pairError) throw pairError;
-  if (!pair || ["playing", "matched", "completed"].includes(pair.state)) return pair;
-  if (pair.state !== "waiting_confirmation") return pair;
-
-  for (const userId of [pair.user_a_id, pair.user_b_id]) {
-    const { error } = await admin.rpc("matchmaking_confirm_pair", {
-      p_pair_id: pair.id,
-      p_user_id: userId,
-      p_decision: "accepted",
-      p_request_id: `${requestId || `auto-pair:${pair.id}`}:${userId}`,
-    });
-    if (error) throw error;
-  }
-  return pair;
-}
-
-export async function previewOpsRankedMatch(userA: string, userB: string) {
-  if (!userA || !userB || userA === userB) throw new AppError("OPS_MATCH_INPUT_INVALID", "请选择两位不同的玩家", 422, false);
-  const [ticketA, ticketB] = await Promise.all([activeTicketRow(userA), activeTicketRow(userB)]);
-  if (!ticketA || !ticketB || ticketA.mode !== "ranked" || ticketB.mode !== "ranked") {
-    throw new AppError("OPS_MATCH_UNAVAILABLE", "两位玩家必须都在 Ranked 匹配池中", 409, true);
-  }
-  const { data: ruleRow, error } = await supabaseAdmin().from("matchmaking_rule_sets").select("*").eq("id", ticketA.rule_set_id).maybeSingle();
-  if (error || !ruleRow) throw error || new AppError("MATCH_RULE_SET_MISSING", "匹配规则暂不可用", 503, true);
-  const compatibility = evaluateCompatibility(
-    ticketFromRow(ticketA),
-    ticketFromRow(ticketB),
-    rulesFromRow(ruleRow as MatchmakingRuleSetRow),
-  );
-  return { ticketA, ticketB, compatibility };
-}
-
-export async function forceOpsRankedMatch(userA: string, userB: string, reason: string, requestId: string) {
-  const preview = await previewOpsRankedMatch(userA, userB);
-  if (!preview.compatibility.compatible) {
-    throw new AppError("OPS_MATCH_INCOMPATIBLE", "两位玩家当前不满足 Ranked 匹配规则", 409, false);
-  }
-  const { data: pair, error } = await supabaseAdmin().rpc("matchmaking_reserve_pair", {
-    p_ticket_a: preview.ticketA.id,
-    p_ticket_b: preview.ticketB.id,
-    p_hard_snapshot: { passed: true, source: "ops_v2", reason: reason.slice(0, 200) },
-    p_soft_snapshot: { ...preview.compatibility.softSignals, source: "ops_v2" },
-  });
-  if (isPairReservationConflict(error, pair)) throw new AppError("MATCH_RESERVATION_CONFLICT", "候选刚刚被其他匹配占用，请刷新后重试", 409, true);
-  if (error || !pair?.id) throw error || new AppError("OPS_MATCH_FAILED", "人工匹配未能生成 Pair", 500, true);
-  if (!["matched", "playing"].includes(String(pair.state))) {
-    const { error: presentError } = await supabaseAdmin().rpc("matchmaking_present_pair", { p_pair_id: pair.id });
-    if (presentError) throw presentError;
-    await autoConnectPair(pair.id, `ops-v2:${requestId}`);
-  }
-  // Reservation can precede automatic confirmation. Read the canonical pair
-  // once that lifecycle path completes so the operator audit is attached to
-  // the real Room rather than a stale pre-connect RPC snapshot.
-  const { data: connectedPair, error: connectedPairError } = await supabaseAdmin()
-    .from("matchmaking_pairs")
-    .select("room_id")
-    .eq("id", pair.id)
-    .maybeSingle();
-  if (connectedPairError) throw connectedPairError;
-  return { pairId: pair.id, roomId: connectedPair?.room_id || pair.room_id || null, status: "matched" };
 }
 
 export async function previewOpsCasualAttach(userId: string, groupId: string) {
@@ -801,7 +625,7 @@ async function confirmPairInternal(userId: string, pairId: string, decision: str
     p_request_id: requestId,
   });
   if (error) throw error;
-  if (data?.state === "cancelled") await attemptMatch(userId);
+  if (data?.state === "cancelled") await attemptRankedMatch(userId);
   return matchmakingStatus(userId);
 }
 

@@ -5,7 +5,7 @@ const sql = readFileSync(
   "supabase/migrations/20260821170000_reconcile_ghost_matchmaking.sql",
   "utf8",
 );
-const service = readFileSync("src/lib/matchmaking/service.ts", "utf8");
+const ticketStore = readFileSync("src/lib/matchmaking/ticket-store.ts", "utf8");
 const api = readFileSync("src/lib/api.ts", "utf8");
 const app = readFileSync("public/js/app.js", "utf8");
 const lifecycleMigration = readFileSync(
@@ -30,8 +30,8 @@ describe("ghost matchmaking recovery", () => {
   });
 
   it("does not treat an expired pre-room ticket as active", () => {
-    expect(service).toContain("ticket.expires_at");
-    expect(service).toContain("waiting_confirmation");
+    expect(ticketStore).toContain("expires_at is intentionally ignored");
+    expect(ticketStore).toContain("waiting_confirmation");
     expect(api).toContain('.in("state", ["searching", "candidate_found", "waiting_confirmation"])');
     expect(api).not.toContain('.gt("expires_at", activeTicketCutoff)');
   });
