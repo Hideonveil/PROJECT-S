@@ -3,6 +3,7 @@ import { createReadContext, gamesForProfile, publicProfile, publicProfilesFor, t
 import { mapGoodbyeRequests } from "./session-goodbye";
 import { mapSession } from "./session";
 import { presenceCutoffIso } from "./presence";
+import { roomMemberNeed, roomRecruitmentPresentation, roomShellNeed } from "./room-presentation";
 import type {
   EnrichedRecentConnection,
   Profile,
@@ -268,40 +269,6 @@ export async function enrichRoom(room: Record<string, unknown>, options: { conte
         .in("id", ticketIds)
     : { data: [] };
   const ticketByUser = new Map((ticketRows || []).map((ticket) => [ticket.user_id, ticket]));
-  const roleNames: Record<string, string> = {
-    "1": "主核", "2": "伪核", "3": "坦克", "4": "游走", "5": "辅助", "6": "功能",
-  };
-  const roleLabels = (roles: unknown) => {
-    const values = Array.isArray(roles) ? roles : [];
-    return values.length
-      ? values.map((role) => roleNames[String(role)] || `${role}号位`).join(" / ")
-      : "位置不限";
-  };
-  const needForTicket = (ticket: Record<string, any> | undefined) => {
-    if (!ticket) return null;
-    const roles = Array.isArray(ticket.desired_roles) ? ticket.desired_roles : [];
-    const metadata = ticket.metadata && typeof ticket.metadata === "object" ? ticket.metadata : {};
-    const ownRoles = Array.isArray(metadata.ownRoles) ? metadata.ownRoles : roles;
-    const teammateRoles = Array.isArray(metadata.teammateRoles) ? metadata.teammateRoles : [];
-    const microphone = ticket.microphone_preference || "any";
-    return {
-      game: ticket.game_id || roomNeed.game || "deadlock",
-      mode: ticket.mode || roomNeed.mode || "ranked",
-      goal: ticket.mode === "casual" ? "休闲" : "冲分",
-      target: Number(roomNeed.target) || rows.length || 2,
-      current: rows.length || 1,
-      desiredTeammates: ticket.desired_teammates ?? null,
-      minTeammates: ticket.min_teammates ?? null,
-      time: "现在",
-      voice: microphone !== "off",
-      details: {
-        rank: ticket.rank_code || "",
-        role: roleLabels(ownRoles),
-        teammateRole: roleLabels(teammateRoles),
-        voicePreference: microphone,
-      },
-    };
-  };
   // enrichRoom is only called after server-side room membership checks, so
   // members may see each other's in-room game account exchange fields.
   const memberIds = rows.map((m) => m.user_id);
@@ -313,7 +280,7 @@ export async function enrichRoom(room: Record<string, unknown>, options: { conte
       ...(byId.get(m.user_id) as PublicProfile),
       memberStatus: m.status || "active",
       exitedAt: m.exited_at || null,
-      need: needForTicket(ticketByUser.get(m.user_id)),
+      need: roomMemberNeed(ticketByUser.get(m.user_id), roomNeed, rows.length),
     }));
   const session = options.session === undefined
     ? (await supabaseAdmin()
@@ -345,12 +312,7 @@ export async function enrichRoom(room: Record<string, unknown>, options: { conte
       .eq("room_id", room.id as string)
       .order("requested_at", { ascending: true }),
   ]);
-  const roomStatus = String(room.status || "").toLowerCase();
-  const sessionStatus = String(session?.status || "").toLowerCase();
-  const legacyFormationState = String(room.formation_state || "").toLowerCase();
-  const hasFormalSession = ["ready", "playing", "completed", "cancelled"].includes(sessionStatus);
-  const recruitmentLocked = hasFormalSession || ["locked", "formal"].includes(legacyFormationState);
-  const recruiting = roomStatus === "connecting" && !recruitmentLocked;
+  const recruitment = roomRecruitmentPresentation(room.status, session?.status, room.formation_state);
   return {
     id: room.id as string,
     code: room.code as string,
@@ -363,11 +325,11 @@ export async function enrichRoom(room: Record<string, unknown>, options: { conte
     members: memberViews,
     sessionId: session?.id || null,
     sessionStatus: session?.status || null,
-    recruiting: recruiting,
-    recruitmentState: recruiting ? "recruiting" : recruitmentLocked ? "locked" : null,
+    recruiting: recruitment.recruiting,
+    recruitmentState: recruitment.recruitmentState,
     formationState: (room.formation_state as Room["formationState"]) || (formationGroup ? "formal" : null),
     formationGroupId: formationGroup?.id || null,
-    isForming: ["forming", "backfilling", "locked"].includes(String(room.formation_state || "")),
+    isForming: recruitment.isForming,
     resumeEligible: options.resumeEligible === true,
     goodbyeRequests: mapGoodbyeRequests(goodbyeRows || []),
     sessionSettlements: (settlementRows || []).map((row) => ({ userId: row.user_id, kind: row.settlement_kind, settledAt: row.settled_at })),
@@ -504,35 +466,10 @@ export async function activeRoomShellFor(profileId: string, context?: StateReadC
   const room = candidate.room;
   const roomNeed = (room.need as Record<string, any>) || {};
   const ticket = candidate.ticket;
-  const shellRoleLabels = (roles: unknown) => {
-    const names: Record<string, string> = { "1": "主核", "2": "伪核", "3": "坦克", "4": "游走", "5": "辅助", "6": "功能" };
-    const values = Array.isArray(roles) ? roles : [];
-    return values.length ? values.map((role) => names[String(role)] || `${role}号位`).join(" / ") : "位置不限";
-  };
-  const ticketNeed = ticket
-    ? {
-        ...roomNeed,
-        game: ticket.game_id || roomNeed.game || "deadlock",
-        mode: ticket.mode || roomNeed.mode || "ranked",
-        goal: ticket.mode === "casual" ? "休闲" : "冲分",
-        rankCode: ticket.rank_code || roomNeed.rankCode || null,
-        casualIntent: ticket.metadata?.casualIntent || roomNeed.casualIntent || "default",
-        target: Number(roomNeed.target) || Number(ticket.metadata?.teamMax) || (ticket.mode === "ranked" ? 2 : 6),
-        details: {
-          ...(roomNeed.details && typeof roomNeed.details === "object" ? roomNeed.details : {}),
-          rank: ticket.rank_code || roomNeed.details?.rank || roomNeed.rankCode || "",
-          role: shellRoleLabels(ticket.metadata?.ownRoles || ticket.desired_roles),
-          teammateRole: shellRoleLabels(ticket.metadata?.teammateRoles),
-          voicePreference: ticket.microphone_preference || roomNeed.details?.voicePreference || "any",
-        },
-      }
-    : roomNeed;
+  const ticketNeed = roomShellNeed(ticket, roomNeed);
   const roomStatus = String(room.status || "").toLowerCase();
-  const sessionStatus = String(candidate.session?.status || "").toLowerCase();
-  const hasFormalSession = ["ready", "playing", "completed", "cancelled"].includes(sessionStatus);
   const formationState = (room.formation_state as Room["formationState"]) || null;
-  const recruitmentLocked = hasFormalSession || ["locked", "formal"].includes(String(formationState || "").toLowerCase());
-  const recruiting = roomStatus === "connecting" && !recruitmentLocked;
+  const recruitment = roomRecruitmentPresentation(room.status, candidate.session?.status, formationState);
   const member = { id: profileId, memberStatus: "active", exitedAt: null } as unknown as Room["members"][number];
   const activeCount = 1;
 
@@ -548,11 +485,11 @@ export async function activeRoomShellFor(profileId: string, context?: StateReadC
     members: [member],
     sessionId: candidate.session?.id || null,
     sessionStatus: candidate.session?.status || null,
-    recruiting,
-    recruitmentState: recruiting ? "recruiting" : recruitmentLocked ? "locked" : null,
+    recruiting: recruitment.recruiting,
+    recruitmentState: recruitment.recruitmentState,
     formationState,
     formationGroupId: null,
-    isForming: ["forming", "backfilling", "locked"].includes(String(formationState || "").toLowerCase()),
+    isForming: recruitment.isForming,
     shell: true,
     resumeEligible: true,
     goodbyeRequests: [],

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
+import { roomRecruitmentPresentation } from "../src/lib/room-presentation";
 
 const read = (file: string) => readFileSync(file, "utf8");
 
@@ -15,8 +16,11 @@ describe("unified Room recruitment contract", () => {
   it("exposes recruitment as a Room concern separate from legacy status fields", () => {
     expect(types).toContain("recruiting?: boolean;");
     expect(types).toContain('recruitmentState?: "recruiting" | "locked" | null;');
-    expect(api).toContain("recruiting: recruiting");
-    expect(api).toContain("recruitmentState:");
+    expect(api).toContain("roomRecruitmentPresentation");
+    expect(roomRecruitmentPresentation("connecting", null, "forming")).toMatchObject({
+      recruiting: true,
+      recruitmentState: "recruiting",
+    });
     expect(app).toContain("recruiting: room.recruiting === true");
     expect(app).toContain("recruitmentState: room.recruitmentState || null");
   });
