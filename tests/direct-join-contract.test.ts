@@ -14,15 +14,17 @@ describe("public matchmaking direct-join contract", () => {
   it("requires authentication and validates the ticket before reserving a pair or group", () => {
     const route = read("src/app/api/matchmaking/join/route.ts");
     const service = read("src/lib/matchmaking/service.ts");
+    const directJoin = read("src/lib/matchmaking/direct-join.ts");
     expect(route).toContain("requireRequestProfile");
     expect(route).toContain("DIRECT_JOIN_INVALID");
     expect(route).toContain("joinPublicTicket");
-    expect(service).toContain("DIRECT_JOIN_UNAVAILABLE");
-    expect(service).toContain("matchmaking_reserve_pair");
-    expect(service).toContain("matchmaking_reserve_group_member");
-    expect(service).toContain('p_reason: "direct_join_failed"');
-    expect(service).toContain("active.request_id === requestId");
-    expect(service).toContain("createdTicket?.reused");
+    expect(service).toContain("joinPublicTicketOperation");
+    expect(directJoin).toContain("DIRECT_JOIN_UNAVAILABLE");
+    expect(directJoin).toContain("matchmaking_reserve_pair");
+    expect(directJoin).toContain("matchmaking_reserve_group_member");
+    expect(directJoin).toContain('p_reason: "direct_join_failed"');
+    expect(directJoin).toContain("active.request_id === requestId");
+    expect(directJoin).toContain("createdTicket?.reused");
     expect(route).toContain("[0-9a-f]{4}-[0-9a-f]{12}");
     expect(route).toContain("[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}");
   });
