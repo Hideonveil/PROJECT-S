@@ -1,4 +1,4 @@
-name: Capacity 200 three-cycle
+name: Distributed capacity 50/200 three-cycle
 
 on:
   workflow_dispatch:
@@ -15,6 +15,13 @@ on:
         description: Must exactly equal run_id
         required: true
         type: string
+      users:
+        description: Concurrent ordinary users
+        required: true
+        type: choice
+        options:
+          - "50"
+          - "200"
 
 permissions:
   contents: read
@@ -43,8 +50,8 @@ jobs:
         run: >-
           pnpm capacity:distributed -- plan
           --run-id "${{ inputs.run_id }}"
-          --manifest output/capacity-validation/breakpoint-authfix-rerun40-20260825/run-manifest.json
-          --users 200
+          --manifest output/capacity-validation/breakpoint-accelerated-20260825/run-manifest.json
+          --users "${{ inputs.users }}"
           --nodes 10
           --start-at "${{ inputs.start_at }}"
           --output run-plan/plan.json
