@@ -1,6 +1,6 @@
 import { publicProfilesFor } from "../data";
 import { AppError } from "../http";
-import { KeyedSingleFlight } from "../single-flight";
+import { KeyedSerialQueue } from "../keyed-serial-queue";
 import { supabaseAdmin } from "../supabase";
 import type { MatcherAttemptContext } from "./attempt-context";
 import { autoConnectPair } from "./pair-lifecycle";
@@ -32,16 +32,16 @@ import type { MatchmakingInput } from "./types";
 
 export { forceOpsRankedMatch, previewOpsRankedMatch } from "./ranked";
 
-const matchmakingFlights = new KeyedSingleFlight();
+const matchmakingQueue = new KeyedSerialQueue();
 
 export function startPersistentMatcher() {
-  startMatcherScheduler((row, context) => withMatchmakingFlight(row.user_id, () => row.mode === "casual"
+  startMatcherScheduler((row, context) => withMatchmakingSerial(row.user_id, () => row.mode === "casual"
     ? attemptCasualGroup(row.user_id, context)
     : attemptRankedMatch(row.user_id, context)));
 }
 
-function withMatchmakingFlight<T>(userId: string, work: () => Promise<T>): Promise<T> {
-  return matchmakingFlights.run(userId, work);
+function withMatchmakingSerial<T>(userId: string, work: () => Promise<T>): Promise<T> {
+  return matchmakingQueue.run(userId, work);
 }
 
 export async function previewOpsCasualAttach(userId: string, groupId: string) {
@@ -334,7 +334,7 @@ function startTicketSnapshot(data: MatchmakingTicketRow) {
 }
 
 export function startTicket(userId: string, input: MatchmakingInput, requestId: string | null) {
-  return withMatchmakingFlight(userId, () => startTicketInternal(userId, input, requestId));
+  return withMatchmakingSerial(userId, () => startTicketInternal(userId, input, requestId));
 }
 
 /**
@@ -462,7 +462,7 @@ async function joinPublicTicketInternal(userId: string, targetTicketId: string, 
 }
 
 export function joinPublicTicket(userId: string, targetTicketId: string, requestId: string | null) {
-  return withMatchmakingFlight(userId, () => joinPublicTicketInternal(userId, targetTicketId, requestId));
+  return withMatchmakingSerial(userId, () => joinPublicTicketInternal(userId, targetTicketId, requestId));
 }
 
 export async function matchmakingStatus(userId: string) {
@@ -570,7 +570,7 @@ async function reconcileOrphanWaitingRooms(userId: string, requestId: string | n
 }
 
 export function cancelTicket(userId: string, reason: string, requestId: string | null) {
-  return withMatchmakingFlight(userId, () => cancelTicketInternal(userId, reason, requestId));
+  return withMatchmakingSerial(userId, () => cancelTicketInternal(userId, reason, requestId));
 }
 
 /**
@@ -624,7 +624,7 @@ async function confirmPairInternal(userId: string, pairId: string, decision: str
 }
 
 export function confirmPair(userId: string, pairId: string, decision: string, requestId: string | null) {
-  return withMatchmakingFlight(userId, () => confirmPairInternal(userId, pairId, decision, requestId));
+  return withMatchmakingSerial(userId, () => confirmPairInternal(userId, pairId, decision, requestId));
 }
 
 async function startGroupInternal(userId: string, groupId: string, requestId: string | null) {
@@ -639,7 +639,7 @@ async function startGroupInternal(userId: string, groupId: string, requestId: st
 }
 
 export function startGroup(userId: string, groupId: string, requestId: string | null) {
-  return withMatchmakingFlight(userId, () => startGroupInternal(userId, groupId, requestId));
+  return withMatchmakingSerial(userId, () => startGroupInternal(userId, groupId, requestId));
 }
 
 async function confirmGroupInternal(userId: string, groupId: string, decision: string, requestId: string | null) {
@@ -658,7 +658,7 @@ async function confirmGroupInternal(userId: string, groupId: string, decision: s
 }
 
 export function confirmGroup(userId: string, groupId: string, decision: string, requestId: string | null) {
-  return withMatchmakingFlight(userId, () => confirmGroupInternal(userId, groupId, decision, requestId));
+  return withMatchmakingSerial(userId, () => confirmGroupInternal(userId, groupId, decision, requestId));
 }
 
 export async function submitMatchFeedback(userId: string, body: Record<string, unknown>) {

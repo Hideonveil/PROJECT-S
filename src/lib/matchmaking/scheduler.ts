@@ -193,7 +193,7 @@ async function runMatcherBatch(rows: SchedulerTicketRow[], tickId: string, proce
   await runBoundedMatcherRows(rows, MATCHER_SCHEDULER_POLICY.processingConcurrency, processRow);
 }
 
-async function runMatchmakingSweep(processTicket: MatcherProcessTicket) {
+export async function runMatchmakingSweep(processTicket: MatcherProcessTicket) {
   if (matcherBusy) return;
   matcherBusy = true;
   const tickId = nextMatcherTick();

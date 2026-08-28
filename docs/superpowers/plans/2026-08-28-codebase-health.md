@@ -16,7 +16,7 @@
 - [ ] Extract Casual group/backfill flow.
 - [ ] Extract direct public join flow.
 - [ ] Extract OPS matching interventions. (Ranked complete; Casual remains.)
-- [x] Keep one per-user single-flight owner.
+- [x] Keep one per-user serial mutation owner without swallowing distinct operations.
 - [ ] Keep `service.ts` as a small orchestration interface, not a second implementation.
 
 ## Phase 3 — Room read model
@@ -64,8 +64,8 @@
 - `matchmaking/service.ts`: 1,218 → 682 lines.
 - `api.ts`: 701 → 638 lines, with shared Room presentation rules isolated.
 - `app.js`: 4,726 → 4,649 lines, with matchmaking snapshot merging isolated.
-- Regression baseline: 89 files / 395 tests → 96 files / 417 tests.
-- Review follow-up adds behavioral guards for per-user single-flight,
+- Regression baseline: 89 files / 395 tests → 97 files / 418 tests.
+- Review follow-up adds behavioral guards for per-user serial execution,
   fresh/regular queue execution, bounded concurrency, recurring jitter and
   durable cooldown/quarantine state.
 - All completed slices pass typecheck, the full test suite and Production build.
