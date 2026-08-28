@@ -6,10 +6,15 @@ const migration = readFileSync("supabase/migrations/20260826140000_matchmaking_f
 
 describe("fair persistent matcher scheduler", () => {
   it("reserves bounded capacity for both fresh and older due tickets", () => {
-    expect(service).toContain("const MATCHER_FRESH_BATCH_SIZE = 4;");
+    expect(service).toContain("const MATCHER_FRESH_BATCH_SIZE = 16;");
     expect(service).toContain("const MATCHER_REGULAR_BATCH_SIZE = 4;");
     expect(service).toContain("matcher_wake_at");
     expect(service).toContain("const rows = [...(freshRows || []), ...(regularRows || [])];");
+  });
+
+  it("drains burst tickets with small bounded concurrency", () => {
+    expect(service).toContain("const MATCHER_PROCESSING_CONCURRENCY = 2;");
+    expect(service).toContain("runMatcherBatch");
   });
 
   it("keeps ticket wakes durable and separate from ordinary telemetry updates", () => {

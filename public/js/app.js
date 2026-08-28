@@ -2520,6 +2520,7 @@ async function initRoomChat() {
   let channel = null;
   let recoveryTimer = 0;
   let historyTimer = 0;
+  let roomSnapshotTimer = 0;
   let realtimeSubscribed = false;
   let browserSessionReady = false;
   if (chatAnnouncementRoomId !== room.id) {
@@ -2529,14 +2530,27 @@ async function initRoomChat() {
     lastSessionAnnouncementKey = "";
   }
   const reconcileChatHistory = async () => {
-    const messages = await api.fetchRoomMessages(room.id);
+    const messages = await api.fetchRoomMessages(room.code);
     if (!isCurrent()) return;
     const currentRoomMessages = roomChatMessages.filter((message) => !message?.room_id || message.room_id === room.id);
     renderChatMessages(mergeRoomMessages(currentRoomMessages, messages, room.id));
   };
+  const reconcileRoomSnapshot = async () => {
+    const snapshot = await api.getRoomSnapshot(room.code);
+    if (!isCurrent() || snapshot?.room?.id !== room.id) return;
+    applyServerSnapshot(snapshot);
+  };
+  const scheduleRoomSnapshot = (delay = 180) => {
+    if (!isCurrent() || roomSnapshotTimer) return;
+    roomSnapshotTimer = window.setTimeout(() => {
+      roomSnapshotTimer = 0;
+      reconcileRoomSnapshot().catch(() => {});
+    }, delay);
+  };
   const close = () => {
     if (recoveryTimer) window.clearTimeout(recoveryTimer);
     if (historyTimer) window.clearTimeout(historyTimer);
+    if (roomSnapshotTimer) window.clearTimeout(roomSnapshotTimer);
     if (channel && sb) sb.removeChannel(channel);
     if (chatClose === close) chatClose = null;
   };
@@ -2576,6 +2590,9 @@ async function initRoomChat() {
       if (!isCurrent()) return;
       appendChatMessage(payload.new);
     });
+    channel.on("postgres_changes", { event: "*", schema: "public", table: "room_state_events", filter: `room_id=eq.${room.id}` }, () => {
+      scheduleRoomSnapshot();
+    });
     const scheduleRecovery = () => {
       if (recoveryTimer || !isCurrent()) return;
       recoveryTimer = window.setTimeout(() => {
@@ -2588,6 +2605,7 @@ async function initRoomChat() {
       if (status === "SUBSCRIBED") {
         realtimeSubscribed = true;
         reconcileChatHistory().catch(() => {});
+        scheduleRoomSnapshot(0);
       }
       if (["CHANNEL_ERROR", "TIMED_OUT", "CLOSED"].includes(status)) {
         realtimeSubscribed = false;

@@ -203,8 +203,9 @@ const matchmakingFlights = new Map<string, Promise<unknown>>();
 
 const MATCHER_INTERVAL_MS = 2_000;
 const MATCHER_INTERVAL_JITTER_MS = 500;
-const MATCHER_FRESH_BATCH_SIZE = 4;
+const MATCHER_FRESH_BATCH_SIZE = 16;
 const MATCHER_REGULAR_BATCH_SIZE = 4;
+const MATCHER_PROCESSING_CONCURRENCY = 2;
 const MATCHER_FRESH_WINDOW_MS = 20_000;
 const MATCHER_IDLE_COOLDOWN_MS = 5_000;
 const MATCHER_WAITING_COOLDOWN_MS = 15_000;
@@ -292,6 +293,50 @@ async function refreshMatcherPoolGauges() {
   setGauge("forming_rooms", Number(forming || 0));
 }
 
+async function runMatcherBatch(rows: TicketRow[], tickId: string) {
+  let cursor = 0;
+  const processRow = async (row: TicketRow) => {
+    const context = createMatcherAttemptContext(tickId, row.id);
+    recordTicketProcessed(row.id);
+    const startedAt = Date.now();
+    try {
+      const result = await withMatchmakingFlight(row.user_id, () => row.mode === "casual"
+        ? attemptCasualGroup(row.user_id, context)
+        : attemptMatch(row.user_id, context));
+      if (result?.state && result.state !== "searching") {
+        context.outcome = "SUCCESS";
+      } else if (context.outcome === "NO_CANDIDATE" && row.mode === "casual" && result?.group_id) {
+        context.outcome = "WAITING";
+      }
+      await persistMatchAttemptState(row, context);
+      observeLatency("matchmaking_start", Date.now() - startedAt);
+    } catch (error) {
+      context.outcome = "DATABASE_ERROR";
+      context.reasonCode = isActualSqlSerializationFailure(error) ? "DATABASE_SERIALIZATION_FAILURE" : "DATABASE_ERROR";
+      if (isActualSqlSerializationFailure(error)) incrementRuntimeMetric("actual_sql_40001");
+      if (isDatabaseTimeout(error)) incrementRuntimeMetric("transaction_timeouts");
+      incrementRuntimeMetric("database_errors");
+      recordMatcherEvent({
+        tickId,
+        ticketId: row.id,
+        operation: "matchmaking_attempt",
+        outcome: isActualSqlSerializationFailure(error) ? "SQL_SERIALIZATION_FAILURE" : isDatabaseTimeout(error) ? "TIMEOUT" : "DATABASE_ERROR",
+        reasonCode: context.reasonCode,
+      });
+      try { await persistMatchAttemptState(row, context); } catch (persistError) {
+        console.warn(JSON.stringify({ event: "matchmaking_attempt_state_error", message: persistError instanceof Error ? persistError.message : String(persistError) }));
+      }
+    }
+  };
+  const worker = async () => {
+    while (cursor < rows.length) {
+      const row = rows[cursor++];
+      if (row) await processRow(row);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(MATCHER_PROCESSING_CONCURRENCY, rows.length) }, worker));
+}
+
 async function runMatchmakingSweep() {
   if (matcherBusy) return;
   matcherBusy = true;
@@ -324,42 +369,7 @@ async function runMatchmakingSweep() {
     if (regularError) throw regularError;
     const rows = [...(freshRows || []), ...(regularRows || [])];
     setGauge("eligible_tickets", rows.length);
-    for (const row of (rows || []) as TicketRow[]) {
-      const context = createMatcherAttemptContext(tickId, row.id);
-      recordTicketProcessed(row.id);
-      const startedAt = Date.now();
-      try {
-        const result = await withMatchmakingFlight(row.user_id, () => row.mode === "casual"
-          ? attemptCasualGroup(row.user_id, context)
-          : attemptMatch(row.user_id, context));
-        if (result?.state && result.state !== "searching") {
-          context.outcome = "SUCCESS";
-        } else if (context.outcome === "NO_CANDIDATE" && row.mode === "casual" && result?.group_id) {
-          context.outcome = "WAITING";
-        }
-        await persistMatchAttemptState(row, context);
-        observeLatency("matchmaking_start", Date.now() - startedAt);
-      } catch (error) {
-        context.outcome = "DATABASE_ERROR";
-        context.reasonCode = isActualSqlSerializationFailure(error) ? "DATABASE_SERIALIZATION_FAILURE" : "DATABASE_ERROR";
-        if (isActualSqlSerializationFailure(error)) incrementRuntimeMetric("actual_sql_40001");
-        if (isDatabaseTimeout(error)) incrementRuntimeMetric("transaction_timeouts");
-        incrementRuntimeMetric("database_errors");
-        recordMatcherEvent({
-          tickId,
-          ticketId: row.id,
-          operation: "matchmaking_attempt",
-          outcome: isActualSqlSerializationFailure(error) ? "SQL_SERIALIZATION_FAILURE" : isDatabaseTimeout(error) ? "TIMEOUT" : "DATABASE_ERROR",
-          reasonCode: context.reasonCode,
-        });
-        // An infrastructure error is not a retry invitation. Persist a
-        // bounded cooldown so one bad ticket cannot turn the sweep into a
-        // zero-delay error loop while the error is investigated.
-        try { await persistMatchAttemptState(row, context); } catch (persistError) {
-          console.warn(JSON.stringify({ event: "matchmaking_attempt_state_error", message: persistError instanceof Error ? persistError.message : String(persistError) }));
-        }
-      }
-    }
+    await runMatcherBatch(rows as TicketRow[], tickId);
   } catch (error) {
     incrementRuntimeMetric("database_errors");
     console.warn(JSON.stringify({
@@ -1080,6 +1090,7 @@ async function cancelTicketInternal(userId: string, reason: string, requestId: s
       p_request_id: requestId,
     });
     if (error) throw error;
+    await reconcileOrphanWaitingRooms(userId, requestId);
     return data;
   }
   const { data, error } = await supabaseAdmin().rpc("matchmaking_cancel_ticket", {
@@ -1088,7 +1099,16 @@ async function cancelTicketInternal(userId: string, reason: string, requestId: s
     p_request_id: requestId,
   });
   if (error) throw error;
+  await reconcileOrphanWaitingRooms(userId, requestId);
   return data;
+}
+
+async function reconcileOrphanWaitingRooms(userId: string, requestId: string | null) {
+  const { error } = await supabaseAdmin().rpc("reconcile_orphan_waiting_rooms", {
+    p_user_id: userId,
+    p_request_id: requestId,
+  });
+  if (error) throw error;
 }
 
 export function cancelTicket(userId: string, reason: string, requestId: string | null) {

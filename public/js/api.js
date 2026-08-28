@@ -237,16 +237,9 @@ export async function getSupabaseClient() {
   return getSupabase();
 }
 
-export async function fetchRoomMessages(roomId) {
-  const sb = await getSupabase();
-  const { data, error } = await sb
-    .from("messages")
-    .select("*")
-    .eq("room_id", roomId)
-    .order("created_at", { ascending: false })
-    .limit(100);
-  if (error) throw error;
-  return (data || []).reverse();
+export async function fetchRoomMessages(roomCode) {
+  const result = await authedRequest(`/api/room/${encodeURIComponent(roomCode)}/messages`);
+  return Array.isArray(result.messages) ? result.messages : [];
 }
 
 export async function sendRoomMessage(roomCode, content, operationId) {
