@@ -1,404 +1,37 @@
 import { publicProfilesFor } from "../data";
 import { AppError } from "../http";
 import { supabaseAdmin } from "../supabase";
+import type { MatcherAttemptContext } from "./attempt-context";
+import {
+  groupFromRow,
+  rulesFromRow,
+  ticketFromRow,
+  type MatchmakingGroupRow,
+  type MatchmakingRuleSetRow,
+  type MatchmakingTicketRow,
+} from "./records";
+import {
+  CASUAL_BACKFILL_BUDGET,
+  RESERVATION_CONFLICT_BUDGET,
+  isGroupReservationConflict,
+  isPairReservationConflict,
+  recordReservationAttempt,
+  recordReservationConflict,
+} from "./reservations";
 import { evaluateCompatibility, rankCandidates } from "./rules";
 import {
-  claimMatcherLease,
-  flushMatcherTelemetry,
   increment as incrementRuntimeMetric,
-  isActualSqlSerializationFailure,
-  isDatabaseTimeout,
-  markActiveTick,
-  matcherCircuitOpen,
-  nextMatcherTick,
   observeLatency,
-  recordMatcherEvent,
-  recordTicketProcessed,
-  setGauge,
 } from "./runtime-telemetry";
-import type { MatchGroup, MatchGroupMember, MatchTicket, MatchmakingInput, MatchmakingRuleSet } from "./types";
-
-type TicketRow = Record<string, any>;
-
-function ticketFromRow(row: TicketRow): MatchTicket {
-  const metadata = row.metadata && typeof row.metadata === "object" ? row.metadata : {};
-  const legacyRoles = Array.isArray(row.desired_roles) ? row.desired_roles : [];
-  const hasOwnRoles = Array.isArray(metadata.ownRoles);
-  const hasTeammateRoles = Array.isArray(metadata.teammateRoles);
-  return {
-    id: row.id,
-    userId: row.user_id,
-    gameId: row.game_id,
-    mode: row.mode,
-    rankCode: row.rank_code,
-    desiredRoles: row.desired_roles || [],
-    // Preserve the old desired_roles signal for tickets created before the
-    // split role fields were introduced. New tickets always write both arrays
-    // into metadata, including an explicit empty array for “不限”.
-    ownRoles: hasOwnRoles ? metadata.ownRoles : legacyRoles,
-    teammateRoles: hasTeammateRoles ? metadata.teammateRoles : legacyRoles,
-    microphonePreference: row.microphone_preference,
-    state: row.state,
-    searchStartedAt: row.search_started_at,
-    heartbeatAt: row.heartbeat_at,
-    expiresAt: row.expires_at,
-    desiredTeammates: Number(row.desired_teammates || 1),
-    minTeammates: Number(row.min_teammates || 1),
-    preferredTotalPlayers: Number.isInteger(Number(metadata.preferredTotalPlayers))
-      ? Number(metadata.preferredTotalPlayers)
-      : undefined,
-    groupId: row.group_id || null,
-  };
-}
-
-function groupFromRow(row: TicketRow, members: MatchGroupMember[] = []): MatchGroup {
-  return {
-    id: row.id,
-    ownerUserId: row.owner_user_id,
-    state: row.state,
-    gameId: row.game_id,
-    mode: "casual",
-    desiredTeammates: Number(row.desired_teammates || 1),
-    minTeammates: Number(row.min_teammates || 1),
-    confirmationDeadline: row.confirmation_deadline || null,
-    roomId: row.room_id || null,
-    sessionId: row.session_id || null,
-    roomPhase: row.formation_state || null,
-    hardMaxPlayers: Number(row.hard_max_players || 6),
-    recruitmentMode: row.recruitment_mode || "open",
-    members,
-  };
-}
-
-function rulesFromRow(row: TicketRow): MatchmakingRuleSet {
-  return {
-    id: row.id,
-    gameId: row.game_id,
-    version: row.version,
-    hardRules: row.hard_rules,
-    softPreferences: row.soft_preferences,
-    waitStrategy: row.wait_strategy,
-  };
-}
-
-// A matcher tick gets one reservation attempt for a ticket. A normal
-// contention result is durable state, not a reason to spin on the same
-// candidate while other tickets are waiting.
-const RESERVATION_CONFLICT_BUDGET = 1;
-const CASUAL_BACKFILL_BUDGET = 1;
-
-type ReservationKind = "pair" | "group";
-
-type MatcherAttemptContext = {
-  tickId: string;
-  ticketId: string;
-  startedAt: number;
-  conflictCount: number;
-  outcome: "NO_CANDIDATE" | "BUSINESS_CONFLICT" | "SUCCESS" | "WAITING" | "DATABASE_ERROR";
-  reasonCode: string | null;
-  targetId: string | null;
-};
-
-function createMatcherAttemptContext(tickId: string, ticketId: string): MatcherAttemptContext {
-  return {
-    tickId,
-    ticketId,
-    startedAt: Date.now(),
-    conflictCount: 0,
-    outcome: "NO_CANDIDATE",
-    reasonCode: null,
-    targetId: null,
-  };
-}
-
-function recordBusinessConflict(context: MatcherAttemptContext, reasonCode: string, targetId?: string | null) {
-  context.conflictCount += 1;
-  context.outcome = "BUSINESS_CONFLICT";
-  context.reasonCode = reasonCode;
-  context.targetId = targetId || null;
-  if (reasonCode === "STALE_CANDIDATE") incrementRuntimeMetric("stale_candidate");
-  if (reasonCode === "GROUP_FULL") incrementRuntimeMetric("group_full");
-  if (reasonCode === "ROOM_LOCKED") incrementRuntimeMetric("room_locked");
-  recordMatcherEvent({
-    tickId: context.tickId,
-    ticketId: context.ticketId,
-    candidateId: targetId || null,
-    operation: "reserve",
-    outcome: "BUSINESS_CONFLICT",
-    reasonCode,
-    attemptNumber: context.conflictCount,
-  });
-}
-
-type ReservationMetricBucket = {
-  minute: string;
-  reserveAttempts: number;
-  pairConflicts: number;
-  groupConflicts: number;
-};
-
-let reservationMetricBucket: ReservationMetricBucket | null = null;
-
-function currentMetricMinute() {
-  return new Date().toISOString().slice(0, 16);
-}
-
-function flushReservationMetrics(nextMinute: string) {
-  if (reservationMetricBucket && reservationMetricBucket.minute !== nextMinute && reservationMetricBucket.reserveAttempts > 0) {
-    console.info(JSON.stringify({
-      event: "matchmaking_reservation_metrics",
-      window_start: `${reservationMetricBucket.minute}:00Z`,
-      reserve_attempts: reservationMetricBucket.reserveAttempts,
-      pair_conflicts: reservationMetricBucket.pairConflicts,
-      group_conflicts: reservationMetricBucket.groupConflicts,
-      conflict_budget: RESERVATION_CONFLICT_BUDGET,
-    }));
-  }
-  if (!reservationMetricBucket || reservationMetricBucket.minute !== nextMinute) {
-    reservationMetricBucket = {
-      minute: nextMinute,
-      reserveAttempts: 0,
-      pairConflicts: 0,
-      groupConflicts: 0,
-    };
-  }
-}
-
-function recordReservationAttempt(kind?: ReservationKind) {
-  const minute = currentMetricMinute();
-  flushReservationMetrics(minute);
-  if (!reservationMetricBucket) return;
-  reservationMetricBucket.reserveAttempts += 1;
-  if (kind === "pair") incrementRuntimeMetric("pair_attempts");
-  if (kind === "group") incrementRuntimeMetric("group_attempts");
-}
-
-function recordReservationConflict(kind: ReservationKind) {
-  const minute = currentMetricMinute();
-  flushReservationMetrics(minute);
-  if (!reservationMetricBucket) return;
-  if (kind === "pair") reservationMetricBucket.pairConflicts += 1;
-  if (kind === "group") reservationMetricBucket.groupConflicts += 1;
-  incrementRuntimeMetric(kind === "pair" ? "pair_business_conflicts" : "group_business_conflicts");
-}
-
-function hasReservationConflictReason(data: any, reasons: string[]) {
-  return data?.ok === false && reasons.includes(data?.reason);
-}
-
-function isPairReservationConflict(error: any, data?: any) {
-  // Business contention must be a committed typed result. A legacy exception
-  // carrying SQLSTATE 40001 is deliberately not accepted as a business miss.
-  return hasReservationConflictReason(data, ["MATCH_RESERVATION_CONFLICT"])
-    || (String(error?.code || "") !== "40001" && error?.message?.includes("MATCH_RESERVATION_CONFLICT"));
-}
-
-function isGroupReservationConflict(error: any, data?: any) {
-  return hasReservationConflictReason(data, ["GROUP_RESERVATION_CONFLICT", "GROUP_SIZE_CONFLICT"])
-    || (String(error?.code || "") !== "40001" && error?.message?.includes("GROUP_RESERVATION_CONFLICT"))
-    || (String(error?.code || "") !== "40001" && error?.message?.includes("GROUP_SIZE_CONFLICT"));
-}
+import { startMatcherScheduler } from "./scheduler";
+import type { MatchmakingInput } from "./types";
 
 const matchmakingFlights = new Map<string, Promise<unknown>>();
 
-const MATCHER_INTERVAL_MS = 2_000;
-const MATCHER_INTERVAL_JITTER_MS = 500;
-const MATCHER_FRESH_BATCH_SIZE = 16;
-const MATCHER_REGULAR_BATCH_SIZE = 4;
-const MATCHER_PROCESSING_CONCURRENCY = 2;
-const MATCHER_FRESH_WINDOW_MS = 20_000;
-const MATCHER_IDLE_COOLDOWN_MS = 5_000;
-const MATCHER_WAITING_COOLDOWN_MS = 15_000;
-const MATCHER_ERROR_COOLDOWN_MS = 30_000;
-const MATCHER_ERROR_QUARANTINE_THRESHOLD = 3;
-const MATCHER_ERROR_QUARANTINE_MS = 5 * 60_000;
-let matcherHandle: ReturnType<typeof setTimeout> | null = null;
-let matcherTelemetryHandle: ReturnType<typeof setInterval> | null = null;
-let matcherBusy = false;
-let lastPoolGaugeAt = 0;
-
-function cooldownForAttempt(context: MatcherAttemptContext, previousConflicts: number, previousErrors: number) {
-  if (context.outcome === "BUSINESS_CONFLICT") {
-    const exponent = Math.min(5, Math.max(0, previousConflicts));
-    return Math.min(30_000, 1_000 * (2 ** exponent)) + Math.floor(Math.random() * 500);
-  }
-  if (context.outcome === "WAITING") return MATCHER_WAITING_COOLDOWN_MS;
-  if (context.outcome === "DATABASE_ERROR") {
-    const errors = previousErrors + 1;
-    if (errors >= MATCHER_ERROR_QUARANTINE_THRESHOLD) return MATCHER_ERROR_QUARANTINE_MS;
-    return MATCHER_ERROR_COOLDOWN_MS * errors;
-  }
-  return MATCHER_IDLE_COOLDOWN_MS + Math.floor(Math.random() * 1_000);
-}
-
-async function persistMatchAttemptState(sourceRow: TicketRow, context: MatcherAttemptContext) {
-  if (!sourceRow.id || sourceRow.state !== "searching") return;
-  const previousConflicts = Number(sourceRow.consecutive_conflicts || 0);
-  const previousErrors = Number(sourceRow.consecutive_match_errors || 0);
-  const cooldownMs = cooldownForAttempt(context, previousConflicts, previousErrors);
-  const consecutiveConflicts = context.outcome === "BUSINESS_CONFLICT" ? previousConflicts + 1 : 0;
-  const consecutiveErrors = context.outcome === "DATABASE_ERROR" ? previousErrors + 1 : 0;
-  const quarantined = consecutiveErrors >= MATCHER_ERROR_QUARANTINE_THRESHOLD;
-  const nextAttemptAt = new Date(Date.now() + cooldownMs).toISOString();
-  const { error } = await supabaseAdmin()
-    .from("matchmaking_tickets")
-    .update({
-      last_match_attempt_at: new Date().toISOString(),
-      next_match_attempt_at: nextAttemptAt,
-      last_match_outcome: context.outcome,
-      last_match_target_id: context.targetId,
-      consecutive_conflicts: consecutiveConflicts,
-      consecutive_match_errors: consecutiveErrors,
-      matcher_quarantined_at: quarantined ? new Date().toISOString() : null,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", sourceRow.id)
-    .eq("state", "searching");
-  if (error) throw error;
-  if (context.outcome === "BUSINESS_CONFLICT") {
-    incrementRuntimeMetric("matcher_backoffs");
-    recordMatcherEvent({
-      tickId: context.tickId,
-      ticketId: context.ticketId,
-      candidateId: context.targetId,
-      operation: "schedule_next_attempt",
-      outcome: "COOLDOWN",
-      reasonCode: context.reasonCode,
-      attemptNumber: consecutiveConflicts,
-      cooldownMs,
-    });
-  }
-  if (quarantined) {
-    recordMatcherEvent({
-      tickId: context.tickId,
-      ticketId: context.ticketId,
-      operation: "schedule_next_attempt",
-      outcome: "QUARANTINED",
-      reasonCode: context.reasonCode || "DATABASE_ERROR",
-      attemptNumber: consecutiveErrors,
-      cooldownMs,
-    });
-  }
-}
-
-async function refreshMatcherPoolGauges() {
-  if (Date.now() - lastPoolGaugeAt < 10_000) return;
-  lastPoolGaugeAt = Date.now();
-  const admin = supabaseAdmin();
-  const [{ count: searching }, { count: forming }] = await Promise.all([
-    admin.from("matchmaking_tickets").select("id", { count: "exact", head: true }).eq("state", "searching"),
-    admin.from("matchmaking_groups").select("id", { count: "exact", head: true }).in("state", ["forming", "backfilling"]),
-  ]);
-  setGauge("searching_tickets", Number(searching || 0));
-  setGauge("forming_rooms", Number(forming || 0));
-}
-
-async function runMatcherBatch(rows: TicketRow[], tickId: string) {
-  let cursor = 0;
-  const processRow = async (row: TicketRow) => {
-    const context = createMatcherAttemptContext(tickId, row.id);
-    recordTicketProcessed(row.id);
-    const startedAt = Date.now();
-    try {
-      const result = await withMatchmakingFlight(row.user_id, () => row.mode === "casual"
-        ? attemptCasualGroup(row.user_id, context)
-        : attemptMatch(row.user_id, context));
-      if (result?.state && result.state !== "searching") {
-        context.outcome = "SUCCESS";
-      } else if (context.outcome === "NO_CANDIDATE" && row.mode === "casual" && result?.group_id) {
-        context.outcome = "WAITING";
-      }
-      await persistMatchAttemptState(row, context);
-      observeLatency("matchmaking_start", Date.now() - startedAt);
-    } catch (error) {
-      context.outcome = "DATABASE_ERROR";
-      context.reasonCode = isActualSqlSerializationFailure(error) ? "DATABASE_SERIALIZATION_FAILURE" : "DATABASE_ERROR";
-      if (isActualSqlSerializationFailure(error)) incrementRuntimeMetric("actual_sql_40001");
-      if (isDatabaseTimeout(error)) incrementRuntimeMetric("transaction_timeouts");
-      incrementRuntimeMetric("database_errors");
-      recordMatcherEvent({
-        tickId,
-        ticketId: row.id,
-        operation: "matchmaking_attempt",
-        outcome: isActualSqlSerializationFailure(error) ? "SQL_SERIALIZATION_FAILURE" : isDatabaseTimeout(error) ? "TIMEOUT" : "DATABASE_ERROR",
-        reasonCode: context.reasonCode,
-      });
-      try { await persistMatchAttemptState(row, context); } catch (persistError) {
-        console.warn(JSON.stringify({ event: "matchmaking_attempt_state_error", message: persistError instanceof Error ? persistError.message : String(persistError) }));
-      }
-    }
-  };
-  const worker = async () => {
-    while (cursor < rows.length) {
-      const row = rows[cursor++];
-      if (row) await processRow(row);
-    }
-  };
-  await Promise.all(Array.from({ length: Math.min(MATCHER_PROCESSING_CONCURRENCY, rows.length) }, worker));
-}
-
-async function runMatchmakingSweep() {
-  if (matcherBusy) return;
-  matcherBusy = true;
-  const tickId = nextMatcherTick();
-  try {
-    if (!(await claimMatcherLease())) return;
-    markActiveTick();
-    await refreshMatcherPoolGauges();
-    if (matcherCircuitOpen()) return;
-    const eligibleAt = new Date().toISOString();
-    const freshSince = new Date(Date.now() - MATCHER_FRESH_WINDOW_MS).toISOString();
-    const select = "id,user_id,mode,state,next_match_attempt_at,consecutive_conflicts,consecutive_match_errors,matcher_wake_at";
-    const { data: freshRows, error: freshError } = await supabaseAdmin()
-      .from("matchmaking_tickets")
-      .select(select)
-      .eq("state", "searching")
-      .or(`next_match_attempt_at.is.null,next_match_attempt_at.lte.${eligibleAt}`)
-      .gte("matcher_wake_at", freshSince)
-      .order("matcher_wake_at", { ascending: false })
-      .limit(MATCHER_FRESH_BATCH_SIZE);
-    if (freshError) throw freshError;
-    const { data: regularRows, error: regularError } = await supabaseAdmin()
-      .from("matchmaking_tickets")
-      .select(select)
-      .eq("state", "searching")
-      .or(`next_match_attempt_at.is.null,next_match_attempt_at.lte.${eligibleAt}`)
-      .or(`matcher_wake_at.is.null,matcher_wake_at.lt.${freshSince}`)
-      .order("search_started_at", { ascending: true })
-      .limit(MATCHER_REGULAR_BATCH_SIZE);
-    if (regularError) throw regularError;
-    const rows = [...(freshRows || []), ...(regularRows || [])];
-    setGauge("eligible_tickets", rows.length);
-    await runMatcherBatch(rows as TicketRow[], tickId);
-  } catch (error) {
-    incrementRuntimeMetric("database_errors");
-    console.warn(JSON.stringify({
-      event: "matchmaking_sweep_error",
-      message: error instanceof Error ? error.message : String(error),
-    }));
-  } finally {
-    matcherBusy = false;
-  }
-}
-
-/**
- * A deliberately small in-process matcher. Active tickets are durable rows,
- * so a restart simply resumes from the next sweep. Existing reservation RPCs
- * provide the database-side idempotency and conflict boundary.
- */
 export function startPersistentMatcher() {
-  if (matcherHandle) return;
-  const scheduleNextSweep = (delayMs: number) => {
-    matcherHandle = setTimeout(() => {
-      void runMatchmakingSweep().finally(() => {
-        scheduleNextSweep(MATCHER_INTERVAL_MS + Math.floor(Math.random() * MATCHER_INTERVAL_JITTER_MS));
-      });
-    }, delayMs);
-    matcherHandle.unref?.();
-  };
-  scheduleNextSweep(0);
-  matcherTelemetryHandle = setInterval(() => { void flushMatcherTelemetry(); }, 10_000);
-  matcherTelemetryHandle.unref?.();
+  startMatcherScheduler((row, context) => withMatchmakingFlight(row.user_id, () => row.mode === "casual"
+    ? attemptCasualGroup(row.user_id, context)
+    : attemptMatch(row.user_id, context)));
 }
 
 function withMatchmakingFlight<T>(userId: string, work: () => Promise<T>): Promise<T> {
@@ -422,7 +55,7 @@ async function activeTicketRow(userId: string) {
     .limit(1)
     .maybeSingle();
   if (error) throw error;
-  const ticket = data as TicketRow | null;
+  const ticket = data as MatchmakingTicketRow | null;
   if (!ticket) return null;
   // ticket.expires_at is intentionally ignored. Active rows are closed only
   // by an explicit cancel/leave/offline action.
@@ -452,7 +85,7 @@ async function attemptMatch(userId: string, context?: MatcherAttemptContext) {
   if (waitingError) throw waitingError;
 
   const source = ticketFromRow(sourceRow);
-  const rules = rulesFromRow(ruleRow);
+  const rules = rulesFromRow(ruleRow as MatchmakingRuleSetRow);
   const cooldownSeconds = Math.max(0, Number(rules.waitStrategy.rejectedPairCooldownSeconds || 0));
   const excludedUsers = new Set<string>();
   if (cooldownSeconds > 0) {
@@ -494,16 +127,14 @@ async function attemptMatch(userId: string, context?: MatcherAttemptContext) {
     if (error || isPairReservationConflict(null, pair)) {
       if (isPairReservationConflict(error, pair)) {
         conflictCount += 1;
-        if (context) recordBusinessConflict(context, "MATCH_RESERVATION_CONFLICT", candidate.ticket.id);
+        context?.recordBusinessConflict("MATCH_RESERVATION_CONFLICT", candidate.ticket.id);
         recordReservationConflict("pair");
         continue;
       }
       throw error;
     }
     if (context) {
-      context.outcome = "SUCCESS";
-      context.reasonCode = null;
-      context.targetId = candidate.ticket.id;
+      context.markSuccess(candidate.ticket.id);
       observeLatency("time_to_pair", Date.now() - context.startedAt);
       observeLatency("time_to_first_match", Date.now() - context.startedAt);
     }
@@ -557,7 +188,11 @@ export async function previewOpsRankedMatch(userA: string, userB: string) {
   }
   const { data: ruleRow, error } = await supabaseAdmin().from("matchmaking_rule_sets").select("*").eq("id", ticketA.rule_set_id).maybeSingle();
   if (error || !ruleRow) throw error || new AppError("MATCH_RULE_SET_MISSING", "匹配规则暂不可用", 503, true);
-  const compatibility = evaluateCompatibility(ticketFromRow(ticketA), ticketFromRow(ticketB), rulesFromRow(ruleRow));
+  const compatibility = evaluateCompatibility(
+    ticketFromRow(ticketA),
+    ticketFromRow(ticketB),
+    rulesFromRow(ruleRow as MatchmakingRuleSetRow),
+  );
   return { ticketA, ticketB, compatibility };
 }
 
@@ -598,7 +233,7 @@ export async function previewOpsCasualAttach(userId: string, groupId: string) {
     admin.from("matchmaking_groups").select("*").eq("id", groupId).maybeSingle(),
   ]);
   if (groupResult.error) throw groupResult.error;
-  const group = groupResult.data as TicketRow | null;
+  const group = groupResult.data as MatchmakingGroupRow | null;
   if (!ticket || ticket.mode !== "casual" || ticket.state !== "searching" || !group || !["forming", "backfilling", "searching", "partial_ready"].includes(group.state)) {
     throw new AppError("OPS_CASUAL_ATTACH_UNAVAILABLE", "玩家或休闲 Room 已不在可招募状态", 409, true);
   }
@@ -609,7 +244,16 @@ export async function previewOpsCasualAttach(userId: string, groupId: string) {
   if (ownerError || !ownerTicket) throw ownerError || new AppError("OPS_CASUAL_OWNER_TICKET_MISSING", "休闲 Room 缺少有效 Owner Ticket", 409, true);
   const { data: ruleRow, error: ruleError } = await admin.from("matchmaking_rule_sets").select("*").eq("id", ownerTicket.rule_set_id).maybeSingle();
   if (ruleError || !ruleRow) throw ruleError || new AppError("MATCH_RULE_SET_MISSING", "匹配规则暂不可用", 503, true);
-  return { ticket, group, compatibility: evaluateCompatibility(ticketFromRow(ownerTicket), ticketFromRow(ticket), rulesFromRow(ruleRow)), rules: rulesFromRow(ruleRow) };
+  return {
+    ticket,
+    group,
+    compatibility: evaluateCompatibility(
+      ticketFromRow(ownerTicket),
+      ticketFromRow(ticket),
+      rulesFromRow(ruleRow as MatchmakingRuleSetRow),
+    ),
+    rules: rulesFromRow(ruleRow as MatchmakingRuleSetRow),
+  };
 }
 
 export async function forceOpsCasualAttach(userId: string, groupId: string, reason: string) {
@@ -657,7 +301,7 @@ async function groupSnapshot(groupId: string, viewerId: string) {
     .eq("group_id", groupId)
     .order("joined_at", { ascending: true });
   if (memberError) throw memberError;
-  const members = (memberRows || []) as TicketRow[];
+  const members = (memberRows || []) as Array<Record<string, any>>;
   const ticketIds = members.map((member) => member.ticket_id).filter(Boolean);
   const { data: memberTickets, error: ticketError } = ticketIds.length
     ? await admin.from("matchmaking_tickets").select("id,rank_code,microphone_preference,mode").in("id", ticketIds)
@@ -666,7 +310,7 @@ async function groupSnapshot(groupId: string, viewerId: string) {
   const ticketById = new Map((memberTickets || []).map((ticket) => [ticket.id, ticket]));
   const profiles = await publicProfilesFor(members.map((member) => member.user_id));
   const profileById = new Map(profiles.map((profile) => [profile.id, profile]));
-  const group = groupFromRow(groupRow, members.map((member) => ({
+  const group = groupFromRow(groupRow as MatchmakingGroupRow, members.map((member) => ({
     userId: member.user_id,
     ticketId: member.ticket_id,
     isOwner: Boolean(member.is_owner),
@@ -692,17 +336,17 @@ async function attemptCasualGroup(userId: string, context?: MatcherAttemptContex
   if (!sourceRow || sourceRow.mode !== "casual") return sourceRow;
   const { data: ruleRow, error: ruleError } = await admin.from("matchmaking_rule_sets").select("*").eq("id", sourceRow.rule_set_id).single();
   if (ruleError || !ruleRow) throw ruleError || new Error("MATCH_RULE_SET_MISSING");
-  const rules = rulesFromRow(ruleRow);
+  const rules = rulesFromRow(ruleRow as MatchmakingRuleSetRow);
   const source = ticketFromRow(sourceRow);
 
   // A non-owner already inside a forming room waits for the owner (or another
   // sweep) to backfill it. The owner remains searchable and drives the room.
-  let ownGroup: TicketRow | null = null;
+  let ownGroup: MatchmakingGroupRow | null = null;
   if (sourceRow.group_id) {
     const { data: group } = await admin.from("matchmaking_groups").select("*").eq("id", sourceRow.group_id).maybeSingle();
-    ownGroup = group as TicketRow | null;
+    ownGroup = group as MatchmakingGroupRow | null;
     if (ownGroup && ownGroup.owner_user_id !== userId) {
-      if (context) context.outcome = "WAITING";
+      context?.markWaiting();
       return sourceRow;
     }
     if (ownGroup && !["searching", "partial_ready", "forming", "backfilling"].includes(ownGroup.state)) return sourceRow;
@@ -721,7 +365,7 @@ async function attemptCasualGroup(userId: string, context?: MatcherAttemptContex
       .limit(24);
     if (openGroupError) throw openGroupError;
     let conflictCount = 0;
-    for (const groupRow of (openGroups || []) as TicketRow[]) {
+    for (const groupRow of (openGroups || []) as MatchmakingGroupRow[]) {
       if (conflictCount >= RESERVATION_CONFLICT_BUDGET) break;
       const { count } = await admin.from("matchmaking_group_members")
         .select("id", { count: "exact", head: true })
@@ -746,9 +390,7 @@ async function attemptCasualGroup(userId: string, context?: MatcherAttemptContex
       });
       if (!error && !isGroupReservationConflict(null, reservation)) {
         if (context) {
-          context.outcome = "SUCCESS";
-          context.reasonCode = null;
-          context.targetId = source.id;
+          context.markSuccess(source.id);
           observeLatency("time_to_forming_room", Date.now() - context.startedAt);
           observeLatency("time_to_first_match", Date.now() - context.startedAt);
         }
@@ -757,7 +399,7 @@ async function attemptCasualGroup(userId: string, context?: MatcherAttemptContex
       }
       if (!isGroupReservationConflict(error, reservation)) throw error;
       conflictCount += 1;
-      if (context) recordBusinessConflict(context, String(reservation?.reason || "GROUP_RESERVATION_CONFLICT"), groupRow.id);
+      context?.recordBusinessConflict(String(reservation?.reason || "GROUP_RESERVATION_CONFLICT"), groupRow.id);
       recordReservationConflict("group");
     }
 
@@ -769,7 +411,7 @@ async function attemptCasualGroup(userId: string, context?: MatcherAttemptContex
       sourceRow = await activeTicketRow(userId);
       if (!sourceRow?.group_id) return sourceRow;
       const { data: group } = await admin.from("matchmaking_groups").select("*").eq("id", sourceRow.group_id).maybeSingle();
-      ownGroup = group as TicketRow | null;
+      ownGroup = group as MatchmakingGroupRow | null;
     }
   }
 
@@ -815,9 +457,7 @@ async function attemptCasualGroup(userId: string, context?: MatcherAttemptContex
       incrementRuntimeMetric("group_success");
       incrementRuntimeMetric("backfill_success");
       if (context) {
-        context.outcome = "SUCCESS";
-        context.reasonCode = null;
-        context.targetId = candidate.ticket.id;
+        context.markSuccess(candidate.ticket.id);
         observeLatency("backfill_latency", Date.now() - context.startedAt);
       }
       if (["matched", "playing"].includes(reservation?.state)) break;
@@ -825,7 +465,7 @@ async function attemptCasualGroup(userId: string, context?: MatcherAttemptContex
     }
     if (!isGroupReservationConflict(error, reservation)) throw error;
     conflictCount += 1;
-    if (context) recordBusinessConflict(context, String(reservation?.reason || "GROUP_RESERVATION_CONFLICT"), candidate.ticket.id);
+    context?.recordBusinessConflict(String(reservation?.reason || "GROUP_RESERVATION_CONFLICT"), candidate.ticket.id);
     recordReservationConflict("group");
   }
   return activeTicketRow(userId);
@@ -865,7 +505,7 @@ async function startTicketInternal(userId: string, input: MatchmakingInput, requ
   return startTicketSnapshot(data);
 }
 
-function startTicketSnapshot(data: TicketRow) {
+function startTicketSnapshot(data: MatchmakingTicketRow) {
   const { roomCode, reused, ...ticket } = data || {};
   return {
     ticket: { ...ticket, roomCode: roomCode || ticket.roomCode || null },
@@ -913,7 +553,7 @@ async function joinPublicTicketInternal(userId: string, targetTicketId: string, 
     .eq("id", targetRow.rule_set_id)
     .single();
   if (ruleError || !ruleRow) throw ruleError || new AppError("MATCH_RULE_SET_MISSING", "匹配规则暂不可用", 503, true);
-  const rules = rulesFromRow(ruleRow);
+  const rules = rulesFromRow(ruleRow as MatchmakingRuleSetRow);
   const target = ticketFromRow(targetRow);
   const input: MatchmakingInput = {
     gameId: target.gameId,
@@ -1026,7 +666,7 @@ export async function matchmakingStatus(userId: string) {
 
   // This is a deliberately small, privacy-safe lobby preview. It reveals only
   // the preferences a player has already made public by entering the pool.
-  const directoryTickets = (directoryRows || []) as TicketRow[];
+  const directoryTickets = (directoryRows || []) as Array<Record<string, any>>;
   const directoryProfiles = await publicProfilesFor(directoryTickets.map((row) => row.user_id), { onlineOnly: true });
   const directoryProfileById = new Map(directoryProfiles.map((profile) => [profile.id, profile]));
   const directory = directoryTickets
@@ -1047,7 +687,7 @@ export async function matchmakingStatus(userId: string) {
     const { data: room } = await admin.from("rooms").select("code").eq("id", ticket.room_id).maybeSingle();
     ticketRoomCode = room?.code || null;
   }
-  let pair: TicketRow | null = null;
+  let pair: Record<string, any> | null = null;
   let candidate = null;
   const group = ticket.group_id ? await groupSnapshot(ticket.group_id, userId) : null;
   if (ticket.pair_id) {

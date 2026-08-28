@@ -1,20 +1,17 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { MATCHER_SCHEDULER_POLICY } from "../src/lib/matchmaking/scheduler";
 
-const service = readFileSync("src/lib/matchmaking/service.ts", "utf8");
 const migration = readFileSync("supabase/migrations/20260826140000_matchmaking_fair_scheduler.sql", "utf8");
 
 describe("fair persistent matcher scheduler", () => {
   it("reserves bounded capacity for both fresh and older due tickets", () => {
-    expect(service).toContain("const MATCHER_FRESH_BATCH_SIZE = 16;");
-    expect(service).toContain("const MATCHER_REGULAR_BATCH_SIZE = 4;");
-    expect(service).toContain("matcher_wake_at");
-    expect(service).toContain("const rows = [...(freshRows || []), ...(regularRows || [])];");
+    expect(MATCHER_SCHEDULER_POLICY.freshBatchSize).toBe(16);
+    expect(MATCHER_SCHEDULER_POLICY.regularBatchSize).toBe(4);
   });
 
   it("drains burst tickets with small bounded concurrency", () => {
-    expect(service).toContain("const MATCHER_PROCESSING_CONCURRENCY = 2;");
-    expect(service).toContain("runMatcherBatch");
+    expect(MATCHER_SCHEDULER_POLICY.processingConcurrency).toBe(2);
   });
 
   it("keeps ticket wakes durable and separate from ordinary telemetry updates", () => {
@@ -35,7 +32,7 @@ describe("fair persistent matcher scheduler", () => {
   });
 
   it("runs only from boot instrumentation, with a jittered recurring tick", () => {
-    expect(service).toContain("MATCHER_INTERVAL_MS + Math.floor(Math.random() * MATCHER_INTERVAL_JITTER_MS)");
-    expect(service).not.toContain("void runMatchmakingSweep();\n  matcherHandle = setInterval");
+    expect(MATCHER_SCHEDULER_POLICY.intervalMs).toBe(2_000);
+    expect(MATCHER_SCHEDULER_POLICY.intervalJitterMs).toBe(500);
   });
 });

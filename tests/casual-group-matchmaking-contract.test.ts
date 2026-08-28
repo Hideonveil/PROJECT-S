@@ -1,8 +1,8 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { ticketFromRow } from "../src/lib/matchmaking/records";
 
 const sql = readFileSync("supabase/migrations/0016_casual_group_matchmaking.sql", "utf8");
-const service = readFileSync("src/lib/matchmaking/service.ts", "utf8");
 const matchingPage = readFileSync("public/js/pages/matching.js", "utf8");
 const api = readFileSync("public/js/api.js", "utf8");
 const homePage = readFileSync("public/js/pages/home.js", "utf8");
@@ -22,7 +22,15 @@ describe("casual group matchmaking wiring", () => {
   it("treats the requested teammate count as excluding the owner", () => {
     expect(sql).toContain("desired_teammates excludes the owner");
     expect(sql).toContain("v_member_count >= v_group.desired_teammates + 1");
-    expect(service).toContain("desiredTeammates: Number(row.desired_teammates || 1)");
+    expect(ticketFromRow({
+      id: "ticket-1",
+      user_id: "user-1",
+      game_id: "deadlock",
+      mode: "casual",
+      state: "searching",
+      desired_teammates: 3,
+      min_teammates: 1,
+    }).desiredTeammates).toBe(3);
   });
 
   it("supports the owner-starts-when-enough flow and independent confirmations", () => {

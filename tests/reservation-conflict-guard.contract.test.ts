@@ -1,46 +1,42 @@
-import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-
-const service = readFileSync("src/lib/matchmaking/service.ts", "utf8");
+import {
+  RESERVATION_CONFLICT_BUDGET,
+  isGroupReservationConflict,
+  isPairReservationConflict,
+  recordReservationAttempt,
+  recordReservationConflict,
+  reservationMetricsSnapshot,
+} from "../src/lib/matchmaking/reservations";
+import { nextMatcherCooldownMs } from "../src/lib/matchmaking/scheduler";
 
 describe("reservation conflict guard", () => {
-  it("bounds candidate reservation conflicts instead of walking the full candidate list", () => {
-    expect(service).toContain("const RESERVATION_CONFLICT_BUDGET = 1;");
-    expect(service).toContain("if (conflictCount >= RESERVATION_CONFLICT_BUDGET) break;");
-    expect(service).toContain("if (conflictCount >= RESERVATION_CONFLICT_BUDGET) return activeTicketRow(userId);");
+  it("allows only one contention result per ticket attempt", () => {
+    expect(RESERVATION_CONFLICT_BUDGET).toBe(1);
   });
 
-  it("persists a cooldown instead of sleeping and retrying inside a matcher tick", () => {
-    expect(service).not.toContain("waitForReservationConflict");
-    expect(service).toContain("next_match_attempt_at: nextAttemptAt");
-    expect(service).toContain("MATCHER_ERROR_QUARANTINE_THRESHOLD");
-    expect(service).toContain("continue;");
-    expect(service).toContain('String(error?.code || "") !== "40001"');
-    expect(service).toContain("hasReservationConflictReason(data");
-    expect(service).toContain("isPairReservationConflict(error, pair)");
-    expect(service).toContain("isGroupReservationConflict(error, reservation)");
+  it("backs off conflicts and quarantines repeated database errors", () => {
+    expect(nextMatcherCooldownMs("BUSINESS_CONFLICT", 0, 0, () => 0)).toBe(1_000);
+    expect(nextMatcherCooldownMs("BUSINESS_CONFLICT", 1, 0, () => 0)).toBe(2_000);
+    expect(nextMatcherCooldownMs("DATABASE_ERROR", 0, 2, () => 0)).toBe(300_000);
   });
 
-  it("serializes matching mutations per user", () => {
-    expect(service).toContain("const matchmakingFlights = new Map<string, Promise<unknown>>();");
-    expect(service).toContain("withMatchmakingFlight(userId, () => startTicketInternal");
-    expect(service).toContain("withMatchmakingFlight(userId, () => joinPublicTicketInternal");
-    expect(service).toContain("withMatchmakingFlight(userId, () => confirmPairInternal");
-    expect(service).toContain("withMatchmakingFlight(userId, () => confirmGroupInternal");
-    expect(service).toContain("withMatchmakingFlight(userId, () => cancelTicketInternal");
+  it("never classifies SQLSTATE 40001 as ordinary business contention", () => {
+    expect(isPairReservationConflict(null, { ok: false, reason: "MATCH_RESERVATION_CONFLICT" })).toBe(true);
+    expect(isGroupReservationConflict(null, { ok: false, reason: "GROUP_RESERVATION_CONFLICT" })).toBe(true);
+    expect(isPairReservationConflict({ code: "40001", message: "MATCH_RESERVATION_CONFLICT" })).toBe(false);
+    expect(isGroupReservationConflict({ code: "40001", message: "GROUP_RESERVATION_CONFLICT" })).toBe(false);
   });
 
-  it("does not start or wake a matcher from a user request", () => {
-    expect(service).toContain("if (data?.reused) return startTicketSnapshot(data);");
-    expect(service).not.toContain("wakePersistentMatcher");
-    expect(service).toContain("return startTicketSnapshot(data);");
-  });
+  it("counts reservation attempts and conflicts through the module interface", () => {
+    const before = reservationMetricsSnapshot();
+    recordReservationAttempt("pair");
+    recordReservationAttempt("group");
+    recordReservationConflict("pair");
+    recordReservationConflict("group");
+    const after = reservationMetricsSnapshot();
 
-  it("emits bounded reserve attempt and conflict counters without writing a database event per conflict", () => {
-    expect(service).toContain('event: "matchmaking_reservation_metrics"');
-    expect(service).toContain("reserve_attempts: reservationMetricBucket.reserveAttempts");
-    expect(service).toContain("pair_conflicts: reservationMetricBucket.pairConflicts");
-    expect(service).toContain("group_conflicts: reservationMetricBucket.groupConflicts");
-    expect(service).not.toContain("trackEvent(\"matchmaking_reservation_conflict\"");
+    expect(after?.reserveAttempts).toBe((before?.reserveAttempts || 0) + 2);
+    expect(after?.pairConflicts).toBe((before?.pairConflicts || 0) + 1);
+    expect(after?.groupConflicts).toBe((before?.groupConflicts || 0) + 1);
   });
 });

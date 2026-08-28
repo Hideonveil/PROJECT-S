@@ -205,10 +205,20 @@ describe("distributed capacity coordinator contract", () => {
     };
     const credentials = actorIds.map((actorId) => ({ identity: actorId, identifier: actorId, password: "only-in-test-driver" }));
     const startedAt = [];
+    let firstAuthentication = true;
     const driver = {
       async egressId() { return "egress-test-01"; },
       async authenticate(credential) {
         startedAt.push({ actorId: credential.identity, at: Date.now() });
+        if (firstAuthentication) {
+          firstAuthentication = false;
+          await new Promise((resolve) => setImmediate(resolve));
+          const blockedUntil = performance.now() + 80;
+          while (performance.now() < blockedUntil) {
+            // Reproduce a busy event loop so independently scheduled timers
+            // become overdue together instead of preserving login spacing.
+          }
+        }
         return { actorId: credential.identity };
       },
       async runCycle() { return { exited: true }; },

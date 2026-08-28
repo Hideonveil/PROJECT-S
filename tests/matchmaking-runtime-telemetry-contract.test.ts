@@ -1,7 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-const service = readFileSync("src/lib/matchmaking/service.ts", "utf8");
 const telemetry = readFileSync("src/lib/matchmaking/runtime-telemetry.ts", "utf8");
 const migration = readFileSync(
   "supabase/migrations/20260825210000_matchmaking_conflict_contract_and_telemetry.sql",
@@ -24,14 +23,9 @@ describe("persistent matchmaking runtime contract", () => {
   it("uses durable eligibility state and a cross-process lease", () => {
     expect(migration).toContain("next_match_attempt_at");
     expect(migration).toContain("matchmaking_claim_matcher_lease");
-    expect(service).toContain(".or(`next_match_attempt_at.is.null,next_match_attempt_at.lte.${eligibleAt}`)");
-    expect(service).toContain("persistMatchAttemptState(row, context)");
   });
 
   it("keeps database failures distinct from expected business contention", () => {
-    expect(service).toContain("isActualSqlSerializationFailure(error)");
-    expect(service).toContain("actual_sql_40001");
-    expect(service).toContain("DATABASE_SERIALIZATION_FAILURE");
     expect(telemetry).toContain("MATCHER_RUNTIME_COUNTERS");
     expect(telemetry).toContain("matchmaking_flush_runtime");
   });

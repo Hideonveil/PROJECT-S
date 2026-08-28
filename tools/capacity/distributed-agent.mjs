@@ -45,12 +45,29 @@ export async function runDistributedAgent({ job, credentials, driver, concurrenc
   let fatalError = null;
   let nonFatalErrors = 0;
   const egressId = await driver.egressId();
+  const authStaggerMs = Math.max(0, Number(job.authStaggerMs) || 0);
+  let authStartGate = Promise.resolve();
+  let lastAuthStartedAt = 0;
+
+  async function authenticateAtPacedStart(work) {
+    let authentication;
+    const turn = authStartGate.then(async () => {
+      const delay = Math.max(0, lastAuthStartedAt + authStaggerMs - Date.now());
+      if (delay > 0) await new Promise((resolve) => setTimeout(resolve, delay));
+      lastAuthStartedAt = Date.now();
+      // Invoke the driver while this start gate is still held. The returned
+      // request may remain in flight, but the next actor cannot start until
+      // the real previous start time is at least authStaggerMs old.
+      authentication = Promise.resolve(work());
+    });
+    authStartGate = turn.catch(() => {});
+    await turn;
+    return authentication;
+  }
 
   try {
     await waitForStart(job.authStartAt);
-    await runPool(actorIds, actorConcurrency, async (actorId, actorIndex) => {
-      const authDelayMs = Math.max(0, Number(job.authStaggerMs) || 0) * actorIndex;
-      if (authDelayMs > 0) await new Promise((resolve) => setTimeout(resolve, authDelayMs));
+    await runPool(actorIds, actorConcurrency, async (actorId) => {
       const credential = credentialByActor.get(actorId);
       if (!credential) {
         nonFatalErrors += 1;
@@ -58,7 +75,9 @@ export async function runDistributedAgent({ job, credentials, driver, concurrenc
         return;
       }
       try {
-        runtimes.set(actorId, await driver.authenticate(credential, { runId: job.runId, nodeId: job.nodeId }));
+        runtimes.set(actorId, await authenticateAtPacedStart(
+          () => driver.authenticate(credential, { runId: job.runId, nodeId: job.nodeId }),
+        ));
       } catch (error) {
         nonFatalErrors += 1;
         reports.get(actorId).authenticationError = safeError(error);
