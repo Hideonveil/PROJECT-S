@@ -3089,10 +3089,10 @@ html:not([data-initial-route="hero"]) .hero-boot { display: none; }
 .matching-session-content { display: grid; grid-template-columns: minmax(230px, .54fr) minmax(0, 1.46fr); gap: 12px; padding: 17px 18px 18px; }
 .matching-session-content .session-preview-rail { min-height: 516px; box-shadow: none; }
 .matching-session-main { min-width: 0; }
-.matching-session-main .session-preview-chat { min-height: 516px; box-shadow: none; padding: 22px 24px 19px; }
+.matching-session-main .session-preview-chat { height: 516px; min-height: 516px; max-height: 516px; overflow: hidden; box-shadow: none; padding: 22px 24px 19px; }
 .matching-session-main .session-preview-chat__head h2 { font-size: clamp(23px, 3vw, 32px); }
 .matching-session-main .session-fit-table { margin-top: 17px; }
-.matching-session-main .session-preview-messages { min-height: 95px; }
+.matching-session-main .session-preview-messages { min-height: 0; max-height: none; flex: 1 1 0; }
 .matching-session-main .session-preview-chat__divider { margin-top: 17px; }
 .matching-session-main .session-preview-composer { min-height: 42px; }
 .matching-session-footer { min-height: 68px; }
@@ -3126,7 +3126,7 @@ html:not([data-initial-route="hero"]) .hero-boot { display: none; }
   .matching-session-modal { width: min(640px, calc(100vw - 28px)); }
   .matching-session-content { grid-template-columns: 1fr; }
   .matching-session-content .session-preview-rail,
-  .matching-session-main .session-preview-chat { min-height: 0; }
+  .matching-session-main .session-preview-chat { height: min(560px, calc(100dvh - 112px)); min-height: 420px; max-height: 560px; }
   .matching-session-content .session-preview-players { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .matching-session-footer-left p { white-space: normal; }
   .matching-session-handoff-modal { width: min(640px, calc(100vw - 28px)); }

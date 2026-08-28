@@ -1224,21 +1224,37 @@ test("Room chat scrolls inside its own panel instead of growing the whole Room",
   await page.goto("/index.html#/session-preview");
   await expect(page.locator("[data-session-preview]")).toBeVisible();
 
+  const roomHeightBefore = await page.locator("[data-session-preview]").evaluate((room) => room.getBoundingClientRect().height);
+  const chatPanelHeightBefore = await page.locator(".session-preview-chat").evaluate((panel) => panel.getBoundingClientRect().height);
+  const chatHeightBefore = await page.locator("#room-chat").evaluate((chat) => chat.getBoundingClientRect().height);
+  const pageHeightBefore = await page.evaluate(() => document.documentElement.scrollHeight);
+
   const metrics = await page.locator("#room-chat").evaluate((chat) => {
     chat.insertAdjacentHTML("beforeend", Array.from({ length: 40 }, (_, index) => (
       `<div class="session-preview-message"><span>玩家 B</span><p>第 ${index + 1} 条测试消息</p><time>现在</time></div>`
     )).join(""));
     const style = getComputedStyle(chat);
+    const chatPanel = chat.closest(".session-preview-chat");
     return {
       overflowY: style.overflowY,
       clientHeight: chat.clientHeight,
       scrollHeight: chat.scrollHeight,
+      chatHeight: chat.getBoundingClientRect().height,
+      chatPanelHeight: chatPanel?.getBoundingClientRect().height || 0,
+      chatPanelOverflow: chatPanel ? getComputedStyle(chatPanel).overflow : "",
+      roomHeight: document.querySelector("[data-session-preview]")?.getBoundingClientRect().height || 0,
+      pageHeight: document.documentElement.scrollHeight,
     };
   });
 
   expect(metrics.overflowY).toBe("auto");
   expect(metrics.scrollHeight).toBeGreaterThan(metrics.clientHeight);
   expect(metrics.clientHeight).toBeLessThanOrEqual(321);
+  expect(Math.abs(metrics.chatHeight - chatHeightBefore)).toBeLessThanOrEqual(1);
+  expect(Math.abs(metrics.chatPanelHeight - chatPanelHeightBefore)).toBeLessThanOrEqual(1);
+  expect(metrics.chatPanelOverflow).toBe("hidden");
+  expect(Math.abs(metrics.roomHeight - roomHeightBefore)).toBeLessThanOrEqual(1);
+  expect(Math.abs(metrics.pageHeight - pageHeightBefore)).toBeLessThanOrEqual(1);
   await expect(page.locator("#chat-input")).toBeVisible();
 });
 

@@ -217,4 +217,12 @@ describe("distributed capacity coordinator contract", () => {
     expect(isMatchedRoomState(pairedRoom)).toBe(true);
     expect(isMatchedRoomState(readySession)).toBe(true);
   });
+
+  it("uses Realtime plus sparse jittered reconciliation instead of synchronized two-second Room polling", async () => {
+    const source = await readFile(new URL("../tools/capacity/production-agent-driver.mjs", import.meta.url), "utf8");
+    expect(source).toContain("MATCH_STATE_SAFETY_READ_MS = 12_000");
+    expect(source).toContain("runtime.realtime.length !== observedRealtimeEvents");
+    expect(source).toContain("isTransientStateReadTimeout(error)");
+    expect(source).not.toContain("sleep(2_000 + Math.floor(Math.random() * 250))");
+  });
 });

@@ -16,6 +16,9 @@ import {
 const ACTIVE_SESSION_STATES = new Set(["ready", "active", "playing", "matched"]);
 const TERMINAL_SESSION_STATES = new Set(["completed", "cancelled"]);
 const LIVE_GROUP_STATES = new Set(["searching", "partial_ready", "forming", "backfilling"]);
+const MATCH_STATE_SAFETY_READ_MS = 12_000;
+const MATCH_STATE_SAFETY_JITTER_MS = 2_000;
+const MATCH_STATE_INITIAL_JITTER_MS = 4_000;
 
 function memberCount(room) {
   const members = Array.isArray(room?.members) ? room.members : [];
@@ -37,6 +40,18 @@ function sampledActor(runId, actorId, cycle, purpose, percent = 10) {
   return value % 100 < percent;
 }
 
+function stableJitter(runId, actorId, cycle, purpose, maximum) {
+  if (!maximum) return 0;
+  const value = createHash("sha256").update(`${runId}:${cycle}:${purpose}:${actorId}`).digest().readUInt32BE(0);
+  return value % maximum;
+}
+
+function isTransientStateReadTimeout(error) {
+  return error?.name === "TimeoutError"
+    && error?.code === "CAPACITY_TIMEOUT"
+    && error?.timeoutSource === "request";
+}
+
 export function actorMatched(state, _match) {
   if (!isMatchedRoomState(state)) return false;
   if (ACTIVE_SESSION_STATES.has(String(state.session?.status || "").toLowerCase())) return true;
@@ -54,11 +69,47 @@ function ownGroupMember(group, userId) {
 
 async function waitUntil({ runtime, options, cycle, predicate, timeoutMs, action, progress }) {
   const deadline = Date.now() + timeoutMs;
+  let observedRealtimeEvents = runtime.realtime.length;
+  let nextReadAt = Date.now() + 500 + stableJitter(
+    options.runId,
+    runtime.actorId,
+    cycle,
+    `${action}:initial-read`,
+    MATCH_STATE_INITIAL_JITTER_MS,
+  );
   while (Date.now() < deadline) {
-    await refreshState(runtime, options, String(cycle), runtime.ledger, action);
+    const realtimeChanged = runtime.realtime.length !== observedRealtimeEvents;
+    if (!realtimeChanged && Date.now() < nextReadAt) {
+      await sleep(Math.min(1_000, Math.max(100, nextReadAt - Date.now())));
+      continue;
+    }
+
+    try {
+      await refreshState(runtime, options, String(cycle), runtime.ledger, action);
+    } catch (error) {
+      if (!isTransientStateReadTimeout(error)) throw error;
+      runtime.stateReadTimeouts = (runtime.stateReadTimeouts || 0) + 1;
+      observedRealtimeEvents = runtime.realtime.length;
+      nextReadAt = Date.now() + MATCH_STATE_SAFETY_READ_MS + stableJitter(
+        options.runId,
+        runtime.actorId,
+        cycle,
+        `${action}:timeout:${runtime.stateReadTimeouts}`,
+        MATCH_STATE_SAFETY_JITTER_MS,
+      );
+      continue;
+    }
+
+    observedRealtimeEvents = runtime.realtime.length;
     if (progress) await progress(runtime);
     if (predicate(runtime.state)) return runtime.state;
-    await sleep(2_000 + Math.floor(Math.random() * 250));
+    nextReadAt = Date.now() + MATCH_STATE_SAFETY_READ_MS + stableJitter(
+      options.runId,
+      runtime.actorId,
+      cycle,
+      `${action}:safety:${runtime.ledger.requestCount}`,
+      MATCH_STATE_SAFETY_JITTER_MS,
+    );
   }
   const error = new Error(`${action} timed out for ${runtime.actorId}`);
   error.name = "CapacityActorTimeoutError";
@@ -166,7 +217,7 @@ export async function createProductionAgentDriver({ baseUrl, runId, evidenceDire
   const options = {
     baseUrl,
     runId,
-    requestTimeoutMs: 10_000,
+    requestTimeoutMs: 15_000,
     maxRequests: 2_000,
     stateReadConcurrency: 5,
     heartbeatIntervalMs: 10_000,
@@ -210,6 +261,7 @@ export async function createProductionAgentDriver({ baseUrl, runId, evidenceDire
         realtimeLedger: [],
         presence: [],
         messages: [],
+        stateReadTimeouts: 0,
         controls: { started: new Set(), confirmed: new Set() },
         ledger,
         cleanupTimeoutMs: 30_000,
@@ -308,7 +360,7 @@ export async function createProductionAgentDriver({ baseUrl, runId, evidenceDire
         await submitFeedback(runtime, options, String(cycle), runtime.ledger).catch(() => {});
         const peerMessages = runtime.realtime.filter((event) => event.table === "messages" && event.sender_user_id && event.sender_user_id !== runtime.userId).length;
         await closeClient(runtime);
-        return { exited: true, metrics: { peerMessages, sentMessages: runtime.messages.filter((message) => message.cycle === cycle).length, reconnects: runtime.reconnects || 0, relogins: runtime.relogins || 0 } };
+        return { exited: true, metrics: { peerMessages, sentMessages: runtime.messages.filter((message) => message.cycle === cycle).length, reconnects: runtime.reconnects || 0, relogins: runtime.relogins || 0, stateReadTimeouts: runtime.stateReadTimeouts || 0 } };
       } catch (error) {
         await explicitLeave(runtime, options, String(cycle), runtime.ledger).catch(() => {});
         await statefulRequest({ runtime, options, stage: String(cycle), action: "matchmaking.cancel", method: "POST", requestPath: "/api/matchmaking/cancel", body: { reason: "distributed_capacity_actor_failure" }, ledger: runtime.ledger }).catch(() => {});
