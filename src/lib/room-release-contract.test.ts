@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const migrationPath = join(process.cwd(), "supabase/migrations/20260828180000_room_lifecycle_v2.sql");
+const indexMigrationPath = join(process.cwd(), "supabase/migrations/20260828184500_room_lifecycle_v2_fk_indexes.sql");
 
 describe("Room lifecycle V2 release contract", () => {
   it("ships one forward-only migration with votes, settlement and monotonic room events", () => {
@@ -48,5 +49,12 @@ describe("Room lifecycle V2 release contract", () => {
     const voteSql = sql.slice(start, end);
     expect(voteSql).toContain("v_votes = v_total");
     expect(voteSql).not.toContain("owner_user_id");
+  });
+
+  it("covers the new reverse foreign-key lookup paths", () => {
+    const sql = readFileSync(indexMigrationPath, "utf8").toLowerCase();
+    expect(sql).toContain("room_recruitment_votes_user_id_idx");
+    expect(sql).toContain("session_participant_settlements_user_id_idx");
+    expect(sql).toContain("room_state_events_actor_id_idx");
   });
 });
