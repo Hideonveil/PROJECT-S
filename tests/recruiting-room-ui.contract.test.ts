@@ -42,7 +42,8 @@ describe("recruiting Room UI", () => {
     expect(html).toContain('data-member-count="1"');
     expect(html).toContain("session-fit-table--solo");
     expect(html).toContain('<h1 id="session-title">招募中</h1>');
-    expect(html).toContain("停止招募");
+    expect(html).toContain("加入中...");
+    expect(html).not.toContain("停止招募");
     expect(html).not.toContain("ROOM / LIVE");
     expect(html).not.toContain("还在摇人");
     expect(html).not.toContain("可以先聊天；停止招募");
@@ -50,10 +51,10 @@ describe("recruiting Room UI", () => {
     expect(html).not.toContain("session-preview-player__confirmed");
   });
 
-  it("removes the searching loop once recruitment is locked", () => {
+  it("removes the searching loop and recruitment vote once recruitment is locked", () => {
     const html = sessionPage(recruitingRoom(2, false));
 
     expect(html).not.toContain('data-room-recruitment-loop');
-    expect(html).not.toContain('data-action="lock-forming-room"');
+    expect(html).not.toContain('data-action="toggle-recruitment-vote"');
   });
 });

@@ -4,9 +4,18 @@ let cachedAccessToken = "";
 let stateRequest = null;
 let poolSummaryRequest = null;
 let publicDirectoryRequest = null;
+const clientInstanceId = (() => {
+  const key = "jiyuan_client_instance_id";
+  let value = window.localStorage.getItem(key);
+  if (!value) {
+    value = window.crypto?.randomUUID?.() || `client-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    window.localStorage.setItem(key, value);
+  }
+  return value;
+})();
 
 async function request(path, body, token = null, { timeoutMs = 15000 } = {}) {
-  const headers = {};
+  const headers = { "X-Client-Instance-ID": clientInstanceId };
   if (body !== undefined) {
     headers["Content-Type"] = "application/json";
     const mutationId = window.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -46,6 +55,7 @@ async function request(path, body, token = null, { timeoutMs = 15000 } = {}) {
     const error = new Error(detail?.message || `请求失败 (${res.status})`);
     error.code = detail?.code || "REQUEST_FAILED";
     error.requestId = detail?.requestId || data?.meta?.requestId || "";
+    if (error.code === "DEVICE_SESSION_REPLACED") window.dispatchEvent(new CustomEvent("jiyuan:device-replaced"));
     throw error;
   }
   return data;
@@ -213,6 +223,8 @@ export const goOnline = () => authedRequest("/api/online", {});
 export const roomAction = (code, action) => authedRequest(`/api/room/${code}/${action}`, {});
 export const getRoomSnapshot = (code) => authedRequest(`/api/room/${encodeURIComponent(code)}/snapshot`);
 export const requestRoomGoodbye = (code, requested) => authedRequest(`/api/room/${code}/goodbye`, { requested });
+export const requestRecruitmentVote = (code, requested) => authedRequest(`/api/room/${code}/recruitment`, { requested });
+export const slipRoom = (code) => authedRequest(`/api/room/${code}/slip`, {});
 export const roomFeedback = (code, payload) => authedRequest(`/api/room/${code}/feedback`, payload);
 export const searchFriend = (code) => authedRequest("/api/friends/search", { code });
 export const addFriend = ({ friendCode, targetUserId } = {}) => authedRequest("/api/friends/add", { friendCode, targetUserId });
@@ -237,15 +249,9 @@ export async function fetchRoomMessages(roomId) {
   return (data || []).reverse();
 }
 
-export async function sendRoomMessage(roomId, content, senderId) {
-  const sb = await getSupabase();
-  const { data, error } = await sb
-    .from("messages")
-    .insert({ room_id: roomId, sender_id: senderId, content })
-    .select("*")
-    .single();
-  if (error) throw error;
-  return data;
+export async function sendRoomMessage(roomCode, content, operationId) {
+  const result = await authedRequest(`/api/room/${encodeURIComponent(roomCode)}/messages`, { content, operationId });
+  return result.message;
 }
 
 export function openEvents(handlers) {

@@ -73,14 +73,13 @@ async function waitUntil({ runtime, options, cycle, predicate, timeoutMs, action
 
 async function sendChat(runtime, cycle, content) {
   const roomId = runtime.state?.room?.id;
-  if (!roomId || !runtime.client) throw new Error(`chat unavailable for ${runtime.actorId}`);
-  const result = await runtime.client
-    .from("messages")
-    .insert({ room_id: roomId, sender_id: runtime.userId, content })
-    .select("id,room_id,sender_id,created_at")
-    .single();
-  if (result.error) throw result.error;
-  runtime.messages.push({ cycle, roomId, messageId: result.data.id, sentAt: result.data.created_at || new Date().toISOString() });
+  const roomCode = runtime.state?.room?.code;
+  if (!roomId || !roomCode) throw new Error(`chat unavailable for ${runtime.actorId}`);
+  const operationId = `capacity-chat:${cycle}:${runtime.actorId}:${randomUUID()}`;
+  const result = await statefulRequest({ runtime, options: runtime.options, stage: String(cycle), action: "chat.send", method: "POST", requestPath: `/api/room/${roomCode}/messages`, body: { content, operationId }, ledger: runtime.ledger });
+  const message = result.data?.message;
+  if (!message?.id) throw new Error(`chat acknowledgement missing for ${runtime.actorId}`);
+  runtime.messages.push({ cycle, roomId, messageId: message.id, sentAt: message.created_at || new Date().toISOString() });
 }
 
 async function progressConfirmation(runtime, options, cycle) {
@@ -101,20 +100,20 @@ async function progressConfirmation(runtime, options, cycle) {
   });
 }
 
-async function lockOwnedCasualRoom(runtime, options, cycle) {
+async function voteToStopCasualRecruitment(runtime, options, cycle) {
   await refreshState(runtime, options, String(cycle), runtime.ledger, "state.before_lock");
-  const group = runtime.state?.matchmaking?.group;
-  if (!group || group.ownerUserId !== runtime.userId || !LIVE_GROUP_STATES.has(String(group.state))) return;
-  if (runtime.controls.started.has(group.id)) return;
-  runtime.controls.started.add(group.id);
+  const room = runtime.state?.room;
+  if (!room?.code || room.recruiting !== true || memberCount(room) < 2) return;
+  if (runtime.controls.started.has(room.id)) return;
+  runtime.controls.started.add(room.id);
   await statefulRequest({
     runtime,
     options,
     stage: String(cycle),
-    action: "matchmaking.group.start",
+    action: "room.recruitment.vote",
     method: "POST",
-    requestPath: "/api/matchmaking/group/start",
-    body: { groupId: group.id },
+    requestPath: `/api/room/${room.code}/recruitment`,
+    body: { requested: true },
     ledger: runtime.ledger,
   });
 }
@@ -205,6 +204,8 @@ export async function createProductionAgentDriver({ baseUrl, runId, evidenceDire
         loginCredential: { identifier: credential.identifier, password: credential.password },
         config,
         client: null,
+        clientInstanceId: session.clientInstanceId,
+        options,
         heartbeat: null,
         roomChannels: new Set(),
         state: null,
@@ -241,6 +242,7 @@ export async function createProductionAgentDriver({ baseUrl, runId, evidenceDire
         runtime.accessToken = session.accessToken;
         runtime.refreshToken = session.refreshToken;
         runtime.tokenExpiry = session.tokenExpiry;
+        runtime.clientInstanceId = session.clientInstanceId;
         runtime.relogins = (runtime.relogins || 0) + 1;
       }
       await subscribeActor(runtime, String(cycle));
@@ -278,7 +280,7 @@ export async function createProductionAgentDriver({ baseUrl, runId, evidenceDire
             throw chatError;
           }
         }
-        if (actor.match.mode === "casual") await lockOwnedCasualRoom(runtime, options, cycle);
+        if (actor.match.mode === "casual") await voteToStopCasualRecruitment(runtime, options, cycle);
         await waitUntil({
           runtime,
           options,

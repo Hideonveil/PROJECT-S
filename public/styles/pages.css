@@ -1207,6 +1207,10 @@
   border-color: transparent;
   color: #ffffff;
 }
+.chat-msg--system { width: 100%; align-items: center; margin: 8px 0; }
+.chat-msg--system .chat-bubble { border: 1px solid rgba(214,83,77,.24); background: rgba(255,240,236,.86); color: #8e342f; font-weight: 850; box-shadow: none; }
+.chat-msg.is-failed .chat-bubble { opacity: .65; }
+.chat-msg .chat-time button { border: 0; padding: 0; background: none; color: #b04640; font: inherit; font-weight: 800; cursor: pointer; text-decoration: underline; }
 
 .chat-time {
   font-size: 11px;

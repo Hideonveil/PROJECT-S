@@ -32,20 +32,21 @@ describe("multi-member Session contract", () => {
     }
   });
 
-  it("does not count an exited member toward a normal Goodbye", () => {
+  it("keeps the frozen Session participant denominator after one member slips", () => {
     const model = sessionMembers({
       members: [
         { id: "a", memberStatus: "active" },
         { id: "b", memberStatus: "active" },
         { id: "c", memberStatus: "exited" },
       ],
-      goodbyeRequests: [{ userId: "a" }, { userId: "b" }, { userId: "c" }],
+      goodbyeRequests: [{ userId: "a" }, { userId: "b" }],
+      sessionSettlements: [{ userId: "c", kind: "slipped" }],
     }, "a");
 
     expect(model.currentMemberCount).toBe(3);
     expect(model.activeMemberCount).toBe(2);
-    expect(model.goodbyeCount).toBe(2);
-    expect(model.goodbyeDenominator).toBe(2);
+    expect(model.goodbyeCount).toBe(3);
+    expect(model.goodbyeDenominator).toBe(3);
   });
 
   it("renders all members and avoids a hardcoded Session 2/2 counter", () => {

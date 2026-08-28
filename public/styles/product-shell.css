@@ -3091,6 +3091,13 @@ html:not([data-initial-route="hero"]) .hero-boot { display: none; }
 .matching-session-footer .session-preview-leave { background: transparent; }
 .session-preview-stop { border-color: rgba(129,102,232,.5); background: rgba(236,231,255,.84); color: #4f3b9a; }
 .session-preview-stop:hover { background: #e2d9ff; }
+.session-preview-stop.is-selected { border-color: rgba(129,102,232,.82); background: #d9ceff; box-shadow: inset 0 0 0 1px rgba(79,59,154,.12); }
+.session-preview-slip { min-height: 42px; padding: 0 15px; border: 1px solid rgba(20,20,24,.18); background: rgba(255,255,255,.78); color: #24222b; font-weight: 800; cursor: pointer; transition: background 160ms ease, transform 160ms ease; }
+.session-preview-slip:hover { background: #fff; transform: translateY(-1px); }
+.session-preview-slip:disabled { cursor: wait; opacity: .65; transform: none; }
+.session-preview-player--joining { border-style: dashed; background: rgba(129,102,232,.045); }
+.session-preview-player__joining-mark { width: 42px; height: 42px; border: 2px solid rgba(129,102,232,.18); border-top-color: #8166e8; border-radius: 50%; animation: roomJoiningSpin 1s linear infinite; }
+@keyframes roomJoiningSpin { to { transform: rotate(360deg); } }
 .is-room-fragment-entering { animation: roomFragmentEnter 180ms ease-out both; }
 @keyframes roomFragmentEnter { from { opacity: .35; transform: translateY(3px); } to { opacity: 1; transform: translateY(0); } }
 .matching-session-handoff-modal { --session-paper: #f7f4ee; --session-ink: #14121b; --session-violet: #8166e8; --session-mint: #dff2e7; width: min(900px, calc(100vw - 52px)); }
@@ -3143,5 +3150,5 @@ html:not([data-initial-route="hero"]) .hero-boot { display: none; }
 }
 @media (prefers-reduced-motion: reduce) {
   .session-preview-leave:hover, .session-preview-goodbye:hover, .session-preview-quick button:hover { transform: none; }
-  .room-recruitment-loop i::after, .chat-skeleton i, .is-room-fragment-entering { animation: none; }
+  .room-recruitment-loop i::after, .chat-skeleton i, .is-room-fragment-entering, .session-preview-player__joining-mark { animation: none; }
 }

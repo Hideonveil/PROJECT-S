@@ -13,7 +13,7 @@ import { welcomePage } from "./pages/welcome.js";
 import { homeFlowStepper, homePage, matchingDirectoryMarkup, matchingDirectoryPersonMarkup } from "./pages/home.js?v=20260826-signal-card-01";
 import { communityPage } from "./pages/community.js";
 import { matchingPage, matchingPreviewPage } from "./pages/matching.js";
-import { recruitingRoomFragments, sessionPage, sessionPreviewPage } from "./pages/session-preview.js?v=20260826-room-shell-01";
+import { recruitingRoomFragments, roomFooterFragment, sessionPage, sessionPreviewPage } from "./pages/session-preview.js?v=20260828-room-lifecycle-v2";
 import { gameoverPage } from "./pages/gameover.js";
 import { connectionsPage } from "./pages/connections.js";
 import { mePage } from "./pages/me.js";
@@ -114,6 +114,9 @@ let recruitmentExitPending = false;
 // this client session. Late hydration/Realtime snapshots can arrive after the
 // route is already home; a short loading flag cannot safely guard that race.
 let recruitmentExitRoomId = "";
+let resumePromptRoomId = "";
+let resumePromptTimer = 0;
+let deviceReplacementHandled = false;
 let staggeredRailCleanup = null;
 let staggeredRailHoldOpen = false;
 let lastTrackedRoute = "";
@@ -1630,6 +1633,11 @@ function normalizeServerRoom(room) {
     shell: room.shell === true,
     resumeEligible: room.resumeEligible === true,
     goodbyeRequests: room.goodbyeRequests || [],
+    sessionSettlements: room.sessionSettlements || [],
+    recruitmentVotes: room.recruitmentVotes || [],
+    recruitmentVoteCount: Number(room.recruitmentVoteCount || 0),
+    recruitmentVoteTotal: Number(room.recruitmentVoteTotal || memberModel.activeMemberCount || 1),
+    roomMembershipVersion: Number(room.roomMembershipVersion || 1),
     target: memberModel.targetTotalPlayers,
   };
 }
@@ -1645,7 +1653,8 @@ function sessionMemberSnapshot(session) {
     members,
     target: session?.targetTotalPlayers || session?.target || state.room?.targetTotalPlayers || state.room?.target || ids.length,
     goodbyeRequests: session?.goodbyeRequests || state.room?.goodbyeRequests,
-  }, state.user.id);
+    sessionSettlements: session?.sessionSettlements || state.room?.sessionSettlements,
+  }, state.user.id, { includeExited: ["completed", "cancelled"].includes(session?.status) });
 }
 
 function sessionPartnerFor(session) {
@@ -1673,7 +1682,9 @@ function isRoomSnapshotOlder(incoming, current) {
   if (!incoming?.id || !current?.id || incoming.id !== current.id) return false;
   const incomingVersion = roomSnapshotVersion(incoming);
   const currentVersion = roomSnapshotVersion(current);
-  return incomingVersion !== null && currentVersion !== null && incomingVersion < currentVersion;
+  if (currentVersion === null) return false;
+  if (incomingVersion === null) return true;
+  return incomingVersion < currentVersion;
 }
 
 function roomRenderSignature(room) {
@@ -1696,6 +1707,8 @@ function roomRenderSignature(room) {
     room.targetTotalPlayers || room.target || 0,
     room.activeMemberCount || 0,
     (room.goodbyeRequests || []).map((request) => request.userId || request.user_id || request).sort(),
+    (room.sessionSettlements || []).map((settlement) => `${settlement.userId}:${settlement.kind}`).sort(),
+    (room.recruitmentVotes || []).map((vote) => vote.userId || vote.user_id || vote).sort(),
     (room.members || []).map(memberShape).sort(),
   ]);
 }
@@ -1717,6 +1730,13 @@ function announceSessionLive(message, key = message) {
 function updateSessionView(nextRoom) {
   const root = document.querySelector("[data-session-preview]");
   if (!root || !nextRoom) return false;
+  const currentFooter = root.querySelector(".matching-session-footer");
+  if (currentFooter) {
+    const template = document.createElement("template");
+    template.innerHTML = roomFooterFragment({ ...state, room: nextRoom }).trim();
+    const nextFooter = template.content.firstElementChild;
+    if (nextFooter) currentFooter.innerHTML = nextFooter.innerHTML;
+  }
   const memberModel = sessionMembers(nextRoom, state.user.id);
   const count = memberModel.goodbyeCount;
   const denominator = memberModel.goodbyeDenominator;
@@ -1756,41 +1776,45 @@ function updateSessionView(nextRoom) {
   return true;
 }
 
-function replaceRoomFragment(current, html) {
+function updateRoomFragment(current, html) {
   const template = document.createElement("template");
   template.innerHTML = html.trim();
   const next = template.content.firstElementChild;
   if (!next) return;
-  next.classList.add("is-room-fragment-entering");
-  current.replaceWith(next);
-  window.requestAnimationFrame(() => next.classList.remove("is-room-fragment-entering"));
+  current.innerHTML = next.innerHTML;
+  for (const attribute of [...current.attributes]) {
+    if (!next.hasAttribute(attribute.name)) current.removeAttribute(attribute.name);
+  }
+  for (const attribute of [...next.attributes]) current.setAttribute(attribute.name, attribute.value);
 }
 
 function updateRecruitingRoomView(nextRoom, previousRoom = null) {
   const root = document.querySelector("[data-session-preview]");
-  if (!root || nextRoom?.recruiting !== true || state.room?.recruiting !== true) return false;
-  const { rail, fitTable, memberCount } = recruitingRoomFragments({ ...state, room: nextRoom });
+  if (!root || !nextRoom) return false;
+  const { rail, fitTable, footer, memberCount } = recruitingRoomFragments({ ...state, room: nextRoom });
   const currentRail = root.querySelector(".session-preview-rail");
   const currentFitTable = root.querySelector("[data-room-fit-table]");
-  if (!currentRail || !currentFitTable) return false;
-  replaceRoomFragment(currentRail, rail);
-  replaceRoomFragment(currentFitTable, fitTable);
-  const stopButton = root.querySelector('[data-action="lock-forming-room"]');
-  if (stopButton && nextRoom.formationGroupId) stopButton.dataset.value = nextRoom.formationGroupId;
+  const currentFooter = root.querySelector(".matching-session-footer");
+  if (!currentRail || !currentFitTable || !currentFooter) return false;
+  updateRoomFragment(currentRail, rail);
+  updateRoomFragment(currentFitTable, fitTable);
+  updateRoomFragment(currentFooter, footer);
   const title = root.querySelector("#session-title");
-  if (title) title.textContent = "招募中";
+  if (title) title.textContent = nextRoom.recruiting === true ? "招募中" : "开一把？";
+  root.classList.toggle("is-room-recruiting", nextRoom.recruiting === true);
   const delta = rosterDelta(previousRoom?.members, nextRoom.members);
   delta.joined.forEach((member) => {
     const name = memberDisplayName(member);
-    toast(`${name} 已加入房间`);
-    announceSessionLive(`${name} 已加入房间`, `room-join:${nextRoom.id}:${member.id}`);
+    const verb = ((String(nextRoom.id) + String(member.id)).length % 2 === 0) ? "摇到" : "招募到";
+    toast(`${verb} ${name}，已加入 Room`);
+    announceSessionLive(`${verb} ${name}，已加入 Room`, `room-join:${nextRoom.id}:${member.id}`);
   });
   delta.left.forEach((member) => {
     const name = memberDisplayName(member);
     toast(`${name} 已离开房间`);
     announceSessionLive(`${name} 已离开房间`, `room-leave:${nextRoom.id}:${member.id}`);
   });
-  announceSessionLive(`房间成员已更新，当前 ${memberCount} 人，仍在招募。`, `recruiting-members:${nextRoom.id}:${memberCount}`);
+  announceSessionLive(`房间成员已更新，当前 ${memberCount} 人${nextRoom.recruiting === true ? "，仍在招募" : "，招募已停止"}。`, `room-members:${nextRoom.id}:${memberCount}:${nextRoom.recruiting}`);
   return true;
 }
 
@@ -2148,12 +2172,60 @@ function setRecruitmentActionLoading(action, loading) {
   button.setAttribute("aria-busy", String(loading));
   if (loading) {
     button.dataset.originalLabel ||= label?.textContent || "";
-    if (label) label.textContent = action === "lock-forming-room" ? "正在停止招募…" : "正在退出招募…";
-    if (action === "lock-forming-room") button.querySelector(".icon")?.classList.add("is-spinning");
+    if (label) label.textContent = action === "toggle-recruitment-vote" ? "正在确认操作结果…" : "正在退出招募…";
   } else if (label && button.dataset.originalLabel) {
     label.textContent = button.dataset.originalLabel;
     delete button.dataset.originalLabel;
-    if (action === "lock-forming-room") button.querySelector(".icon")?.classList.remove("is-spinning");
+  }
+}
+
+async function toggleRecruitmentVote(requested) {
+  const room = state.room;
+  if (!room?.code || room.recruiting !== true || matchConfirmationPending) return;
+  matchConfirmationPending = true;
+  setRecruitmentActionLoading("toggle-recruitment-vote", true);
+  try {
+    const result = await api.requestRecruitmentVote(room.code, requested);
+    if (result.room?.id === room.id) applyServerSnapshot({ room: result.room });
+    const votes = Number(result.recruitment?.votes || result.room?.recruitmentVoteCount || 0);
+    const total = Number(result.recruitment?.total || result.room?.recruitmentVoteTotal || 1);
+    toast(requested ? `已选择停止招募（${votes}/${total}）` : "已撤回停止招募");
+  } catch (error) {
+    if (error?.code === "CONNECTION_TIMEOUT") {
+      try {
+        const snapshot = await api.getRoomSnapshot(room.code);
+        if (snapshot?.room?.id === room.id) applyServerSnapshot(snapshot);
+        toast("已核对服务器最新状态");
+        return;
+      } catch { /* keep the current authoritative view */ }
+    }
+    toast(error.message || "停止招募状态更新失败");
+  } finally {
+    matchConfirmationPending = false;
+    setRecruitmentActionLoading("toggle-recruitment-vote", false);
+  }
+}
+
+async function slipCurrentRoom() {
+  const room = state.room;
+  if (!room?.code || exitRequestPending) return;
+  exitRequestPending = true;
+  const button = document.querySelector('[data-action="slip-room"]');
+  if (button) {
+    button.disabled = true;
+    button.setAttribute("aria-busy", "true");
+    button.textContent = "正在离开…";
+  }
+  try {
+    const result = await api.slipRoom(room.code);
+    update({ room: null, match: { ...state.match, status: "idle", lifecycle: null, pair: null, group: null, candidate: null } });
+    navigate("#/home");
+    if (result.session && ["completed", "cancelled"].includes(result.session.status)) handleServerGameOver(result.session);
+    else toast("已离开 Room，结算仍会正常保留");
+  } catch (error) {
+    toast(error.message || "离开失败，请稍后重试");
+  } finally {
+    exitRequestPending = false;
   }
 }
 
@@ -2441,6 +2513,7 @@ async function initRoomChat() {
       appendChatMessage(payload.new);
     });
     let recoveryTimer = 0;
+    let historyTimer = 0;
     const scheduleRecovery = () => {
       if (recoveryTimer || !isCurrent()) return;
       recoveryTimer = window.setTimeout(() => {
@@ -2459,12 +2532,22 @@ async function initRoomChat() {
         scheduleRecovery();
       }
     });
+    const scheduleHistoryCheck = () => {
+      if (!isCurrent()) return;
+      historyTimer = window.setTimeout(async () => {
+        historyTimer = 0;
+        try { await reconcileChatHistory(); } catch { /* next sparse pass retries */ }
+        scheduleHistoryCheck();
+      }, 30_000 + Math.floor(Math.random() * 15_000));
+    };
+    scheduleHistoryCheck();
     if (!isCurrent()) {
       sb.removeChannel(channel);
       return;
     }
     const close = () => {
       if (recoveryTimer) window.clearTimeout(recoveryTimer);
+      if (historyTimer) window.clearTimeout(historyTimer);
       sb.removeChannel(channel);
       if (chatClose === close) chatClose = null;
     };
@@ -2552,14 +2635,17 @@ function renderChatMessages(messages) {
 
 function chatMessageHtml(m) {
   const mine = m.sender_id === state.user.id;
+  const system = m.kind && m.kind !== "chat";
   const time = m.created_at
     ? new Date(m.created_at).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })
     : "";
-  return `<div class="chat-msg ${mine ? "chat-msg--mine" : ""}"><div class="chat-bubble">${esc(m.content || "")}</div><div class="chat-time">${time}</div></div>`;
+  const pending = m.delivery_status === "pending" ? " · 发送中" : "";
+  const failed = m.delivery_status === "failed";
+  return `<div class="chat-msg ${mine ? "chat-msg--mine" : ""} ${system ? "chat-msg--system" : ""} ${failed ? "is-failed" : ""}"><div class="chat-bubble">${system ? `<strong>${mine ? "你" : "玩家"}：</strong>` : ""}${esc(m.content || "")}</div><div class="chat-time">${time}${pending}${failed ? ` · <button type="button" data-action="retry-chat" data-value="${esc(m.client_operation_id || "")}">重试</button>` : ""}</div></div>`;
 }
 
 function chatMessageKey(message) {
-  return String(message?.id || `${message?.sender_id || ""}:${message?.created_at || ""}:${message?.content || ""}`);
+  return String(message?.client_operation_id || message?.id || `${message?.sender_id || ""}:${message?.created_at || ""}:${message?.content || ""}`);
 }
 
 function appendChatMessage(m) {
@@ -2573,7 +2659,10 @@ function appendChatMessage(m) {
     lastSessionAnnouncementKey = "";
   }
   const messageKey = chatMessageKey(m);
-  if (announcedChatMessages.has(messageKey)) return;
+  if (announcedChatMessages.has(messageKey)) {
+    renderChatMessages(mergeRoomMessages(roomChatMessages, [m], roomId));
+    return;
+  }
   roomChatMessages = mergeRoomMessages(roomChatMessages, [m], roomId);
   const empty = el.querySelector(".chat-empty");
   if (empty) empty.remove();
@@ -2584,24 +2673,42 @@ function appendChatMessage(m) {
   announceSessionLive(`新消息：${sender}：${String(m.content || "")}`, `chat:${messageKey}`);
 }
 
-async function sendRoomChat(message = null) {
+async function sendRoomChat(message = null, existingOperationId = "") {
   const room = state.room;
   const input = document.getElementById("chat-input");
   const text = String(message ?? input?.value ?? "").trim();
-  if (!room?.id || !text || chatSendPending) return;
+  if (!room?.id || !room?.code || !text || chatSendPending) return;
+  const operationId = existingOperationId || window.crypto?.randomUUID?.() || `chat-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  const optimistic = {
+    id: `pending:${operationId}`,
+    room_id: room.id,
+    sender_id: state.user.id,
+    content: text,
+    kind: "chat",
+    client_operation_id: operationId,
+    created_at: new Date().toISOString(),
+    delivery_status: "pending",
+  };
+  appendChatMessage(optimistic);
   chatSendPending = true;
   setChatLoading(true);
   try {
-    const created = await api.sendRoomMessage(room.id, text, state.user.id);
-    appendChatMessage(created);
+    const created = await api.sendRoomMessage(room.code, text, operationId);
+    appendChatMessage({ ...created, delivery_status: "sent" });
     if (input) input.value = "";
     announceSessionLive("消息已发送", `chat-sent:${Date.now()}`);
   } catch (err) {
+    appendChatMessage({ ...optimistic, delivery_status: "failed" });
     toast(err.message || "消息发送失败");
   } finally {
     chatSendPending = false;
     setChatLoading(false);
   }
+}
+
+function retryRoomChat(operationId) {
+  const message = roomChatMessages.find((item) => item.client_operation_id === operationId);
+  if (message) sendRoomChat(message.content, operationId);
 }
 
 async function completeOnboard() {
@@ -3172,6 +3279,65 @@ function showSheet(html) {
 
 function closeSheet() {
   document.querySelectorAll(".sheet-backdrop").forEach((el) => el.remove());
+}
+
+function clearResumePrompt() {
+  if (resumePromptTimer) window.clearInterval(resumePromptTimer);
+  resumePromptTimer = 0;
+  resumePromptRoomId = "";
+}
+
+function showResumeRoomPrompt(room) {
+  if (!room?.id || parseRoute().name === "room" || resumePromptRoomId === room.id) return;
+  clearResumePrompt();
+  resumePromptRoomId = room.id;
+  const deadline = Date.now() + 40_000;
+  showSheet(`
+    <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="resume-room-title" data-resume-room-prompt>
+      <div class="sheet-head"><h2 class="sheet-title" id="resume-room-title">检测到尚未结束的 Room</h2></div>
+      <p class="sheet-copy">要连接回房间吗？不返回会按正常离开流程处理，不会把旧 Room 强行弹回页面。</p>
+      <div class="matching-session-countdown" data-resume-countdown>40</div>
+      <div class="form-actions">
+        ${button({ label: "离开 Room", action: "decline-resume-room", kind: "ghost" })}
+        ${button({ label: "连接回房间", action: "accept-resume-room", kind: "primary" })}
+      </div>
+    </div>
+  `);
+  resumePromptTimer = window.setInterval(() => {
+    const remaining = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
+    const counter = document.querySelector("[data-resume-countdown]");
+    if (counter) counter.textContent = String(remaining);
+    if (remaining === 0) void declineResumeRoom();
+  }, 250);
+}
+
+function scheduleResumeRoomPrompt(room) {
+  if (room?.id) window.setTimeout(() => showResumeRoomPrompt(room), 120);
+}
+
+function acceptResumeRoom() {
+  if (!state.room?.id || state.room.id !== resumePromptRoomId) return;
+  clearResumePrompt();
+  closeSheet();
+  replaceCanonicalRoute("#/room");
+}
+
+async function declineResumeRoom() {
+  const room = state.room;
+  if (!room?.code || (resumePromptRoomId && room.id !== resumePromptRoomId)) return;
+  clearResumePrompt();
+  const actions = document.querySelectorAll("[data-resume-room-prompt] button");
+  actions.forEach((action) => { action.disabled = true; });
+  try {
+    await api.roomAction(room.code, "exit");
+    update({ room: null, session: null, match: { ...state.match, status: "idle", lifecycle: null, pair: null, group: null, candidate: null } });
+    closeSheet();
+    navigate("#/home");
+    toast("已离开原 Room");
+  } catch (error) {
+    actions.forEach((action) => { action.disabled = false; });
+    toast(error.message || "离开 Room 失败，请重试");
+  }
 }
 
 function openProfileEdit() {
@@ -3950,6 +4116,7 @@ document.addEventListener("click", (event) => {
     "reject-match": () => confirmMatch("rejected"),
     "start-group-match": (id) => startGroupMatch(id),
     "lock-forming-room": (id) => startGroupMatch(id, { recruitmentAction: true }),
+    "toggle-recruitment-vote": (value) => toggleRecruitmentVote(value !== "off"),
     "confirm-group-match": (id) => confirmGroupMatch(id, "accepted"),
     "reject-group-match": (id) => confirmGroupMatch(id, "rejected"),
     "open-room": () => replaceCanonicalRoute("#/room"),
@@ -3962,6 +4129,10 @@ document.addEventListener("click", (event) => {
     "go-recent": () => navigate("#/connections"),
     "say-goodbye": () => setGoodbyeRequest(true),
     "withdraw-goodbye": () => setGoodbyeRequest(false),
+    "slip-room": () => slipCurrentRoom(),
+    "retry-chat": (value) => retryRoomChat(value),
+    "accept-resume-room": () => acceptResumeRoom(),
+    "decline-resume-room": () => declineResumeRoom(),
     "set-room-like": (value) => setRoomLiked(actionEl?.dataset.targetUserId, value === "yes"),
     "open-profile-edit": openProfileEdit,
     "close-sheet": closeSheet,
@@ -4123,6 +4294,19 @@ window.addEventListener("unhandledrejection", (event) => {
     message: reason.slice(0, 180),
   });
 });
+window.addEventListener("jiyuan:device-replaced", async () => {
+  if (deviceReplacementHandled) return;
+  deviceReplacementHandled = true;
+  clearResumePrompt();
+  stopGoodbyeReconciliation();
+  stopPresenceHeartbeat();
+  if (chatClose) chatClose();
+  if (eventSourceClose) eventSourceClose();
+  await api.signOut().catch(() => {});
+  resetState();
+  navigate("#/auth");
+  toast("此账号已在另一台设备登录，本设备已退出");
+});
 window.addEventListener("beforeunload", () => {
   stopPresenceHeartbeat();
   clearTimers();
@@ -4199,19 +4383,17 @@ async function handleAuthSuccess() {
       update({ user: snapshot.user });
       applyServerSnapshot(snapshot);
       hasActiveRoom = !isRecruitmentExitRoom(snapshot.room) && isActiveSessionRoom(snapshot.room);
-      destination = hasActiveRoom
-        ? "#/room"
-        : snapshot.session?.status === "completed"
+      destination = snapshot.session?.status === "completed"
           ? "#/gameover"
           : state.match.status === "active"
-            ? "#/matching"
+            ? "#/home"
             : "#/home";
     } catch {
       // profile-only state is enough to enter home
     }
     connectEvents();
-    if (hasActiveRoom) replaceCanonicalRoute("#/room");
-    else navigate(destination);
+    navigate(destination);
+    if (hasActiveRoom) scheduleResumeRoomPrompt(state.room);
     toast(`欢迎回来，${state.user.nickname}`);
   } else {
     update({ user: { ...state.user, nickname: "", avatarKey: "", device: "", gender: "男", games: [], genres: [], playStyle: "" } });
@@ -4252,9 +4434,7 @@ async function restoreSession() {
         const snapshot = await api.getState();
         update({ user: snapshot.user });
         applyServerSnapshot(snapshot);
-        if (!isRecruitmentExitRoom(snapshot.room) && isActiveSessionRoom(snapshot.room) && ["home", "auth", "welcome", "matching"].includes(parseRoute().name)) {
-          replaceCanonicalRoute("#/room");
-        }
+        if (!isRecruitmentExitRoom(snapshot.room) && isActiveSessionRoom(snapshot.room) && ["home", "auth", "welcome", "matching"].includes(parseRoute().name)) scheduleResumeRoomPrompt(snapshot.room);
       } catch {
         // keep profile-only state
       }

@@ -64,6 +64,19 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "请先验证邮箱", code: "EMAIL_NOT_VERIFIED", email }, { status: 403 });
     }
 
+    const clientInstanceId = String(request.headers.get("x-client-instance-id") || "").trim().slice(0, 120);
+    if (!clientInstanceId) return NextResponse.json({ error: "登录设备标识缺失" }, { status: 400 });
+    const { data: loginProfile } = await supabaseAdmin().from("profiles").select("id").eq("auth_user_id", data.user.id).maybeSingle();
+    if (loginProfile?.id) {
+      const { error: claimError } = await supabaseAdmin().from("profile_active_clients").upsert({
+        profile_id: loginProfile.id,
+        client_instance_id: clientInstanceId,
+        claimed_at: new Date().toISOString(),
+        last_seen_at: new Date().toISOString(),
+      }, { onConflict: "profile_id" });
+      if (claimError) throw claimError;
+    }
+
     // Return the session created by this request so the browser can hydrate
     // its Supabase client without issuing a second password sign-in. Keep the
     // response deliberately narrow and never log these values.

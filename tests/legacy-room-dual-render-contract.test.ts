@@ -9,7 +9,7 @@ describe("canonical Active Session route contract", () => {
   const session = read("public/js/pages/session-preview.js");
 
   it("renders the canonical Session UI from #/room", () => {
-    expect(app).toContain('import { recruitingRoomFragments, sessionPage, sessionPreviewPage } from "./pages/session-preview.js?v=20260826-room-shell-01";');
+    expect(app).toContain('import { recruitingRoomFragments, roomFooterFragment, sessionPage, sessionPreviewPage } from "./pages/session-preview.js?v=20260828-room-lifecycle-v2";');
     expect(app).toContain("html = sessionPage(state);");
     expect(app).not.toContain('import { roomPage } from "./pages/room.js";');
     expect(app).not.toContain("html = roomPage(state);");
@@ -42,8 +42,11 @@ describe("canonical Active Session route contract", () => {
     expect(app).toContain('history.replaceState(history.state, "", nextUrl)');
   });
 
-  it("uses the canonical route for login, refresh, pageshow, visibility and active-room entry", () => {
-    expect(app).toContain('if (hasActiveRoom) replaceCanonicalRoute("#/room");');
+  it("restores in-place refreshes but asks before reconnecting from Home or a new device", () => {
+    expect(app).toContain("scheduleResumeRoomPrompt(state.room)");
+    expect(app).toContain('replaceCanonicalRoute("#/room")');
+    expect(app).toContain("data-resume-countdown");
+    expect(app).toContain("Date.now() + 40_000");
     expect(app).toContain('window.addEventListener("pageshow"');
     expect(app).toContain('document.addEventListener("visibilitychange"');
     expect(app).toContain('"open-room": () => replaceCanonicalRoute("#/room")');

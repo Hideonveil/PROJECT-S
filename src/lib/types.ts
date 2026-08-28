@@ -72,6 +72,11 @@ export interface Room {
   realtimeVersion?: number;
   resumeEligible?: boolean;
   goodbyeRequests: Array<{ userId: string; requestedAt: string }>;
+  sessionSettlements?: Array<{ userId: string; kind: string; settledAt: string }>;
+  recruitmentVotes?: Array<{ userId: string; requestedAt: string }>;
+  recruitmentVoteCount?: number;
+  recruitmentVoteTotal?: number;
+  roomMembershipVersion?: number;
   currentMemberCount?: number;
   activeMemberCount?: number;
   targetTotalPlayers?: number;

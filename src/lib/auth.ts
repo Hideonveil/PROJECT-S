@@ -37,5 +37,21 @@ export async function requireRequestProfile(
   const token = bearerToken(request, legacyBody);
   const profile = await requireProfile(token);
   if (!profile) throw new AppError("AUTH_REQUIRED", "请先登录", 401);
+  const clientInstanceId = String(request.headers.get("x-client-instance-id") || "").trim().slice(0, 120);
+  const admin = supabaseAdmin();
+  const { data: activeClient, error: activeClientError } = await admin
+    .from("profile_active_clients")
+    .select("client_instance_id")
+    .eq("profile_id", profile.id)
+    .maybeSingle();
+  if (activeClientError) throw activeClientError;
+  if (activeClient && (!clientInstanceId || activeClient.client_instance_id !== clientInstanceId)) {
+    throw new AppError("DEVICE_SESSION_REPLACED", "此账号已在另一台设备登录", 409, false);
+  }
+  if (!activeClient && clientInstanceId) {
+    await admin.from("profile_active_clients").upsert({ profile_id: profile.id, client_instance_id: clientInstanceId }, { onConflict: "profile_id" });
+  } else if (activeClient && clientInstanceId) {
+    void admin.from("profile_active_clients").update({ last_seen_at: new Date().toISOString() }).eq("profile_id", profile.id).eq("client_instance_id", clientInstanceId);
+  }
   return profile;
 }

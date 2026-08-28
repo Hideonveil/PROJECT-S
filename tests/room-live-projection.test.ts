@@ -49,7 +49,7 @@ describe("live Room projection", () => {
     expect(html).not.toContain("娱乐");
   });
 
-  it("keeps Stop Recruiting available while a recruiting Room shell hydrates", () => {
+  it("hides Stop Recruiting until another member has joined the Room shell", () => {
     const html = roomPage({
       id: "room-3",
       code: "ROOM-3",
@@ -59,6 +59,7 @@ describe("live Room projection", () => {
       members: [self],
     });
 
-    expect(html).toContain("停止招募");
+    expect(html).toContain("加入中...");
+    expect(html).not.toContain("停止招募");
   });
 });

@@ -35,7 +35,7 @@ export const STATEFUL_PATHS = Object.freeze([
   /^\/api\/matchmaking\/cancel$/,
   /^\/api\/matchmaking\/confirm$/,
   /^\/api\/matchmaking\/group\/start$/,
-  /^\/api\/room\/[^/]+\/(?:goodbye|exit|feedback)$/,
+  /^\/api\/room\/[^/]+\/(?:goodbye|exit|feedback|messages|recruitment|slip)$/,
   /^\/api\/events$/,
 ]);
 
@@ -603,11 +603,12 @@ export async function loadAuthConfig(baseUrl, requestOptions = {}) {
 }
 
 export async function authenticateIdentity({ baseUrl, credential, ledger = null, runId = "", actorId = credential?.identity || "__system__" }) {
+  const clientInstanceId = `capacity:${runId || "standalone"}:${actorId}`;
   const loginBody = JSON.stringify({ identifier: credential.identifier, password: credential.password });
   const login = await fetchJson({
     url: new URL("/api/auth/login", baseUrl).toString(),
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", "X-Client-Instance-ID": clientInstanceId },
     body: loginBody,
     timeoutSource: "auth",
     requestContext: { runId, actorId, action: "auth.login" },
@@ -643,13 +644,14 @@ export async function authenticateIdentity({ baseUrl, credential, ledger = null,
     refreshToken: data.session.refresh_token || "",
     email: login.data.email,
     tokenExpiry: data.session.expires_at ? new Date(data.session.expires_at * 1000).toISOString() : "UNKNOWN",
+    clientInstanceId,
   };
 }
 
-async function authenticatedGet({ baseUrl, path: requestPath, token }) {
+async function authenticatedGet({ baseUrl, path: requestPath, token, clientInstanceId }) {
   const { response, data } = await fetchJson({
     url: new URL(requestPath, baseUrl).toString(),
-    headers: { Authorization: `Bearer ${token}` },
+    headers: { Authorization: `Bearer ${token}`, "X-Client-Instance-ID": clientInstanceId },
   });
   return { status: response.status, data };
 }
@@ -663,11 +665,11 @@ export async function authenticateActors({ baseUrl, actors, credentials, runId, 
     if (index > 0) await sleep(Math.max(1_000, Number(authDelayMs) || 10_000));
     const session = await authenticateIdentity({ baseUrl, credential });
     Object.defineProperty(actor, "accessToken", { configurable: true, enumerable: false, writable: true, value: session.accessToken });
-    const state = await authenticatedGet({ baseUrl, path: "/api/state", token: session.accessToken });
+    const state = await authenticatedGet({ baseUrl, path: "/api/state", token: session.accessToken, clientInstanceId: session.clientInstanceId });
     if (state.status !== 200 || !state.data?.user?.id) {
       throw new Error(`CAPACITY_AUTH: identity ${actor.actorId} /api/state returned HTTP ${state.status}`);
     }
-    const sessionState = await authenticatedGet({ baseUrl, path: "/api/session", token: session.accessToken });
+    const sessionState = await authenticatedGet({ baseUrl, path: "/api/session", token: session.accessToken, clientInstanceId: session.clientInstanceId });
     if (sessionState.status !== 200 || sessionState.data?.authenticated !== true || sessionState.data?.profile?.id !== state.data.user.id) {
       throw new Error(`CAPACITY_AUTH: identity ${actor.actorId} state scope check failed`);
     }

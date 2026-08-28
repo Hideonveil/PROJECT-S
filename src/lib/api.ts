@@ -287,7 +287,7 @@ export async function enrichRoom(room: Record<string, unknown>, options: { conte
     return {
       game: ticket.game_id || roomNeed.game || "deadlock",
       mode: ticket.mode || roomNeed.mode || "ranked",
-      goal: ticket.mode === "casual" ? "娱乐" : "冲分",
+      goal: ticket.mode === "casual" ? "休闲" : "冲分",
       target: Number(roomNeed.target) || rows.length || 2,
       current: rows.length || 1,
       desiredTeammates: ticket.desired_teammates ?? null,
@@ -331,6 +331,20 @@ export async function enrichRoom(room: Record<string, unknown>, options: { conte
         .eq("session_id", session.id)
         .order("requested_at", { ascending: true })
     : { data: [] };
+  const [{ data: settlementRows }, { data: recruitmentVoteRows }] = await Promise.all([
+    session?.id
+      ? supabaseAdmin()
+          .from("session_participant_settlements")
+          .select("user_id,settlement_kind,settled_at")
+          .eq("session_id", session.id)
+          .order("settled_at", { ascending: true })
+      : Promise.resolve({ data: [] }),
+    supabaseAdmin()
+      .from("room_recruitment_votes")
+      .select("user_id,requested_at,membership_version")
+      .eq("room_id", room.id as string)
+      .order("requested_at", { ascending: true }),
+  ]);
   const roomStatus = String(room.status || "").toLowerCase();
   const sessionStatus = String(session?.status || "").toLowerCase();
   const legacyFormationState = String(room.formation_state || "").toLowerCase();
@@ -356,7 +370,12 @@ export async function enrichRoom(room: Record<string, unknown>, options: { conte
     isForming: ["forming", "backfilling", "locked"].includes(String(room.formation_state || "")),
     resumeEligible: options.resumeEligible === true,
     goodbyeRequests: mapGoodbyeRequests(goodbyeRows || []),
-    currentMemberCount: memberViews.length,
+    sessionSettlements: (settlementRows || []).map((row) => ({ userId: row.user_id, kind: row.settlement_kind, settledAt: row.settled_at })),
+    recruitmentVotes: (recruitmentVoteRows || []).map((row) => ({ userId: row.user_id, requestedAt: row.requested_at })),
+    recruitmentVoteCount: (recruitmentVoteRows || []).filter((row) => Number(row.membership_version) === Number(room.room_membership_version || 1)).length,
+    recruitmentVoteTotal: memberViews.filter((member) => member.memberStatus === "active").length,
+    roomMembershipVersion: Number(room.room_membership_version || 1),
+    currentMemberCount: memberViews.filter((member) => member.memberStatus === "active").length,
     activeMemberCount: memberViews.filter((member) => member.memberStatus === "active").length,
     targetTotalPlayers: Number(roomNeed.target) || memberViews.length || 1,
   };
@@ -485,6 +504,11 @@ export async function activeRoomShellFor(profileId: string, context?: StateReadC
   const room = candidate.room;
   const roomNeed = (room.need as Record<string, any>) || {};
   const ticket = candidate.ticket;
+  const shellRoleLabels = (roles: unknown) => {
+    const names: Record<string, string> = { "1": "主核", "2": "伪核", "3": "坦克", "4": "游走", "5": "辅助", "6": "功能" };
+    const values = Array.isArray(roles) ? roles : [];
+    return values.length ? values.map((role) => names[String(role)] || `${role}号位`).join(" / ") : "位置不限";
+  };
   const ticketNeed = ticket
     ? {
         ...roomNeed,
@@ -492,9 +516,13 @@ export async function activeRoomShellFor(profileId: string, context?: StateReadC
         mode: ticket.mode || roomNeed.mode || "ranked",
         goal: ticket.mode === "casual" ? "休闲" : "冲分",
         rankCode: ticket.rank_code || roomNeed.rankCode || null,
+        casualIntent: ticket.metadata?.casualIntent || roomNeed.casualIntent || "default",
+        target: Number(roomNeed.target) || Number(ticket.metadata?.teamMax) || (ticket.mode === "ranked" ? 2 : 6),
         details: {
           ...(roomNeed.details && typeof roomNeed.details === "object" ? roomNeed.details : {}),
           rank: ticket.rank_code || roomNeed.details?.rank || roomNeed.rankCode || "",
+          role: shellRoleLabels(ticket.metadata?.ownRoles || ticket.desired_roles),
+          teammateRole: shellRoleLabels(ticket.metadata?.teammateRoles),
           voicePreference: ticket.microphone_preference || roomNeed.details?.voicePreference || "any",
         },
       }
@@ -528,6 +556,11 @@ export async function activeRoomShellFor(profileId: string, context?: StateReadC
     shell: true,
     resumeEligible: true,
     goodbyeRequests: [],
+    sessionSettlements: [],
+    recruitmentVotes: [],
+    recruitmentVoteCount: 0,
+    recruitmentVoteTotal: 1,
+    roomMembershipVersion: Number(room.room_membership_version || 1),
     currentMemberCount: activeCount,
     activeMemberCount: activeCount,
     targetTotalPlayers: Number(ticketNeed.target) || (roomStatus === "connecting" ? 2 : 1),
@@ -639,11 +672,12 @@ export async function completedSessionViewFor(profileId: string, context?: ReadC
     ...mapSession(session as Session),
     members,
     activeMembers,
-    otherMembers: activeMembers.filter((member) => member.id !== profileId),
+    otherMembers: members.filter((member) => member.id !== profileId),
     currentMemberCount: members.length,
     activeMemberCount: activeMembers.length,
     targetTotalPlayers: enriched?.targetTotalPlayers || members.length || session.players?.length || 1,
     goodbyeRequests: enriched?.goodbyeRequests || [],
+    sessionSettlements: enriched?.sessionSettlements || [],
     rating: response?.rating || null,
     wantAgain: response?.want_again ?? null,
   };

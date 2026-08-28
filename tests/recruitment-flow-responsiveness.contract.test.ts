@@ -19,8 +19,9 @@ describe("recruitment flow responsiveness", () => {
     expect(app).not.toContain('recruitmentExitPending && parseRoute().name === "room"');
   });
 
-  it("uses a continuous recruitment scan and leaves the exit icon still", () => {
+  it("uses a continuous recruitment scan and leaves action icons still", () => {
     expect(styles).toContain("animation: roomRecruitmentScan 1.1s linear infinite;");
-    expect(app).toContain('if (action === "lock-forming-room") button.querySelector(".icon")?.classList.add("is-spinning");');
+    expect(app).not.toContain('button.querySelector(".icon")?.classList.add("is-spinning")');
+    expect(app).toContain('label.textContent = action === "toggle-recruitment-vote" ? "正在确认操作结果…"');
   });
 });

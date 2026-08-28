@@ -38,7 +38,14 @@ export function sessionMembers(source = {}, currentUserId = "", options = {}) {
       .map((request) => request?.userId)
       .filter(Boolean),
   );
-  const goodbyeCount = activeMembers.filter((member) => requestIds.has(member.id)).length;
+  const settlementIds = new Set(
+    (Array.isArray(source.sessionSettlements) ? source.sessionSettlements : [])
+      .map((settlement) => settlement?.userId)
+      .filter(Boolean),
+  );
+  requestIds.forEach((id) => settlementIds.add(id));
+  const participantIds = new Set(members.map((member) => member.id));
+  const goodbyeCount = [...settlementIds].filter((id) => participantIds.has(id)).length;
   return {
     members,
     activeMembers,
@@ -49,8 +56,9 @@ export function sessionMembers(source = {}, currentUserId = "", options = {}) {
     activeMemberCount: activeMembers.length,
     targetTotalPlayers,
     requestIds,
+    settlementIds,
     goodbyeCount,
-    goodbyeDenominator: Math.max(1, activeMembers.length),
+    goodbyeDenominator: Math.max(1, members.length),
   };
 }
 

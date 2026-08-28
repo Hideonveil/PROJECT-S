@@ -271,6 +271,7 @@ export async function statefulRequest({ runtime, options, stage, action, method 
     "User-Agent": `jiyuan-capacity-stateful/${options.runId}`,
     "X-Capacity-Run-Id": options.runId,
     "X-Request-ID": requestId,
+    "X-Client-Instance-ID": runtime.clientInstanceId,
   };
   if (body !== undefined) {
     headers["Content-Type"] = "application/json";
@@ -549,13 +550,16 @@ async function startActor(runtime, options, stage, ledger) {
 async function controlGroups(runtimes, options, stage, ledger, controls) {
   for (const runtime of runtimes.values()) {
     const group = runtime.state?.matchmaking?.group;
-    if (!group) continue;
-    const liveMembers = (group.members || []).filter((member) => member.decision !== "rejected");
-    if (["searching", "partial_ready"].includes(group.state) && group.ownerUserId === runtime.userId && liveMembers.length >= Number(group.desiredTeammates || 1) + 1 && !controls.started.has(group.id)) {
-      controls.started.add(group.id);
-      await statefulRequest({ runtime, options, stage, action: "matchmaking.group.start", method: "POST", requestPath: "/api/matchmaking/group/start", body: { groupId: group.id }, ledger });
+    const liveMembers = (group?.members || []).filter((member) => member.decision !== "rejected");
+    const room = runtime.state?.room;
+    const needed = Number(group?.desiredTeammates || runtime.actor?.match?.minTeammates || 1) + 1;
+    const activeCount = Number(room?.activeMemberCount || room?.members?.filter((member) => (member.memberStatus || member.status || "active") === "active").length || 0);
+    const voteKey = `${room?.id || ""}:${runtime.userId}`;
+    if (room?.code && room.recruiting === true && activeCount >= needed && !controls.started.has(voteKey)) {
+      controls.started.add(voteKey);
+      await statefulRequest({ runtime, options, stage, action: "room.recruitment.vote", method: "POST", requestPath: `/api/room/${room.code}/recruitment`, body: { requested: true }, ledger });
     }
-    if (group.state === "waiting_confirmation") {
+    if (group?.state === "waiting_confirmation") {
       for (const member of liveMembers) {
         if (member.userId === group.ownerUserId || member.decision === "accepted" || controls.confirmed.has(`${group.id}:${member.userId}`)) continue;
         const memberRuntime = [...runtimes.values()].find((candidate) => candidate.userId === member.userId);
@@ -645,13 +649,16 @@ async function sendRoomMessages(group, runtime, options, stage, ledger, messageL
     let result;
     let mutationOutcome = "COMMITTED_RESPONSE_RECEIVED";
     try {
-      result = await withTimeout(
-        runtime.client.from("messages").insert({ room_id: roomId, sender_id: runtime.userId, content: marker }).select("id,room_id,sender_id,created_at").single(),
-        options.requestTimeoutMs,
-        "request",
-        `chat.send timed out for ${runtime.actorId}`,
-      );
-      if (result.error) throw result.error;
+      result = await statefulRequest({
+        runtime,
+        options,
+        stage,
+        action: "chat.send",
+        method: "POST",
+        requestPath: `/api/room/${runtime.state?.room?.code}/messages`,
+        body: { content: marker, operationId: requestId },
+        ledger,
+      });
     } catch (rawError) {
       const error = rawError?.name === "TimeoutError" ? rawError : rawError;
       if (error?.name === "TimeoutError") {
@@ -677,7 +684,7 @@ async function sendRoomMessages(group, runtime, options, stage, ledger, messageL
       }));
       throw error;
     }
-    const data = result.data;
+    const data = result.data?.message;
     await appendLedgerEvent(ledger, buildActionEvent({
       runId: options.runId,
       actorId: runtime.actorId,
@@ -859,6 +866,7 @@ export async function runStatefulRehearsal({ options, manifest, credentials }) {
             accessToken: session.accessToken,
             refreshToken: session.refreshToken,
             tokenExpiry: session.tokenExpiry,
+            clientInstanceId: session.clientInstanceId,
             config,
             client: null,
             heartbeat: null,
