@@ -141,7 +141,7 @@ export function buildDistributedRunPlan({
   const workloadCycles = Array.from({ length: cycles }, (_, index) => ({
     cycle: index + 1,
     startAt: startAt ? new Date(new Date(startAt).getTime() + 180_000 + index * 720_000).toISOString() : null,
-    roomHoldMs: 300_000,
+    roomHoldMs: 120_000,
     actors: cycleActors(actors, safeRunId, index + 1),
   }));
   for (const cycle of workloadCycles) {

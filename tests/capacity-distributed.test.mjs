@@ -45,6 +45,7 @@ describe("distributed capacity coordinator contract", () => {
     expect(new Set(plan.assignments.flatMap((assignment) => assignment.actorIds)).size).toBe(200);
 
     for (const cycle of plan.workload.cycles) {
+      expect(cycle.roomHoldMs).toBe(120_000);
       expect(cycle.actors.filter((actor) => actor.match.mode === "ranked")).toHaveLength(100);
       expect(cycle.actors.filter((actor) => actor.match.mode === "casual")).toHaveLength(100);
       for (const actor of cycle.actors) {
