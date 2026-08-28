@@ -22,6 +22,7 @@ import { memberDisplayName, sessionMembers } from "./session-members.js";
 import { mergeRoomMessages } from "./chat-merge.js";
 import { rosterDelta } from "./room-roster.js";
 import { sessionBelongsToRoom } from "./session-scope.js";
+import { isLiveMatchmakingSnapshot, matchmakingShape, mergeMatchmakingSnapshot, mergePartialMatchmakingSnapshot } from "./matchmaking-snapshot.js";
 
 const app = document.getElementById("app");
 
@@ -1867,24 +1868,6 @@ function restorePendingFeedbackState() {
   if (roomRatingPending) setRoomRatingBusy(true);
 }
 
-function matchmakingShape(match) {
-  const confirmations = (match?.pair?.confirmations || [])
-    .map((confirmation) => `${confirmation.user_id}:${confirmation.decision || "pending"}`)
-    .sort();
-  return JSON.stringify([
-    match?.lifecycle?.state || null,
-    match?.pair?.id || null,
-    match?.pair?.state || null,
-    match?.candidate?.id || null,
-    match?.candidate?.rankCode || match?.candidate?.rank_code || null,
-    match?.candidate?.microphonePreference || match?.candidate?.microphone_preference || null,
-    confirmations,
-    match?.group?.id || null,
-    match?.group?.state || null,
-    (match?.group?.members || []).map((member) => `${member.userId}:${member.decision}:${member.rankCode || member.rank_code || ""}:${member.microphonePreference || member.microphone_preference || ""}`).sort(),
-  ]);
-}
-
 function updateMatchingView(previousMatch, nextMatch) {
   if (parseRoute().name !== "matching") return;
   if (nextMatch?.group || previousMatch?.group) {
@@ -1942,49 +1925,14 @@ function updateMatchingView(previousMatch, nextMatch) {
   }
 }
 
-function isLiveMatchmakingSnapshot(ticket, pair = null, group = null) {
-  if (!ticket) return false;
-  const stateName = ticket.state;
-  const expiresAt = ticket.expires_at || ticket.expiresAt;
-  if (["searching", "candidate_found", "waiting_confirmation"].includes(stateName)
-      && expiresAt
-      && new Date(expiresAt).getTime() <= Date.now()) {
-    return false;
-  }
-  if (pair && ["cancelled", "expired", "completed"].includes(pair.state)) return false;
-  if (group && ["cancelled", "expired", "completed"].includes(group.state)) return false;
-  return ["searching", "candidate_found", "waiting_confirmation", "matched", "playing"].includes(stateName);
-}
-
 function applyMatchmakingSnapshot(snapshot, options = {}) {
   if (!snapshot) return;
   const previousMatch = state.match;
   const previousShape = matchmakingShape(state.match);
-  const ticket = snapshot.ticket || null;
-  const pair = snapshot.pair || null;
-  const group = snapshot.group || null;
-  const candidate = snapshot.candidate || null;
-  const active = isLiveMatchmakingSnapshot(ticket, pair, group);
-  const livePair = active && pair && !["cancelled", "expired", "completed"].includes(pair.state) ? pair : null;
-  const liveGroup = active && group && !["cancelled", "expired", "completed"].includes(group.state) ? group : null;
-  const liveCandidate = livePair ? candidate : null;
-  const timedOut = state.match?.pair?.state === "waiting_confirmation" && !livePair && ticket?.state === "searching";
+  const merged = mergeMatchmakingSnapshot(previousMatch, snapshot, options.notice || "");
+  const { active, pair: livePair, group: liveGroup, candidate: liveCandidate } = merged;
   if (livePair?.state === "waiting_confirmation" && liveCandidate) trackCandidate(livePair, liveCandidate);
-  const nextMatch = {
-      ...state.match,
-      status: active ? "active" : "idle",
-      online: snapshot.online ?? state.match.online ?? 0,
-      pool: snapshot.matching ?? state.match.pool,
-      matchable: snapshot.matchable ?? state.match.matchable ?? 0,
-      directory: Array.isArray(snapshot.directory) ? snapshot.directory : state.match.directory || [],
-      lifecycle: active ? ticket : null,
-      pair: livePair,
-      group: liveGroup,
-      candidate: liveCandidate,
-      notice: options.notice || (timedOut
-        ? "对方已离开匹配，正在继续寻找其他玩家。"
-        : (!active && ticket ? "匹配状态已结束，请重新开始。" : (livePair ? "" : state.match.notice || ""))),
-  };
+  const nextMatch = merged.match;
   update({ match: nextMatch });
   const routeName = parseRoute().name;
   if (routeName === "matching" && previousMatch.status === "active" && !active && !state.room) {
@@ -2031,36 +1979,11 @@ function applyServerSnapshot(data) {
   };
   if (data.matchmaking) {
     const mm = data.matchmaking;
-    const liveTicket = isLiveMatchmakingSnapshot(mm.ticket || null, mm.pair || null, mm.group || null);
-    const livePair = liveTicket && mm.pair && !["cancelled", "expired", "completed"].includes(mm.pair.state) ? mm.pair : null;
-    const liveGroup = liveTicket && mm.group && !["cancelled", "expired", "completed"].includes(mm.group.state) ? mm.group : null;
-    const hasGroupField = Object.prototype.hasOwnProperty.call(mm, "group");
-    const hasTicketField = Object.prototype.hasOwnProperty.call(mm, "ticket");
-    // A legacy state endpoint may explicitly return ticket:null while omitting
-    // all group fields. Treat that response as partial during a live group
-    // flow instead of navigating the player out of the matching modal.
-    const partialMatchmaking = !hasGroupField && mm.ticket === null;
-    const timedOut = previousMatch?.pair?.state === "waiting_confirmation" && !mm.pair && mm.ticket?.state === "searching";
-    patch.match = {
-      ...patch.match,
-      status: (partialMatchmaking || (!hasTicketField && previousMatch.status === "active")) ? "active" : (liveTicket ? "active" : "idle"),
-      pool: mm.matching ?? patch.match.pool,
-      matchable: mm.matchable ?? 0,
-      directory: Array.isArray(mm.directory) ? mm.directory : state.match.directory || [],
-      lifecycle: partialMatchmaking || !hasTicketField ? previousMatch.lifecycle : (liveTicket ? mm.ticket : null),
-      pair: partialMatchmaking || !hasTicketField ? previousMatch.pair : livePair,
-    // Older/partial state payloads do not carry group details. Do not erase
-      // a live local group snapshot merely because another reconciliation
-      // endpoint has not learned that field yet.
-      group: hasGroupField ? liveGroup : previousMatch.group,
-      candidate: livePair ? (mm.candidate || null) : (partialMatchmaking || !hasTicketField ? previousMatch.candidate : null),
-      notice: livePair ? "" : (timedOut
-        ? "对方已离开匹配，正在继续寻找其他玩家。"
-        : (!liveTicket && hasTicketField && mm.ticket ? "匹配状态已结束，请重新开始。" : previousMatch.notice || "")),
-    };
-    matchmakingHasTicketField = hasTicketField;
-    matchmakingLiveTicket = liveTicket;
-    matchmakingPartial = partialMatchmaking;
+    const merged = mergePartialMatchmakingSnapshot(previousMatch, patch.match, mm);
+    patch.match = merged.match;
+    matchmakingHasTicketField = merged.hasTicketField;
+    matchmakingLiveTicket = merged.active;
+    matchmakingPartial = merged.partial;
   }
   if (data.user) patch.user = data.user;
   if (Array.isArray(data.friends)) {

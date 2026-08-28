@@ -8,6 +8,7 @@ const sql = readFileSync(
 const ticketStore = readFileSync("src/lib/matchmaking/ticket-store.ts", "utf8");
 const api = readFileSync("src/lib/api.ts", "utf8");
 const app = readFileSync("public/js/app.js", "utf8");
+const matchmakingSnapshot = readFileSync("public/js/matchmaking-snapshot.js", "utf8");
 const lifecycleMigration = readFileSync(
   "supabase/migrations/20260821190000_close_group_tickets_on_session_end.sql",
   "utf8",
@@ -38,7 +39,7 @@ describe("ghost matchmaking recovery", () => {
 
   it("keeps a terminal pair out of the matching UI", () => {
     expect(app).toContain("isLiveMatchmakingSnapshot");
-    expect(app).toContain('"匹配状态已结束，请重新开始。"');
+    expect(matchmakingSnapshot).toContain('"匹配状态已结束，请重新开始。"');
     expect(app).toContain('navigate("#/home")');
   });
 
