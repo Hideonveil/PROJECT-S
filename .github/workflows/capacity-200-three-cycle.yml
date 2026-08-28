@@ -1,4 +1,4 @@
-name: Distributed capacity 50/200 three-cycle
+name: Distributed capacity 50/200
 
 on:
   workflow_dispatch:
@@ -53,6 +53,7 @@ jobs:
           --manifest output/capacity-validation/breakpoint-accelerated-20260825/run-manifest.json
           --users "${{ inputs.users }}"
           --nodes 10
+          --cycles 1
           --start-at "${{ inputs.start_at }}"
           --output run-plan/plan.json
       - uses: actions/upload-artifact@v4
@@ -137,7 +138,7 @@ jobs:
         with:
           pattern: capacity-report-*
           path: reports
-      - name: Summarize three-cycle result
+      - name: Summarize capacity result
         run: >-
           pnpm capacity:distributed -- summarize
           --plan run-plan/plan.json

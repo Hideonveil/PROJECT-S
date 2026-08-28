@@ -63,6 +63,19 @@ describe("distributed capacity coordinator contract", () => {
     }
   });
 
+  it("supports an explicitly requested single-cycle capacity run", () => {
+    const plan = buildDistributedRunPlan({
+      runId: "cap200-one-cycle",
+      actors: actors(),
+      nodes: nodes(),
+      cycles: 1,
+    });
+
+    expect(plan.cycles).toBe(1);
+    expect(plan.workload.cycles).toHaveLength(1);
+    expect(plan.workload.cycles[0].roomHoldMs).toBe(120_000);
+  });
+
   it("keeps ranked cohorts even so every preflight actor can actually form a pair", () => {
     const plan = buildDistributedRunPlan({
       runId: "cap10-even-ranked",

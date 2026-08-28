@@ -124,7 +124,9 @@ export function buildDistributedRunPlan({
   if (!Array.isArray(nodes) || nodes.length < egressThreshold) {
     throw new Error(`CAPACITY_DISTRIBUTED: at least ${egressThreshold} agents are required`);
   }
-  if (cycles !== DEFAULT_CYCLES) throw new Error(`CAPACITY_DISTRIBUTED: exactly ${DEFAULT_CYCLES} cycles are required`);
+  if (![1, DEFAULT_CYCLES].includes(cycles)) {
+    throw new Error(`CAPACITY_DISTRIBUTED: cycles must be 1 or ${DEFAULT_CYCLES}`);
+  }
   if (completionThreshold < 1 || completionThreshold > actors.length) {
     throw new Error("CAPACITY_DISTRIBUTED: invalid completion threshold");
   }
