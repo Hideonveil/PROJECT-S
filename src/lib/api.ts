@@ -17,6 +17,7 @@ export {
   createStateReadContext,
   enrichRoom,
   resolveActiveRoom,
+  roomShellFromStartedTicket,
 } from "./room-read-model";
 export type { StateReadContext } from "./room-read-model";
 

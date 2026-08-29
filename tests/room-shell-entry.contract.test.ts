@@ -22,8 +22,10 @@ describe("room shell entry fast path", () => {
   });
 
   it("returns a minimal shell from the start route", () => {
-    expect(startRoute).toContain("activeRoomShellFor(profile.id");
+    expect(startRoute).toContain("roomShellFromStartedTicket(profile.id, matchmaking.ticket)");
+    expect(startRoute).toContain("?? await activeRoomShellFor(profile.id)");
     expect(startRoute).not.toContain("activeRoomFor(profile.id, createStateReadContext())");
+    expect(api).toContain("export function roomShellFromStartedTicket");
     expect(api).toContain("export async function activeRoomShellFor");
     expect(api).toContain("shell: true");
   });

@@ -8,7 +8,7 @@ const styles = readFileSync("public/styles/product-shell.css", "utf8");
 
 describe("recruitment flow responsiveness", () => {
   it("returns the newly created Room from the start response instead of forcing a full state polling loop", () => {
-    expect(startRoute).toContain("activeRoomShellFor(profile.id");
+    expect(startRoute).toContain("roomShellFromStartedTicket(profile.id, matchmaking.ticket)");
     expect(app).toContain("if (startData?.room)");
     expect(app).not.toContain("const ROOM_FIRST_RECONCILE_DELAYS_MS = [0, 250, 750];");
   });

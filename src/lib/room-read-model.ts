@@ -199,26 +199,18 @@ export async function activeRoomFor(profileId: string, context?: StateReadContex
   return enrichRoom(candidate.room, { context, session: candidate.session, resumeEligible: true });
 }
 
-/**
- * Return only the data needed to paint the Room-first shell. The resolver is
- * still the authority here, so an active historical member or orphaned ticket
- * can never be promoted into a resumable Room just because this is a fast
- * path. Profiles, ticket conditions, group members and chat history are
- * deliberately left to the asynchronous state hydration that follows.
- */
-export async function activeRoomShellFor(profileId: string, context?: StateReadContext): Promise<Room | null> {
-  const candidate = await resolveActiveRoom(profileId, context);
-  if (!candidate.room) return null;
-
-  const room = candidate.room;
+function buildRoomShell(
+  profileId: string,
+  room: Record<string, any>,
+  ticket: Record<string, any> | null,
+  session: Record<string, any> | null,
+): Room {
   const roomNeed = (room.need as Record<string, any>) || {};
-  const ticket = candidate.ticket;
   const ticketNeed = roomShellNeed(ticket, roomNeed);
   const roomStatus = String(room.status || "").toLowerCase();
   const formationState = (room.formation_state as Room["formationState"]) || null;
-  const recruitment = roomRecruitmentPresentation(room.status, candidate.session?.status, formationState);
+  const recruitment = roomRecruitmentPresentation(room.status, session?.status, formationState);
   const member = { id: profileId, memberStatus: "active", exitedAt: null } as unknown as Room["members"][number];
-  const activeCount = 1;
 
   return {
     id: room.id as string,
@@ -230,8 +222,8 @@ export async function activeRoomShellFor(profileId: string, context?: StateReadC
     startedAt: (room.started_at as string | null) || null,
     players: [member],
     members: [member],
-    sessionId: candidate.session?.id || null,
-    sessionStatus: candidate.session?.status || null,
+    sessionId: session?.id || null,
+    sessionStatus: session?.status || null,
     recruiting: recruitment.recruiting,
     recruitmentState: recruitment.recruitmentState,
     formationState,
@@ -245,8 +237,54 @@ export async function activeRoomShellFor(profileId: string, context?: StateReadC
     recruitmentVoteCount: 0,
     recruitmentVoteTotal: 1,
     roomMembershipVersion: Number(room.room_membership_version || 1),
-    currentMemberCount: activeCount,
-    activeMemberCount: activeCount,
+    currentMemberCount: 1,
+    activeMemberCount: 1,
     targetTotalPlayers: Number(ticketNeed.target) || (roomStatus === "connecting" ? 2 : 1),
   };
+}
+
+/**
+ * Build the first Room paint from the same transaction that created the
+ * ticket and waiting Room. This deliberately requires both identifiers: a
+ * reused or incomplete ticket falls back to the authoritative resolver.
+ * Later hydration remains responsible for current membership and Session
+ * truth, so this fast path cannot become a resume signal for historical data.
+ */
+export function roomShellFromStartedTicket(profileId: string, ticket: Record<string, any>): Room | null {
+  const roomId = String(ticket?.room_id || ticket?.roomId || "").trim();
+  const roomCode = String(ticket?.roomCode || ticket?.room_code || "").trim();
+  if (!roomId || !roomCode) return null;
+
+  const metadata = ticket.metadata && typeof ticket.metadata === "object" ? ticket.metadata : {};
+  const mode = ticket.mode === "casual" ? "casual" : "ranked";
+  const casualTarget = Math.min(6, Math.max(2, Number(ticket.desired_teammates || metadata.teamMax || 5) + 1));
+  const target = mode === "ranked" ? 2 : casualTarget;
+  return buildRoomShell(profileId, {
+    id: roomId,
+    code: roomCode,
+    status: "connecting",
+    formation_state: "forming",
+    realtime_version: 0,
+    room_membership_version: 1,
+    started_at: null,
+    need: {
+      game: ticket.game_id || "deadlock",
+      mode,
+      current: 1,
+      target,
+    },
+  }, ticket, null);
+}
+
+/**
+ * Return only the data needed to paint the Room-first shell. The resolver is
+ * still the authority here, so an active historical member or orphaned ticket
+ * can never be promoted into a resumable Room just because this is a fast
+ * path. Profiles, ticket conditions, group members and chat history are
+ * deliberately left to the asynchronous state hydration that follows.
+ */
+export async function activeRoomShellFor(profileId: string, context?: StateReadContext): Promise<Room | null> {
+  const candidate = await resolveActiveRoom(profileId, context);
+  if (!candidate.room) return null;
+  return buildRoomShell(profileId, candidate.room, candidate.ticket, candidate.session);
 }
