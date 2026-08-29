@@ -17,79 +17,31 @@ export function createStateReadContext(): StateReadContext {
   };
 }
 
+type RoomProjection = {
+  room: Record<string, any>;
+  roomVersion: number;
+  membershipVersion: number;
+  members: Array<{ user_id: string; status: string; exited_at: string | null }>;
+  session: Record<string, any> | null;
+  pair: Record<string, any> | null;
+  group: Record<string, any> | null;
+  tickets: Array<Record<string, any>>;
+  recruitmentVotes: Array<{ user_id: string; requested_at: string; membership_version: number }>;
+  goodbyeRequests: Array<{ user_id: string; requested_at: string }>;
+  settlements: Array<{ user_id: string; settlement_kind: string; settled_at: string }>;
+};
+
 export async function enrichRoom(room: Record<string, unknown>, options: { context?: ReadContext; session?: Record<string, any> | null; resumeEligible?: boolean } = {}): Promise<Room> {
-  const roomNeed = (room.need as Record<string, any>) || {};
-  const { data: members } = await supabaseAdmin()
-    .from("room_members")
-    .select("user_id,status,exited_at")
-    .eq("room_id", room.id as string)
-    .order("joined_at", { ascending: true });
-  const rows = (members || []) as Array<{ user_id: string; status: string; exited_at: string | null }>;
-  // A room stores the shared game shell, while rank/microphone/role live on
-  // the matchmaking tickets that created the pair. Bring those per-player
-  // preferences into the room response so the Session fit table does not
-  // fall back to the generic "段位待定" label.
-  let { data: pair } = await supabaseAdmin()
-    .from("matchmaking_pairs")
-    .select("ticket_a_id,ticket_b_id")
-    .eq("room_id", room.id as string)
-    .maybeSingle();
-  // Older rooms can miss the room_id back-reference even though the pair is
-  // linked to the Session. Resolve through the Session as a safe fallback so
-  // one member never drops back to generic rank/role text.
-  if (!pair) {
-    const { data: sessionLink } = await supabaseAdmin()
-      .from("sessions")
-      .select("id")
-      .eq("room_id", room.id as string)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    if (sessionLink?.id) {
-      const { data: sessionPair } = await supabaseAdmin()
-        .from("matchmaking_pairs")
-        .select("ticket_a_id,ticket_b_id")
-        .eq("session_id", sessionLink.id)
-        .maybeSingle();
-      pair = sessionPair;
-    }
-  }
-  let ticketIds = [pair?.ticket_a_id, pair?.ticket_b_id].filter(Boolean) as string[];
-  let formationGroup: Record<string, any> | null = null;
-  // Casual rooms are group-backed and do not have a matchmaking_pairs row.
-  // Resolve every group member's ticket so a restored Session can rebuild
-  // every player's conditions instead of silently falling back to pair data.
-  if (!ticketIds.length) {
-    const { data: group } = await supabaseAdmin()
-      .from("matchmaking_groups")
-      .select("id,state,hard_max_players,recruitment_mode")
-      .eq("room_id", room.id as string)
-      .maybeSingle();
-    formationGroup = group as Record<string, any> | null;
-    if (group?.id) {
-      const { data: groupMembers } = await supabaseAdmin()
-        .from("matchmaking_group_members")
-        .select("ticket_id")
-        .eq("group_id", group.id)
-        .order("joined_at", { ascending: true });
-      ticketIds = (groupMembers || []).map((member) => member.ticket_id).filter(Boolean) as string[];
-    }
-  }
-  if (!ticketIds.length) {
-    const { data: roomTickets } = await supabaseAdmin()
-      .from("matchmaking_tickets")
-      .select("id")
-      .eq("room_id", room.id as string)
-      .order("created_at", { ascending: true });
-    ticketIds = (roomTickets || []).map((ticket) => ticket.id).filter(Boolean) as string[];
-  }
-  const { data: ticketRows } = ticketIds.length
-    ? await supabaseAdmin()
-        .from("matchmaking_tickets")
-        .select("id,user_id,game_id,mode,rank_code,desired_roles,microphone_preference,desired_teammates,min_teammates,metadata")
-        .in("id", ticketIds)
-    : { data: [] };
-  const ticketByUser = new Map((ticketRows || []).map((ticket) => [ticket.user_id, ticket]));
+  const { data, error } = await supabaseAdmin().rpc("read_room_projection", { p_room_id: room.id as string });
+  if (error) throw error;
+  if (!data || typeof data !== "object") throw new Error("ROOM_PROJECTION_NOT_FOUND");
+  const projection = data as RoomProjection;
+  const projectedRoom = projection.room;
+  const roomNeed = (projectedRoom.need as Record<string, any>) || {};
+  const rows = Array.isArray(projection.members) ? projection.members : [];
+  const ticketRows = Array.isArray(projection.tickets) ? projection.tickets : [];
+  const ticketByUser = new Map(ticketRows.map((ticket) => [ticket.user_id, ticket]));
+  const formationGroup = projection.group;
   // enrichRoom is only called after server-side room membership checks, so
   // members may see each other's in-room game account exchange fields.
   const memberIds = rows.map((m) => m.user_id);
@@ -103,61 +55,35 @@ export async function enrichRoom(room: Record<string, unknown>, options: { conte
       exitedAt: m.exited_at || null,
       need: roomMemberNeed(ticketByUser.get(m.user_id), roomNeed, rows.length),
     }));
-  const session = options.session === undefined
-    ? (await supabaseAdmin()
-        .from("sessions")
-        .select("id,status")
-        .eq("room_id", room.id as string)
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle()).data
-    : options.session;
-  const { data: goodbyeRows } = session?.id
-    ? await supabaseAdmin()
-        .from("session_goodbye_requests")
-        .select("user_id,requested_at")
-        .eq("session_id", session.id)
-        .order("requested_at", { ascending: true })
-    : { data: [] };
-  const [{ data: settlementRows }, { data: recruitmentVoteRows }] = await Promise.all([
-    session?.id
-      ? supabaseAdmin()
-          .from("session_participant_settlements")
-          .select("user_id,settlement_kind,settled_at")
-          .eq("session_id", session.id)
-          .order("settled_at", { ascending: true })
-      : Promise.resolve({ data: [] }),
-    supabaseAdmin()
-      .from("room_recruitment_votes")
-      .select("user_id,requested_at,membership_version")
-      .eq("room_id", room.id as string)
-      .order("requested_at", { ascending: true }),
-  ]);
-  const recruitment = roomRecruitmentPresentation(room.status, session?.status, room.formation_state);
+  const session = projection.session;
+  const goodbyeRows = Array.isArray(projection.goodbyeRequests) ? projection.goodbyeRequests : [];
+  const settlementRows = Array.isArray(projection.settlements) ? projection.settlements : [];
+  const recruitmentVoteRows = Array.isArray(projection.recruitmentVotes) ? projection.recruitmentVotes : [];
+  const recruitment = roomRecruitmentPresentation(projectedRoom.status, session?.status, projectedRoom.formation_state);
   return {
-    id: room.id as string,
-    code: room.code as string,
-    need: (room.need as Record<string, unknown>) || {},
-    status: room.status as string,
-    realtimeVersion: Number(room.realtime_version || 0),
-    started_at: (room.started_at as string | null) || null,
-    startedAt: (room.started_at as string | null) || null,
+    id: projectedRoom.id as string,
+    code: projectedRoom.code as string,
+    need: roomNeed,
+    status: projectedRoom.status as string,
+    realtimeVersion: Number(projection.roomVersion ?? projectedRoom.realtime_version ?? 0),
+    started_at: (projectedRoom.started_at as string | null) || null,
+    startedAt: (projectedRoom.started_at as string | null) || null,
     players: memberViews.filter((m) => m.memberStatus === "active"),
     members: memberViews,
     sessionId: session?.id || null,
     sessionStatus: session?.status || null,
     recruiting: recruitment.recruiting,
     recruitmentState: recruitment.recruitmentState,
-    formationState: (room.formation_state as Room["formationState"]) || (formationGroup ? "formal" : null),
+    formationState: (projectedRoom.formation_state as Room["formationState"]) || (formationGroup ? "formal" : null),
     formationGroupId: formationGroup?.id || null,
     isForming: recruitment.isForming,
     resumeEligible: options.resumeEligible === true,
-    goodbyeRequests: mapGoodbyeRequests(goodbyeRows || []),
-    sessionSettlements: (settlementRows || []).map((row) => ({ userId: row.user_id, kind: row.settlement_kind, settledAt: row.settled_at })),
-    recruitmentVotes: (recruitmentVoteRows || []).map((row) => ({ userId: row.user_id, requestedAt: row.requested_at })),
-    recruitmentVoteCount: (recruitmentVoteRows || []).filter((row) => Number(row.membership_version) === Number(room.room_membership_version || 1)).length,
+    goodbyeRequests: mapGoodbyeRequests(goodbyeRows),
+    sessionSettlements: settlementRows.map((row) => ({ userId: row.user_id, kind: row.settlement_kind, settledAt: row.settled_at })),
+    recruitmentVotes: recruitmentVoteRows.map((row) => ({ userId: row.user_id, requestedAt: row.requested_at })),
+    recruitmentVoteCount: recruitmentVoteRows.filter((row) => Number(row.membership_version) === Number(projection.membershipVersion || 1)).length,
     recruitmentVoteTotal: memberViews.filter((member) => member.memberStatus === "active").length,
-    roomMembershipVersion: Number(room.room_membership_version || 1),
+    roomMembershipVersion: Number(projection.membershipVersion || 1),
     currentMemberCount: memberViews.filter((member) => member.memberStatus === "active").length,
     activeMemberCount: memberViews.filter((member) => member.memberStatus === "active").length,
     targetTotalPlayers: Number(roomNeed.target) || memberViews.length || 1,
@@ -324,4 +250,3 @@ export async function activeRoomShellFor(profileId: string, context?: StateReadC
     targetTotalPlayers: Number(ticketNeed.target) || (roomStatus === "connecting" ? 2 : 1),
   };
 }
-

@@ -37,6 +37,9 @@
 
 | Migration | Production execution status | Production history status | Current SHA-256 | Production fact |
 |---|---|---|---|---|
+| `20260829160000_authoritative_room_projection.sql` | `CONFIRMED_EXECUTED` | `NOT_RECORDED` | `13f70250805c81a9f91cb8eadd135db4e3d4eaac20f92ebe2df08f4da2e7c725` | 已按明确授权在 Production Supabase SQL Editor 成功执行。只读 PostgREST OpenAPI 已确认 service-role-only `read_room_projection` 存在；无历史数据改写、无清理、未 repair migration history。 |
+| `20260829163000_room_operation_receipts.sql` | `CONFIRMED_EXECUTED` | `NOT_RECORDED` | `48a0a1e6d0afb69d9db92b4240579a4d8d8159513ece4a07eb54c491b16da08d` | 已按明确授权在 Production Supabase SQL Editor 成功执行。只读 PostgREST OpenAPI 已确认 `room_operation_receipts` 与 service-role-only `execute_room_operation` 存在；未调用业务 mutation、未清理 Room/Ticket。 |
+| `20260829164500_publish_room_state_events.sql` | `CONFIRMED_EXECUTED` | `NOT_RECORDED` | `c4e454a3f12a0ddd5ce5ddba7321bec84a775feb701c64b9087d651bb68a3ff9` | 已按明确授权在 Production Supabase SQL Editor 成功执行；独立只读查询确认 `pg_publication_tables` 中 `supabase_realtime/public.room_state_events = true`。无业务数据改写。 |
 | `20260825150000_separate_presence_heartbeat_from_reconcile.sql` | `CONFIRMED_EXECUTED` | `NOT_RECORDED` | `d3014accb511b75a53a1f94e0c93423b328e393dc80abe576def2eb88b5b7fd8` | 已按明确授权在 Production Supabase SQL Editor 成功执行一次。仅移除每次 heartbeat 对 `presence_reconcile_stale()` 的调用；保留 10 秒 heartbeat、30 秒 effective-online TTL、180 秒 reconnect grace 和现有 `pg_cron` stale sweep。未 replay/repair migration history，不得直接重复执行。 |
 
 ## Provenance-review artifacts

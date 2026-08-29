@@ -1,6 +1,6 @@
 import { enrichRoom } from "@/lib/api";
 import { requireRequestProfile } from "@/lib/auth";
-import { errorResponse, jsonBody, jsonOk, requestId } from "@/lib/http";
+import { errorResponse, idempotencyKey, jsonBody, jsonOk, requestId } from "@/lib/http";
 import { mapSession, sessionForRoomCode } from "@/lib/session";
 import { parseGoodbyeCommand } from "@/lib/session-goodbye";
 import { supabaseAdmin } from "@/lib/supabase";
@@ -22,11 +22,12 @@ export async function POST(request: Request, { params }: { params: Promise<{ cod
     roomId = current.room_id;
     sessionId = current.id;
     const admin = supabaseAdmin();
-    const { data: updatedSession, error: rpcError } = await admin.rpc("phase1_request_goodbye", {
-      p_session_id: current.id,
+    const { data: operation, error: rpcError } = await admin.rpc("execute_room_operation", {
+      p_operation_id: idempotencyKey(request) || rid,
+      p_action: "goodbye",
+      p_room_id: current.room_id,
       p_actor_id: me.id,
-      p_requested: command.requested,
-      p_request_id: rid,
+      p_payload: command,
     });
     if (rpcError) throw rpcError;
     const { data: room, error: roomError } = await admin.from("rooms").select("*").eq("id", current.room_id).single();
@@ -35,7 +36,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ cod
     return jsonOk(
       {
         room: enrichedRoom,
-        session: mapSession(updatedSession as Session),
+        session: mapSession(operation?.result as Session),
         goodbyeRequests: enrichedRoom.goodbyeRequests,
       },
       rid

@@ -5,68 +5,45 @@ import type {
   MatchmakingRuleSet,
   RankedCandidate,
 } from "./types";
+import { gameRegistry } from "../games/registry";
+import type { GameRegistry } from "../games/types";
+import { DEADLOCK_RANK_CODES, normalizeDeadlockRankCode } from "../games/deadlock";
 
-export const DEADLOCK_RANK_CODES = [
-  "initiate", "seeker", "alchemist", "arcanist", "ritualist", "emissary",
-  "archon", "oracle", "phantom", "ascendant", "eternus",
-] as const;
-
-const DEFAULT_MAX_RANK_DISTANCE = 1;
-const ETERNUS_RANK_CODE = "eternus";
+export { DEADLOCK_RANK_CODES };
 /**
  * Keep the requested role pairing strict for the first few seconds, then
  * allow a compatible fallback so a player is not stranded indefinitely.
  */
 export const ROLE_MATCH_FALLBACK_SECONDS = 10;
 
-const DEADLOCK_RANK_ALIASES: Record<string, (typeof DEADLOCK_RANK_CODES)[number]> = {
-  "新人（砖石）": "initiate",
-  "行者（岩砾）": "seeker",
-  "侍从（镔铁）": "alchemist",
-  "近卫（青铜）": "arcanist",
-  "秘士（白银）": "ritualist",
-  "侍祭（黄金）": "emissary",
-  "蜜使（铂金）": "archon",
-  "神谕者（钻石）": "oracle",
-  "幽虚影": "phantom",
-  "凌世君": "ascendant",
-  "不朽之星": "eternus",
-};
-
 export function normalizeRankCode(value: unknown): string | null {
-  const raw = String(value || "").trim();
-  if (!raw) return null;
-  if ((DEADLOCK_RANK_CODES as readonly string[]).includes(raw)) return raw;
-  return DEADLOCK_RANK_ALIASES[raw] || null;
+  return normalizeDeadlockRankCode(value);
 }
 
-export function normalizeMatchmakingInput(input: Partial<MatchmakingInput>): MatchmakingInput {
+export function normalizeMatchmakingInput(input: Partial<MatchmakingInput>, registry: GameRegistry = gameRegistry): MatchmakingInput {
+  const gameId = String(input.gameId || "deadlock").trim();
+  const game = registry.require(gameId);
   const mode = input.mode === "casual" ? "casual" : "ranked";
-  const roles = Array.from(
-    new Set((Array.isArray(input.desiredRoles) ? input.desiredRoles : []).map(Number).filter((role) => role >= 1 && role <= 6))
-  ).sort((a, b) => a - b);
-  const ownRoles = Array.from(
-    new Set((Array.isArray(input.ownRoles) ? input.ownRoles : []).map(Number).filter((role) => role >= 1 && role <= 6))
-  ).sort((a, b) => a - b);
-  const teammateRoles = Array.from(
-    new Set((Array.isArray(input.teammateRoles) ? input.teammateRoles : []).map(Number).filter((role) => role >= 1 && role <= 6))
-  ).sort((a, b) => a - b);
+  if (!game.modes[mode].enabled) throw new Error(`GAME_MODE_UNSUPPORTED:${gameId}:${mode}`);
+  const roles = game.rules.normalizePositions(Array.isArray(input.desiredRoles) ? input.desiredRoles : []);
+  const ownRoles = game.rules.normalizePositions(Array.isArray(input.ownRoles) ? input.ownRoles : []);
+  const teammateRoles = game.rules.normalizePositions(Array.isArray(input.teammateRoles) ? input.teammateRoles : []);
   const microphonePreference = ["on", "off", "any"].includes(String(input.microphonePreference))
     ? input.microphonePreference!
     : "any";
   // Casual has one recruiting pool. These legacy transport fields stay at
   // their canonical values so old clients cannot accidentally split it.
-  const desiredTeammates = mode === "casual" ? 5 : undefined;
+  const desiredTeammates = mode === "casual" ? game.modes.casual.hardMaxPlayers - 1 : undefined;
   const minTeammates = mode === "casual" ? 1 : undefined;
   const recruitmentMode = mode === "casual" ? "open" : undefined;
   const requestedTotalPlayers = Number(input.preferredTotalPlayers);
   const preferredTotalPlayers = mode === "casual" && Number.isInteger(requestedTotalPlayers)
-    ? Math.min(6, Math.max(2, requestedTotalPlayers))
+    ? Math.min(game.modes.casual.hardMaxPlayers, Math.max(2, requestedTotalPlayers))
     : undefined;
   return {
-    gameId: "deadlock",
+    gameId,
     mode,
-    rankCode: mode === "ranked" ? normalizeRankCode(input.rankCode) : null,
+    rankCode: mode === "ranked" ? game.rules.normalizeRankCode(input.rankCode) : null,
     desiredRoles: roles,
     ownRoles,
     teammateRoles,
@@ -125,7 +102,8 @@ function preferredTotalPlayersSignal(a: MatchTicket, b: MatchTicket) {
 export function evaluateCompatibility(
   a: MatchTicket,
   b: MatchTicket,
-  rules: MatchmakingRuleSet
+  rules: MatchmakingRuleSet,
+  registry: GameRegistry = gameRegistry
 ): CompatibilityResult {
   const hardFailures: string[] = [];
   if (a.userId === b.userId) hardFailures.push("same_user");
@@ -136,26 +114,10 @@ export function evaluateCompatibility(
     hardFailures.push("unsupported_mode");
   }
 
-  if (a.mode === "ranked") {
-    if (!a.rankCode || !b.rankCode) hardFailures.push("rank_required");
-    // A missing legacy value must not reopen unrestricted ranked matching.
-    // The current product rule is one adjacent rank, with Eternus restricted
-    // to Eternus only.  The DB ruleset is updated to the same value, but this
-    // fallback keeps old rows safe during rollout and in manual-match paths.
-    const maxDistance = Number.isInteger(rules.hardRules.maxRankDistance)
-      ? rules.hardRules.maxRankDistance
-      : DEFAULT_MAX_RANK_DISTANCE;
-    if (maxDistance !== null && a.rankCode && b.rankCode) {
-      const rankA = rules.hardRules.rankOrder.indexOf(a.rankCode);
-      const rankB = rules.hardRules.rankOrder.indexOf(b.rankCode);
-      const eternusPair = a.rankCode === ETERNUS_RANK_CODE || b.rankCode === ETERNUS_RANK_CODE;
-      if (
-        rankA < 0 ||
-        rankB < 0 ||
-        (eternusPair && a.rankCode !== b.rankCode) ||
-        (!eternusPair && Math.abs(rankA - rankB) > maxDistance)
-      ) hardFailures.push("rank_distance");
-    }
+  if (a.mode === "ranked" && a.gameId === b.gameId && a.gameId === rules.gameId) {
+    const game = registry.get(rules.gameId);
+    if (!game) hardFailures.push("unsupported_game");
+    else hardFailures.push(...game.rules.rankedHardFailures(a, b, rules));
   }
   // Casual teammate counts are preferences in Matching V2 Minimal. The game
   // hard cap is applied by the forming-room RPC; a requested group size must
@@ -177,7 +139,8 @@ const signalOrder = { exact: 0, compatible: 1, neutral: 2, mismatch: 3 } as cons
 export function rankCandidates(
   source: MatchTicket,
   candidates: MatchTicket[],
-  rules: MatchmakingRuleSet
+  rules: MatchmakingRuleSet,
+  registry: GameRegistry = gameRegistry
 ): RankedCandidate[] {
   const startedAt = new Date(source.searchStartedAt).getTime();
   const ageSeconds = Number.isFinite(startedAt)
@@ -185,7 +148,7 @@ export function rankCandidates(
     : ROLE_MATCH_FALLBACK_SECONDS;
   const exactRolesOnly = ageSeconds < ROLE_MATCH_FALLBACK_SECONDS;
   return candidates
-    .map((ticket) => ({ ticket, compatibility: evaluateCompatibility(source, ticket, rules) }))
+    .map((ticket) => ({ ticket, compatibility: evaluateCompatibility(source, ticket, rules, registry) }))
     .filter((candidate) => candidate.compatibility.compatible)
     .filter((candidate) => !exactRolesOnly || candidate.compatibility.softSignals.desiredRoles === "exact")
     .sort((left, right) => {

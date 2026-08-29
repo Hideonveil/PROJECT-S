@@ -4,6 +4,13 @@
 > 
 > 本文件记录当前事实，不是下一轮开发计划。若与旧交接文档冲突，以本文件中的已验证生产证据和当前源码为准。
 
+> 2026-08-29 working-tree fact：新游戏扩展边界、权威 RoomProjection、Room operation
+> receipts、版本化 Realtime invalidation、事件唤醒 + 15 秒 safety sweep 和旧接口调用观测已在
+> 本地实现。`typecheck`、`107 test files / 451 tests` 与 Production build 均通过。三条
+> forward-only migration 已在 Production Supabase SQL Editor 成功执行并完成只读验证；
+> migration history 仍是 `NOT_RECORDED`。应用 runtime 当前尚未部署，因此新 API、浏览器同步和
+> matcher 调度仍只属于本地候选，不得提前解释为 Production 已启用。
+
 > 2026-08-25 治理修正：唯一 canonical root 为
 > `/Users/jasonhu/Documents/ChatGPT/project/JY_source`。`REAL PRODUCTION USERS = 0`；当前
 > health 的 `users=531` 是 profiles/account 总数，不代表真实用户已正式开放。当前

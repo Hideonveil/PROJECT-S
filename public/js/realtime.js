@@ -1,4 +1,5 @@
 import { getSupabaseClient, getState } from "./api.js?v=20260828-peer-sync-01";
+import { classifyRoomVersionEvent } from "./room-version-cursor.js";
 
 // Realtime accelerates Room updates, but the server snapshot remains the
 // source of truth. This sparse watchdog closes silent event gaps without
@@ -136,6 +137,7 @@ export async function openRealtime(handlers) {
     if (status === "SUBSCRIBED") {
       clearPoll();
       pollDelay = 4000;
+      if (handlers.roomActive?.()) handlers.roomEvent?.({ source: "reconnect", decision: "resync" });
       // The first short pass covers a match commit that races Room-shell
       // navigation; subsequent passes stay deliberately low-frequency.
       startRoomReconciliation(1_200 + Math.floor(Math.random() * 900));
@@ -150,6 +152,11 @@ export async function openRealtime(handlers) {
     .on("postgres_changes", { event: "*", schema: "public", table: "matchmaking_confirmations" }, schedule)
     .on("postgres_changes", { event: "*", schema: "public", table: "matchmaking_groups" }, schedule)
     .on("postgres_changes", { event: "*", schema: "public", table: "matchmaking_group_members" }, schedule)
+    .on("postgres_changes", { event: "INSERT", schema: "public", table: "room_state_events" }, (payload) => {
+      const checkpoint = handlers.roomCheckpoint?.() || {};
+      const decision = classifyRoomVersionEvent(checkpoint, payload?.new);
+      if (decision !== "ignore") handlers.roomEvent?.({ source: "room-state-event", decision, payload });
+    })
     .on("postgres_changes", { event: "*", schema: "public", table: "rooms" }, async () => {
       if (closed) return;
       try {

@@ -50,15 +50,17 @@ export async function POST(request: Request, { params }: { params: Promise<{ cod
     }
 
     sessionId = currentSession.id;
-    const { data: updatedSession, error: rpcError } = await admin.rpc("phase1_exit_room", {
-      p_session_id: currentSession.id,
+    const { data: operation, error: rpcError } = await admin.rpc("execute_room_operation", {
+      p_operation_id: idempotencyKey(request) || rid,
+      p_action: "exit",
+      p_room_id: room.id,
       p_actor_id: me.id,
-      p_request_id: idempotencyKey(request),
+      p_payload: {},
     });
     if (rpcError) throw rpcError;
     return jsonOk({
       room: await enrichRoom(room, { resumeEligible: false }),
-      session: mapSession(updatedSession as Session),
+      session: mapSession(operation?.result as Session),
       exited: true,
     }, rid);
   } catch (error) {

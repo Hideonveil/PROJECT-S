@@ -14,11 +14,11 @@ const clientInstanceId = (() => {
   return value;
 })();
 
-async function request(path, body, token = null, { timeoutMs = 15000 } = {}) {
+async function request(path, body, token = null, { timeoutMs = 15000, operationId = "" } = {}) {
   const headers = { "X-Client-Instance-ID": clientInstanceId };
   if (body !== undefined) {
     headers["Content-Type"] = "application/json";
-    const mutationId = window.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    const mutationId = operationId || window.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
     headers["X-Request-ID"] = mutationId;
     headers["Idempotency-Key"] = mutationId;
   }
@@ -61,8 +61,8 @@ async function request(path, body, token = null, { timeoutMs = 15000 } = {}) {
   return data;
 }
 
-async function authedRequest(path, body) {
-  return request(path, body, await currentToken());
+async function authedRequest(path, body, options = {}) {
+  return request(path, body, await currentToken(), options);
 }
 
 export const health = () => request("/api/health");
@@ -220,11 +220,11 @@ export const goOffline = async ({ reason = "explicit_logout" } = {}) => {
   }
 };
 export const goOnline = () => authedRequest("/api/online", {});
-export const roomAction = (code, action) => authedRequest(`/api/room/${code}/${action}`, {});
+export const roomAction = (code, action, operationId = "") => authedRequest(`/api/room/${code}/${action}`, {}, { operationId });
 export const getRoomSnapshot = (code) => authedRequest(`/api/room/${encodeURIComponent(code)}/snapshot`);
-export const requestRoomGoodbye = (code, requested) => authedRequest(`/api/room/${code}/goodbye`, { requested });
-export const requestRecruitmentVote = (code, requested) => authedRequest(`/api/room/${code}/recruitment`, { requested });
-export const slipRoom = (code) => authedRequest(`/api/room/${code}/slip`, {});
+export const requestRoomGoodbye = (code, requested, operationId = "") => authedRequest(`/api/room/${code}/goodbye`, { requested }, { operationId });
+export const requestRecruitmentVote = (code, requested, operationId = "") => authedRequest(`/api/room/${code}/recruitment`, { requested }, { operationId });
+export const slipRoom = (code, operationId = "") => authedRequest(`/api/room/${code}/slip`, {}, { operationId });
 export const roomFeedback = (code, payload) => authedRequest(`/api/room/${code}/feedback`, payload);
 export const searchFriend = (code) => authedRequest("/api/friends/search", { code });
 export const addFriend = ({ friendCode, targetUserId } = {}) => authedRequest("/api/friends/add", { friendCode, targetUserId });

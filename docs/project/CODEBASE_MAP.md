@@ -160,4 +160,6 @@ Migration 按时间向前追加。Production 已执行的文件不能改写；�
 3. 继续复用 Auth → Ticket → Room → Session → terminal 主链路。
 4. 先用一个 fake game 跑契约测试，再接真实素材与规则。
 
-当前 registry/adapter 仍是下一阶段工作；在它完成前不要在通用编排里继续增加散落的游戏名判断。
+共享 registry/adapter 已落地于 `src/lib/games/`，Deadlock 已作为第一个正式适配器接入；
+`src/lib/games/registry.test.ts` 使用 fake game 验证新游戏规则不会污染共享 Matcher。
+后续游戏只新增 `GameDefinition`、规则适配器、素材与自己的配置呈现，不复制 Room/Session 生命周期。

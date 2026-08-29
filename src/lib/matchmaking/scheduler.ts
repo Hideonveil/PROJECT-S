@@ -17,6 +17,7 @@ import {
   recordTicketProcessed,
   setGauge,
 } from "./runtime-telemetry";
+import { startMatcherWakeSource } from "./wake-source";
 
 type SchedulerTicketRow = Record<string, any> & {
   id: string;
@@ -28,8 +29,10 @@ type MatcherProcessResult = Record<string, any> | null | undefined;
 type MatcherProcessTicket = (row: SchedulerTicketRow, context: MatcherAttemptContext) => Promise<MatcherProcessResult>;
 
 export const MATCHER_SCHEDULER_POLICY = Object.freeze({
-  intervalMs: 2_000,
-  intervalJitterMs: 500,
+  eventCoalesceMs: 100,
+  safetySweepMs: 15_000,
+  safetySweepJitterMs: 2_000,
+  conflictJitterMs: 500,
   freshBatchSize: 16,
   regularBatchSize: 4,
   processingConcurrency: 2,
@@ -45,6 +48,9 @@ let matcherHandle: ReturnType<typeof setTimeout> | null = null;
 let matcherTelemetryHandle: ReturnType<typeof setInterval> | null = null;
 let matcherBusy = false;
 let lastPoolGaugeAt = 0;
+let matcherProcessTicket: MatcherProcessTicket | null = null;
+let matcherWakePending = false;
+let stopMatcherWakeSource: (() => void) | null = null;
 
 export function nextMatcherCooldownMs(
   outcome: MatcherAttemptOutcome,
@@ -54,7 +60,7 @@ export function nextMatcherCooldownMs(
 ) {
   if (outcome === "BUSINESS_CONFLICT") {
     const exponent = Math.min(5, Math.max(0, previousConflicts));
-    return Math.min(30_000, 1_000 * (2 ** exponent)) + Math.floor(random() * MATCHER_SCHEDULER_POLICY.intervalJitterMs);
+    return Math.min(30_000, 1_000 * (2 ** exponent)) + Math.floor(random() * MATCHER_SCHEDULER_POLICY.conflictJitterMs);
   }
   if (outcome === "WAITING") return MATCHER_SCHEDULER_POLICY.waitingCooldownMs;
   if (outcome === "DATABASE_ERROR") {
@@ -66,8 +72,8 @@ export function nextMatcherCooldownMs(
 }
 
 export function nextMatcherIntervalMs(random: () => number = Math.random) {
-  return MATCHER_SCHEDULER_POLICY.intervalMs
-    + Math.floor(random() * MATCHER_SCHEDULER_POLICY.intervalJitterMs);
+  return MATCHER_SCHEDULER_POLICY.safetySweepMs
+    + Math.floor(random() * MATCHER_SCHEDULER_POLICY.safetySweepJitterMs);
 }
 
 export function buildMatchAttemptState(
@@ -243,16 +249,36 @@ export async function runMatchmakingSweep(processTicket: MatcherProcessTicket) {
  * processor; this module owns only cadence, fairness and fault isolation.
  */
 export function startMatcherScheduler(processTicket: MatcherProcessTicket) {
-  if (matcherHandle) return;
-  const scheduleNextSweep = (delayMs: number) => {
-    matcherHandle = setTimeout(() => {
-      void runMatchmakingSweep(processTicket).finally(() => {
-        scheduleNextSweep(nextMatcherIntervalMs());
-      });
-    }, delayMs);
-    matcherHandle.unref?.();
-  };
-  scheduleNextSweep(0);
+  if (matcherProcessTicket) return;
+  matcherProcessTicket = processTicket;
+  stopMatcherWakeSource = startMatcherWakeSource((reason) => wakeMatcherScheduler(reason));
+  scheduleMatcherSweep(0);
   matcherTelemetryHandle = setInterval(() => { void flushMatcherTelemetry(); }, 10_000);
   matcherTelemetryHandle.unref?.();
+}
+
+function scheduleMatcherSweep(delayMs: number) {
+  if (!matcherProcessTicket) return;
+  if (matcherHandle) clearTimeout(matcherHandle);
+  matcherHandle = setTimeout(() => {
+    matcherHandle = null;
+    const processTicket = matcherProcessTicket;
+    if (!processTicket) return;
+    matcherWakePending = false;
+    void runMatchmakingSweep(processTicket).finally(() => {
+      const delay = matcherWakePending
+        ? MATCHER_SCHEDULER_POLICY.eventCoalesceMs
+        : nextMatcherIntervalMs();
+      matcherWakePending = false;
+      scheduleMatcherSweep(delay);
+    });
+  }, delayMs);
+  matcherHandle.unref?.();
+}
+
+export function wakeMatcherScheduler(_reason = "domain-change") {
+  if (!matcherProcessTicket) return;
+  matcherWakePending = true;
+  if (matcherBusy) return;
+  scheduleMatcherSweep(MATCHER_SCHEDULER_POLICY.eventCoalesceMs);
 }

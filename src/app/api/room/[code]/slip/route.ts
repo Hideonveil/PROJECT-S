@@ -13,13 +13,15 @@ export async function POST(request: Request, { params }: { params: Promise<{ cod
     const me = await requireRequestProfile(request, body);
     const current = await sessionForRoomCode(code);
     if (!current) throw new AppError("SESSION_NOT_FOUND", "当前没有可以离开的 Session", 404);
-    const { data, error } = await supabaseAdmin().rpc("phase1_slip_room", {
-      p_session_id: current.id,
+    const { data, error } = await supabaseAdmin().rpc("execute_room_operation", {
+      p_operation_id: idempotencyKey(request) || rid,
+      p_action: "slip",
+      p_room_id: current.room_id,
       p_actor_id: me.id,
-      p_request_id: idempotencyKey(request),
+      p_payload: {},
     });
     if (error) throw error;
-    return jsonOk({ session: mapSession(data as Session), slipped: true }, rid);
+    return jsonOk({ session: mapSession(data?.result as Session), slipped: true }, rid);
   } catch (error) {
     return errorResponse(error, rid, "溜了状态更新失败，请稍后重试", { action: "slip", route: `/api/room/${code || ":code"}/slip` });
   }

@@ -103,3 +103,4 @@
 - 共享事实：Auth → Ticket → Room → Session → terminal lifecycle、Room 恢复资格、成员/聊天/退出一致性、幂等与防重复约束继续由通用领域模块负责。游戏适配器只能提供规则和展示配置，不得绕过或复制这些生命周期。
 - 接入门槛：真实第二款游戏开发前，先用一个最小 fake game 完成注册、配置页渲染、候选兼容、Room shell/hydration、Session 收敛和容量 runner 合同测试；通过后再接真实资产和规则。
 - 迁移约束：当前 Deadlock hardcode 属于兼容债务，可在 Deadlock 稳定运行期间保留；但在第二款 Production 游戏进入开发前必须收敛到注册表/适配器。不得为了未来可能性提前重写当前稳定的 Matching V2。
+- 实施状态（2026-08-29）：共享 `GameDefinition` registry、Deadlock 规则 adapter 与 fake-game 兼容性合同测试已落地；通用 Auth → Ticket → Room → Session 生命周期未复制。真实第二款游戏仍必须补自己的 UI 素材/配置呈现、规则测试与容量场景，不能把 fake game 当成已完成的产品接入。

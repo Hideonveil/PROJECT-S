@@ -15,8 +15,9 @@ describe("matcher scheduler policy", () => {
       freshBatchSize: 16,
       regularBatchSize: 4,
       processingConcurrency: 2,
-      intervalMs: 2_000,
-      intervalJitterMs: 500,
+      eventCoalesceMs: 100,
+      safetySweepMs: 15_000,
+      safetySweepJitterMs: 2_000,
     });
   });
 
@@ -28,8 +29,8 @@ describe("matcher scheduler policy", () => {
   });
 
   it("schedules every recurring sweep with bounded jitter", () => {
-    expect(nextMatcherIntervalMs(() => 0)).toBe(2_000);
-    expect(nextMatcherIntervalMs(() => 0.999)).toBe(2_499);
+    expect(nextMatcherIntervalMs(() => 0)).toBe(15_000);
+    expect(nextMatcherIntervalMs(() => 0.999)).toBe(16_998);
   });
 
   it("processes both fresh and regular queues with bounded concurrency", async () => {

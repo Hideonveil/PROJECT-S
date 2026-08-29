@@ -25,6 +25,7 @@ import { isLiveMatchmakingSnapshot, matchmakingShape, mergeMatchmakingSnapshot, 
 import { createRoomChatController } from "./room-chat-controller.js";
 import { createAuthController } from "./auth-controller.js";
 import { createRoomAuthority } from "./room-authority.js?v=20260829-shell-switch-02";
+import { createRoomOperationTracker } from "./room-operation-tracker.js";
 
 const app = document.getElementById("app");
 const roomAuthority = createRoomAuthority({
@@ -32,6 +33,7 @@ const roomAuthority = createRoomAuthority({
   roomSignature: roomRenderSignature,
   isResumableRoom: isActiveSessionRoom,
 });
+const roomOperations = createRoomOperationTracker();
 const roomChat = createRoomChatController({
   getRouteName: () => parseRoute().name,
   applyServerSnapshot: (snapshot) => applyServerSnapshot(snapshot, { source: "hydration" }),
@@ -2143,20 +2145,27 @@ async function toggleRecruitmentVote(requested) {
   if (!room?.code || room.recruiting !== true || matchConfirmationPending) return;
   matchConfirmationPending = true;
   setRecruitmentActionLoading("toggle-recruitment-vote", true);
+  const operationId = roomOperations.begin(room.id, "recruitment", { requested });
   try {
-    const result = await api.requestRecruitmentVote(room.code, requested);
+    const result = await api.requestRecruitmentVote(room.code, requested, operationId);
+    roomOperations.complete(operationId);
     if (result.room?.id === room.id) applyServerSnapshot({ room: result.room }, { source: "mutation" });
     const votes = Number(result.recruitment?.votes || result.room?.recruitmentVoteCount || 0);
     const total = Number(result.recruitment?.total || result.room?.recruitmentVoteTotal || 1);
     toast(requested ? `已选择停止招募（${votes}/${total}）` : "已撤回停止招募");
   } catch (error) {
     if (error?.code === "CONNECTION_TIMEOUT") {
+      roomOperations.markUnknown(operationId);
       try {
         const snapshot = await api.getRoomSnapshot(room.code);
         if (snapshot?.room?.id === room.id) applyServerSnapshot(snapshot, { source: "hydration" });
+        const requestedByMe = (snapshot?.room?.recruitmentVotes || []).some((vote) => vote.userId === state.user.id);
+        if (requestedByMe === requested) roomOperations.complete(operationId);
         toast("已核对服务器最新状态");
         return;
       } catch { /* keep the current authoritative view */ }
+    } else {
+      roomOperations.fail(operationId);
     }
     toast(error.message || "停止招募状态更新失败");
   } finally {
@@ -2175,13 +2184,17 @@ async function slipCurrentRoom() {
     button.setAttribute("aria-busy", "true");
     button.textContent = "正在离开…";
   }
+  const operationId = roomOperations.begin(room.id, "slip", {});
   try {
-    const result = await runRoomExit(room.id, () => api.slipRoom(room.code));
+    const result = await runRoomExit(room.id, () => api.slipRoom(room.code, operationId));
+    roomOperations.complete(operationId);
     update({ room: null, match: { ...state.match, status: "idle", lifecycle: null, pair: null, group: null, candidate: null } });
     navigate("#/home");
     if (result.session && ["completed", "cancelled"].includes(result.session.status)) handleServerGameOver(result.session, room);
     else toast("已离开 Room，结算仍会正常保留");
   } catch (error) {
+    if (error?.code === "CONNECTION_TIMEOUT") roomOperations.markUnknown(operationId);
+    else roomOperations.fail(operationId);
     toast(error.message || "离开失败，请稍后重试");
   } finally {
     exitRequestPending = false;
@@ -2313,6 +2326,10 @@ function connectEvents() {
   if (eventSourceClose) eventSourceClose();
   eventSourceClose = api.openEvents({
     checkpoint: () => roomAuthority.dispatch({ type: "checkpoint" }).generation,
+    roomCheckpoint: () => ({
+      roomId: state.room?.id || "",
+      version: state.room?.realtimeVersion ?? null,
+    }),
     hello: (data, options) => applyServerSnapshot(data, options),
     online: (data) => {
       const pool = data.matching ?? data.online ?? state.match.pool;
@@ -2343,13 +2360,9 @@ function connectEvents() {
 
 async function refreshLiveRoomSnapshot() {
   if (parseRoute().name !== "room" || !state.room?.code || recruitmentExitPending || isRecruitmentExitRoom(state.room)) return;
-  try {
-    const snapshot = await api.getRoomSnapshot(state.room.code);
-    if (snapshot?.room?.id === state.room.id) applyServerSnapshot(snapshot, { source: "hydration" });
-  } catch {
-    // The global state reconciliation remains the fallback for a Room that
-    // has just transitioned to terminal state.
-  }
+  // Reuse the single-flight hydration path. Bursts of membership, chat and
+  // lifecycle invalidations collapse into one authoritative projection read.
+  await hydrateRoomAfterShell(state.room.id);
 }
 
 function markPresenceOnline() {
@@ -2738,8 +2751,10 @@ async function setGoodbyeRequest(requested) {
   if (goodbyeRequestPending) return;
   goodbyeRequestPending = true;
   updateSessionView(room);
+  const operationId = roomOperations.begin(room.id, "goodbye", { requested });
   try {
-    const result = await api.requestRoomGoodbye(room.code, requested);
+    const result = await api.requestRoomGoodbye(room.code, requested, operationId);
+    roomOperations.complete(operationId);
     if (result.room) {
       applyServerSnapshot({ room: result.room }, { source: "mutation" });
     }
@@ -2756,6 +2771,19 @@ async function setGoodbyeRequest(requested) {
       ? `已提出拜拜，正在等其余 ${waitingFor} 位成员回应`
       : "已撤回拜拜");
   } catch (err) {
+    if (err?.code === "CONNECTION_TIMEOUT") {
+      roomOperations.markUnknown(operationId);
+      try {
+        const snapshot = await api.getRoomSnapshot(room.code);
+        if (snapshot?.room?.id === room.id) applyServerSnapshot(snapshot, { source: "hydration" });
+        const requestedByMe = (snapshot?.room?.goodbyeRequests || []).some((entry) => entry.userId === state.user.id);
+        if (requestedByMe === requested) roomOperations.complete(operationId);
+        toast("已核对服务器最新状态");
+        return;
+      } catch { /* keep the current authoritative view */ }
+    } else {
+      roomOperations.fail(operationId);
+    }
     toast(err.message);
   } finally {
     goodbyeRequestPending = false;
@@ -2849,11 +2877,13 @@ async function confirmExitRoom() {
     exitButton.innerHTML = `${icon("refreshCw", 16, "is-spinning")}<span>正在离开…</span>`;
   }
   const memberModel = sessionMembers(room, state.user.id);
+  const operationId = roomOperations.begin(room.id, "exit", {});
   try {
     const result = await runRoomExit(room.id, () => withProjectTransition(
-      () => api.roomAction(room.code, "exit"),
+      () => api.roomAction(room.code, "exit", operationId),
       { label: "正在退出 Session" },
     ));
+    roomOperations.complete(operationId);
     if (result.session && ["completed", "cancelled"].includes(result.session.status)) {
       closeSheet();
       update({ room: null, session: null, match: { ...state.match, status: "idle", lifecycle: null, pair: null, group: null, candidate: null } });
@@ -2889,6 +2919,8 @@ async function confirmExitRoom() {
     navigate("#/home");
     toast("已主动离开，本次不计入正常对局");
   } catch (err) {
+    if (err?.code === "CONNECTION_TIMEOUT") roomOperations.markUnknown(operationId);
+    else roomOperations.fail(operationId);
     toast(err.message);
   } finally {
     exitRequestPending = false;

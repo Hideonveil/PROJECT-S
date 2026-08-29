@@ -5,7 +5,7 @@ import { attemptCasualGroup } from "./casual";
 import { joinPublicTicketOperation } from "./direct-join";
 import { type MatchmakingTicketRow } from "./records";
 import { attemptRankedMatch } from "./ranked";
-import { startMatcherScheduler } from "./scheduler";
+import { startMatcherScheduler, wakeMatcherScheduler } from "./scheduler";
 import { matchmakingStatus } from "./status";
 import { activeTicketRow } from "./ticket-store";
 import type { MatchmakingInput } from "./types";
@@ -58,6 +58,7 @@ async function startTicketInternal(userId: string, input: MatchmakingInput, requ
       .eq("id", data.id);
     if (metadataError) throw metadataError;
   }
+  wakeMatcherScheduler("ticket-started");
   return startTicketSnapshot(data);
 }
 
@@ -91,6 +92,7 @@ async function cancelTicketInternal(userId: string, reason: string, requestId: s
     });
     if (error) throw error;
     await reconcileOrphanWaitingRooms(userId, requestId);
+    wakeMatcherScheduler("ticket-cancelled");
     return data;
   }
   const { data, error } = await supabaseAdmin().rpc("matchmaking_cancel_ticket", {
@@ -100,6 +102,7 @@ async function cancelTicketInternal(userId: string, reason: string, requestId: s
   });
   if (error) throw error;
   await reconcileOrphanWaitingRooms(userId, requestId);
+  wakeMatcherScheduler("ticket-cancelled");
   return data;
 }
 

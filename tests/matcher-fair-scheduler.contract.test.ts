@@ -31,8 +31,9 @@ describe("fair persistent matcher scheduler", () => {
     expect(migration).toContain("execute function public.matchmaking_wake_search_ticket();");
   });
 
-  it("runs only from boot instrumentation, with a jittered recurring tick", () => {
-    expect(MATCHER_SCHEDULER_POLICY.intervalMs).toBe(2_000);
-    expect(MATCHER_SCHEDULER_POLICY.intervalJitterMs).toBe(500);
+  it("runs only from boot instrumentation, with event wake and a jittered safety sweep", () => {
+    expect(MATCHER_SCHEDULER_POLICY.eventCoalesceMs).toBe(100);
+    expect(MATCHER_SCHEDULER_POLICY.safetySweepMs).toBe(15_000);
+    expect(MATCHER_SCHEDULER_POLICY.safetySweepJitterMs).toBe(2_000);
   });
 });

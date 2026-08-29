@@ -43,9 +43,11 @@ Every retry path must document:
 - same-target suppression;
 - the terminal outcome and telemetry counter.
 
-The Matcher loop remains bounded, but only the database lease holder may scan
-the pool. The lease is the cross-process single-flight boundary; the
-process-local `matcherBusy` flag is only an optimization.
+The Matcher is primarily woken by durable ticket/group membership changes,
+coalesces bursts, and retains a jittered 15-second safety sweep for lost events
+and restart recovery. Every scan remains bounded, and only the database lease
+holder may scan the pool. The lease is the cross-process single-flight
+boundary; the process-local `matcherBusy` flag is only an optimization.
 
 ## Runtime source of truth
 
@@ -86,4 +88,3 @@ Before merging Matching code, reviewers must answer yes to all of these:
 - Does a restart preserve idempotency and avoid duplicate Room/Session creation?
 - Are instance heartbeat and cross-process leader ownership observable?
 - Are abnormal events free of secrets and user credentials?
-

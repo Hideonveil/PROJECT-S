@@ -15,16 +15,17 @@ export async function POST(request: Request, { params }: { params: Promise<{ cod
     const { data: room, error: roomError } = await admin.from("rooms").select("*").eq("code", code).maybeSingle();
     if (roomError) throw roomError;
     if (!room) throw new AppError("ROOM_NOT_FOUND", "房间不存在", 404);
-    const { data: vote, error: voteError } = await admin.rpc("toggle_room_recruitment_vote", {
+    const { data: operation, error: voteError } = await admin.rpc("execute_room_operation", {
+      p_operation_id: idempotencyKey(request) || rid,
+      p_action: "recruitment",
       p_room_id: room.id,
       p_actor_id: me.id,
-      p_requested: body.requested,
-      p_request_id: idempotencyKey(request),
+      p_payload: { requested: body.requested },
     });
     if (voteError) throw voteError;
     const { data: latest, error: latestError } = await admin.from("rooms").select("*").eq("id", room.id).single();
     if (latestError) throw latestError;
-    return jsonOk({ room: await enrichRoom(latest), recruitment: vote }, rid);
+    return jsonOk({ room: await enrichRoom(latest), recruitment: operation?.result }, rid);
   } catch (error) {
     return errorResponse(error, rid, "停止招募状态更新失败，请稍后重试", { action: "recruitment_vote", route: `/api/room/${code || ":code"}/recruitment` });
   }

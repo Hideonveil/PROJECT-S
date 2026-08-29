@@ -31,7 +31,7 @@ export type ConfirmationDecision = "pending" | "accepted" | "rejected";
 export type GroupMatchState = (typeof GROUP_MATCH_STATES)[number];
 
 export interface MatchmakingInput {
-  gameId: "deadlock";
+  gameId: string;
   mode: MatchMode;
   rankCode: string | null;
   desiredRoles: number[];
@@ -79,7 +79,7 @@ export interface MatchGroup {
   id: string;
   ownerUserId: string;
   state: GroupMatchState;
-  gameId: "deadlock";
+  gameId: string;
   mode: "casual";
   /** Effective intersection of all current members' teammate ranges. */
   desiredTeammates: number;
@@ -96,7 +96,7 @@ export interface MatchGroup {
 
 export interface MatchmakingRuleSet {
   id: string;
-  gameId: "deadlock";
+  gameId: string;
   version: string;
   hardRules: {
     allowedModes: MatchMode[];

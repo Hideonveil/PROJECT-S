@@ -40,6 +40,8 @@ describe("friends flow and retired matching cleanup", () => {
   it("does not let one player complete a normal game alone", () => {
     expect(existsSync("src/app/api/room/[code]/finish/route.ts")).toBe(false);
     const goodbye = readFileSync("src/app/api/room/[code]/goodbye/route.ts", "utf8");
-    expect(goodbye).toContain("phase1_request_goodbye");
+    const receipts = readFileSync("supabase/migrations/20260829163000_room_operation_receipts.sql", "utf8");
+    expect(goodbye).toContain("execute_room_operation");
+    expect(receipts).toContain("public.phase1_request_goodbye(");
   });
 });
