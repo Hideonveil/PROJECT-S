@@ -2,7 +2,7 @@
 
 > 日期：2026-08-29（Asia/Shanghai）
 >
-> 状态：`DESIGN READY / IMPLEMENTATION NOT STARTED`
+> 状态：`M1 + M2 COMPLETE / M3 NOT STARTED`
 >
 > 依据：`PHASE_0_CURRENT_PRODUCT_AUDIT_20260829.md`、`research/MOBILE_WEB_PLATFORM_RESEARCH_20260829.md`、DEC-015、DEC-016。
 
@@ -252,13 +252,17 @@ Page Presentation Models
 
 ## 8. Phase 1 实施切片
 
-### M1｜防回归基线
+### M1｜防回归基线（`BASELINE COMPLETE`）
 
-- 将现有“手机必须被拦截”E2E 改成预期失败测试；
-- 新增 360/375/390/412/430 viewport shell 契约；
-- 保留 PC 三档和 125% zoom 回归。
+验证基线：`MOBILE_VALIDATION_BASELINE_20260829.md`。
 
-### M2｜统一游戏展示目录
+- 将现有“手机必须被拦截”扩为 360/375/390/412/430 五档现状基线，并明确 M3 必须替换它；
+- 记录 M3 的 viewport shell 目标契约，本阶段不把 Gate 误写为手机可用；
+- 保留 PC 三档和 125% 缩放后的等效 CSS 视口回归；真实浏览器缩放与系统字体缩放留到 M7 真机矩阵。
+
+### M2｜统一游戏展示目录（`COMPLETE`）
+
+实现契约：`GAME_CATALOG_CONTRACT_20260829.md`。
 
 - 服务端导出安全 public game catalog；
 - 浏览器 Home/Profile/Room/Capacity 不再各自维护游戏名称和步骤；
@@ -313,7 +317,7 @@ Page Presentation Models
 | Android Chrome | 360 / 412；键盘、系统返回、地址栏、性能 |
 | iOS 微信 | 登录返回、键盘、聊天、Realtime、前后台 |
 | Android 微信 | 同上，并记录实际 feature support |
-| Desktop | 1366×768、1440×900、1920×1080、125% zoom 不回归 |
+| Desktop | 1366×768、1440×900、1920×1080；当前自动验证 125% 的等效 CSS 视口，M7 验真实浏览器缩放 |
 
 每个平台至少执行：
 

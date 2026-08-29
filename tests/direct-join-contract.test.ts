@@ -43,8 +43,9 @@ describe("public matchmaking direct-join contract", () => {
     const ranks = read("public/js/ranks.js");
     const home = read("public/js/pages/home.js");
     const landing = read("public/js/pages/landing.js");
-    expect(ranks).toContain('archon: "蜜使（铂金）"');
+    expect(ranks).toContain("game?.rankOptions?.find");
+    expect(ranks).not.toContain('archon: "蜜使（铂金）"');
     expect(home).toContain("rankLabel(person.rankCode");
-    expect(landing).toContain("rankLabel(rankCode)");
+    expect(landing).toContain('rankLabel(rankCode, "", gameId)');
   });
 });

@@ -42,6 +42,13 @@ describe("capacity runner safety contract", () => {
     expect(dryRunPlan({ options, manifest: { actors } })).toMatchObject({ networkExecuted: false, statefulExecution: expect.stringContaining("5 -> 10 -> 20 -> 30 -> 40 -> 50 -> 75 -> 100") });
   });
 
+  it("accepts an explicit catalog game for multi-game stateful runs", () => {
+    expect(parseArgs([
+      "--run-id", "cap-game-test",
+      "--game-id", "fake-arena",
+    ])).toMatchObject({ mode: "dry-run", gameId: "fake-arena" });
+  });
+
   it("only permits fixed read paths and GET/HEAD in read-only mode", () => {
     expect(assertSafeOperation({ mode: "read-only", method: "GET", path: "/api/state" })).toMatchObject({ mutation: false });
     expect(() => assertSafeOperation({ mode: "read-only", method: "POST", path: "/api/online" })).toThrow(/forbidden/);

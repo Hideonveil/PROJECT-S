@@ -8,6 +8,48 @@ export type GameModeDefinition = {
   configurationSteps: GameConfigurationStep[];
 };
 
+export type PublicGameAsset = {
+  src: string;
+  width: number;
+  height: number;
+};
+
+export type PublicGameRankOption = {
+  code: string;
+  value: string;
+  name: string;
+  subtitle: string;
+  asset?: PublicGameAsset;
+  artClass?: string;
+};
+
+export type PublicGamePositionOption = {
+  code: number;
+  label: string;
+  roleLabel: string;
+};
+
+export type PublicGameDefinition = {
+  id: string;
+  displayName: string;
+  status: "available" | "coming_soon" | "disabled";
+  category: string;
+  supportedClients: Array<"desktop" | "mobile">;
+  icon: string;
+  assets: {
+    card?: PublicGameAsset;
+    logo?: PublicGameAsset;
+    modes?: Partial<Record<MatchMode, PublicGameAsset>>;
+  };
+  modes: Record<MatchMode, GameModeDefinition & { label: string }>;
+  rankOptions: PublicGameRankOption[];
+  positionOptions: PublicGamePositionOption[];
+  roomCopy: {
+    recruiting: string;
+    locked: string;
+  };
+};
+
 export type GameRuleAdapter = {
   normalizeRankCode(value: unknown): string | null;
   normalizePositions(values: unknown[]): number[];
@@ -17,11 +59,18 @@ export type GameRuleAdapter = {
 export type GameDefinition = {
   id: string;
   displayName: string;
+  status: PublicGameDefinition["status"];
+  category: string;
+  supportedClients: PublicGameDefinition["supportedClients"];
+  icon: string;
   assets: {
-    card?: string;
-    logo?: string;
+    card?: PublicGameAsset;
+    logo?: PublicGameAsset;
+    modes?: Partial<Record<MatchMode, PublicGameAsset>>;
   };
-  modes: Record<MatchMode, GameModeDefinition>;
+  modes: Record<MatchMode, GameModeDefinition & { label: string }>;
+  rankOptions: PublicGameRankOption[];
+  positionOptions: PublicGamePositionOption[];
   vocabulary: {
     ranks: readonly string[];
     positions: readonly (string | number)[];

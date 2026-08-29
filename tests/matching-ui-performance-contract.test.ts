@@ -4,9 +4,13 @@ import { describe, expect, it } from "vitest";
 const read = (path: string) => readFileSync(path, "utf8");
 
 describe("matching UI performance and recruiting polish", () => {
+  // Performance architecture ratchet: preload/cache placement is not reliably
+  // visible from mocked requests alone. The same artwork is exercised by the
+  // game-selection E2E regression in mvp-closure.spec.ts.
   it("keeps the selectable game and mode artwork visible, small, and warm", () => {
     const index = read("public/index.html");
     const home = read("public/js/pages/home.js");
+    const deadlock = read("src/lib/games/deadlock.ts");
     const app = read("public/js/app.js");
 
     [
@@ -19,8 +23,8 @@ describe("matching UI performance and recruiting polish", () => {
     expect(index).toContain('href="/assets/games/deadlock-card.jpg"');
     expect(index).toContain('href="/assets/games/coming-soon-card.jpg"');
     expect(home).toContain('/assets/games/coming-soon-card.jpg');
-    expect(home).toContain('/assets/modes/rank-hero-card.jpg');
-    expect(home).toContain('/assets/modes/casual-hero-card.jpg');
+    expect(deadlock).toContain('/assets/modes/rank-hero-card.jpg');
+    expect(deadlock).toContain('/assets/modes/casual-hero-card.jpg');
     expect(app.indexOf("prewarmMatchArtwork();", app.indexOf('action === "home-game"')))
       .toBeLessThan(app.indexOf("render();", app.indexOf('action === "home-game"')));
   });

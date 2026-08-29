@@ -3,6 +3,7 @@
 // Small, credential-safe smoke test: five ordinary synthetic users exercise
 // login, presence, Room-first matching, state hydration, and normal exit.
 import { readFile } from "node:fs/promises";
+import { buildCapacityMatchInput, loadCapacityGame } from "./game-catalog.mjs";
 
 const authFile = process.argv.find((arg) => arg.startsWith("--auth-file="))?.slice(12);
 if (!authFile) throw new Error("SMOKE: --auth-file is required");
@@ -37,8 +38,9 @@ function headers(actor) {
 async function call(actor, path, body = undefined) {
   return json(`${baseUrl}${path}`, { method: body === undefined ? "GET" : "POST", headers: headers(actor), body: body === undefined ? undefined : JSON.stringify(body) });
 }
-const ranked = { gameId: "deadlock", mode: "ranked", rankCode: "oracle", desiredRoles: [], ownRoles: [], teammateRoles: [], microphonePreference: "any" };
-const casual = { gameId: "deadlock", mode: "casual", desiredRoles: [], ownRoles: [], teammateRoles: [], microphonePreference: "any", desiredTeammates: 2, minTeammates: 2 };
+const game = await loadCapacityGame(baseUrl);
+const ranked = buildCapacityMatchInput({ role: "ranked", match: {} }, game);
+const casual = buildCapacityMatchInput({ role: "casual", match: { preferredTotalPlayers: 3 } }, game);
 const report = {
   authenticated: 0,
   presence: 0,

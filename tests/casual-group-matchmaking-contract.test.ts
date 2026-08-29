@@ -7,6 +7,7 @@ const matchingPage = readFileSync("public/js/pages/matching.js", "utf8");
 const api = readFileSync("public/js/api.js", "utf8");
 const homePage = readFileSync("public/js/pages/home.js", "utf8");
 const app = readFileSync("public/js/app.js", "utf8");
+const gameMatchInput = readFileSync("public/js/game-match-input.js", "utf8");
 const rangeMigration = readFileSync("supabase/migrations/20260822090000_casual_team_range_intersection.sql", "utf8");
 const twoPlayerStartMigration = readFileSync("supabase/migrations/20260822183000_casual_group_start_with_two.sql", "utf8");
 
@@ -67,9 +68,10 @@ describe("casual group matchmaking wiring", () => {
     expect(homePage).toContain("偏好人数");
     expect(homePage).toContain("只影响优先顺序，不会错过合适玩家");
     expect(homePage).toContain('"home-preferred-total"');
-    expect(app).toContain('desiredTeammates: DRAFT.goal === "娱乐" ? 5');
-    expect(app).toContain('recruitmentMode: DRAFT.goal === "娱乐" ? "open"');
-    expect(app).toContain("preferredTotalPlayers");
+    expect(app).toContain("buildGameMatchInput({");
+    expect(gameMatchInput).not.toContain("desiredTeammates");
+    expect(gameMatchInput).not.toContain("recruitmentMode");
+    expect(gameMatchInput).toContain("preferredTotalPlayers");
   });
 
   it("enforces the range intersection inside the locked group RPCs", () => {

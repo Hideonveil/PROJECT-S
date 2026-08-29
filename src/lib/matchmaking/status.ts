@@ -1,23 +1,27 @@
 import { publicProfilesFor } from "../data";
 import { supabaseAdmin } from "../supabase";
 import { groupSnapshot } from "./casual";
+import { matchmakingDirectoryGameIds } from "./directory-games";
 import { activeTicketRow } from "./ticket-store";
 
 export async function matchmakingStatus(userId: string) {
   const admin = supabaseAdmin();
   const ticket = await activeTicketRow(userId);
+  const directoryGameIds = matchmakingDirectoryGameIds(ticket?.game_id);
+  const scopeToGames = (query: any) => directoryGameIds.length === 1
+    ? query.eq("game_id", directoryGameIds[0])
+    : query.in("game_id", directoryGameIds);
 
   const [{ count: matching }, { count: matchable }, { data: directoryRows }] = await Promise.all([
     admin.from("matchmaking_tickets").select("id", { count: "exact", head: true }).eq("state", "searching"),
-    admin.from("matchmaking_tickets").select("id", { count: "exact", head: true }).eq("state", "searching").eq("game_id", "deadlock"),
-    admin
+    scopeToGames(admin.from("matchmaking_tickets").select("id", { count: "exact", head: true }).eq("state", "searching")),
+    scopeToGames(admin
       .from("matchmaking_tickets")
       .select("id,user_id,game_id,mode,rank_code,desired_roles,microphone_preference,search_started_at")
       .eq("state", "searching")
-      .eq("game_id", "deadlock")
       .neq("user_id", userId)
       .order("search_started_at", { ascending: true })
-      .limit(8),
+      .limit(8)),
   ]);
 
   const directoryTickets = (directoryRows || []) as Array<Record<string, any>>;
@@ -28,7 +32,7 @@ export async function matchmakingStatus(userId: string) {
     .map((row) => ({
       ticketId: row.id,
       nickname: directoryProfileById.get(row.user_id)?.nickname || "玩家",
-      gameId: row.game_id || "deadlock",
+      gameId: row.game_id,
       mode: row.mode,
       rankCode: row.rank_code || null,
       desiredRoles: row.desired_roles || [],

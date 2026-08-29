@@ -13,10 +13,11 @@
 
 > 2026-08-29 Phase 0/1 事实：当前 Production 与 canonical 源码只读审计已完成，报告为
 > `PHASE_0_CURRENT_PRODUCT_AUDIT_20260829.md`。当前产品确认是 `Deadlock-only / PC-only`；
-> 共享 `GameDefinition` 与通用 Room 生命周期可复用，但浏览器目录、状态统计、Profile、规则数据和
-> capacity runner 尚未完整游戏化。手机访问当前被 `pc-only-gate` 主动阻断。手机端设计与实施计划已
-> 固化为 `PHASE_1_MOBILE_DESIGN_PLAN_20260829.md`，状态为 `DESIGN READY / IMPLEMENTATION
-> NOT STARTED`；本轮未修改产品代码、数据库或 Production。
+> M1 已建立五档手机视口与桌面防回归基线；M2 已将服务端 `GameDefinition` 安全投影为 public game
+> catalog，并接入 Home、Profile、Room/Matching 名称、匹配目录和容量 Runner。浏览器与 Runner
+> 不再各自维护游戏名称、段位、位置、步骤和人数上限。手机访问当前仍被 `pc-only-gate` 主动阻断，
+> M3 手机外壳尚未开始。实现契约见 `GAME_CATALOG_CONTRACT_20260829.md`；本轮未修改数据库、
+> migration 或 Production，Production 仍是此前版本。
 
 > 2026-08-29 Production fact：新游戏 `GameDefinition` registry + Deadlock adapter、权威
 > RoomProjection、Room operation receipts、版本化 Realtime invalidation、事件唤醒 + 15 秒

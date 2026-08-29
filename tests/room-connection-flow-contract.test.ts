@@ -4,6 +4,9 @@ import { describe, expect, it } from "vitest";
 const read = (path: string) => readFileSync(path, "utf8");
 
 describe("room connection flow contract", () => {
+  // Architecture ratchet: these assertions protect forbidden duplicate
+  // routes/owners. Observable Room transitions are paired with the Room-first
+  // browser regressions in mvp-closure.spec.ts.
   it("routes matching into Room while Home requires an explicit resume choice", () => {
     const app = read("public/js/app.js");
     const authority = read("public/js/room-authority.js");
@@ -43,13 +46,4 @@ describe("room connection flow contract", () => {
     expect(realtime).toContain('handlers["game-over"]?.({ session })');
   });
 
-  it("uses ranked role groups and one Casual pool with a soft size preference", () => {
-    const home = read("public/js/pages/home.js");
-    expect(home).toContain('{ key: "roles", label: "位置" }');
-    expect(home).not.toContain('{ key: "intent", label: "组队方式" }');
-    expect(home).toContain('"home-preferred-total"');
-    expect(home).toContain("人数偏好不是硬门槛");
-    expect(home).toContain("我的位置");
-    expect(home).toContain("希望队友位置");
-  });
 });

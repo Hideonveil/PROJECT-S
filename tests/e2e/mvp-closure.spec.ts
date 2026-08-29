@@ -1,4 +1,8 @@
 import { expect, test, type Page } from "@playwright/test";
+import { gameRegistry } from "../../src/lib/games/registry";
+import { publicGameCatalog } from "../../src/lib/games/public-catalog";
+
+const mockGameCatalog = publicGameCatalog(gameRegistry);
 
 function mockJwt(subject: string, email = `${subject}@project-s.local`) {
   const encode = (value: Record<string, unknown>) => Buffer.from(JSON.stringify(value)).toString("base64url");
@@ -116,7 +120,7 @@ async function mockProductBackend(
     route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ supabaseUrl: "https://supabase.test", supabaseAnonKey: "test-anon-key" }),
+      body: JSON.stringify({ supabaseUrl: "https://supabase.test", supabaseAnonKey: "test-anon-key", games: mockGameCatalog }),
     })
   );
   await page.route("https://supabase.test/**", (route) =>
@@ -330,7 +334,7 @@ async function mockThreeMemberRecoveryBackend(
   await page.route("**/api/config", (route) => route.fulfill({
     status: 200,
     contentType: "application/json",
-    body: JSON.stringify({ supabaseUrl: "https://supabase.test", supabaseAnonKey: "test-anon-key" }),
+    body: JSON.stringify({ supabaseUrl: "https://supabase.test", supabaseAnonKey: "test-anon-key", games: mockGameCatalog }),
   }));
   await page.route("https://supabase.test/**", (route) => route.fulfill({
     status: 200,
@@ -1478,17 +1482,28 @@ test("three independent clients keep the same active Session across refresh and 
   }
 });
 
-test("mobile visitors see the PC-only gate in the same product language", async ({ browser }) => {
-  const context = await browser.newContext({
-    viewport: { width: 390, height: 844 },
-    hasTouch: true,
-    isMobile: true,
-  });
-  const page = await context.newPage();
-  await page.goto("/index.html");
-  await expect(page.getByRole("heading", { name: "请使用电脑打开" })).toBeVisible();
-  await expect(page.getByText(/Windows \/ macOS/)).toBeVisible();
-  await context.close();
+test("Phase 0 mobile viewport baseline is explicit at every Phase 1 target width", async ({ browser }) => {
+  const mobileViewports = [
+    { width: 360, height: 800 },
+    { width: 375, height: 812 },
+    { width: 390, height: 844 },
+    { width: 412, height: 915 },
+    { width: 430, height: 932 },
+  ];
+
+  for (const viewport of mobileViewports) {
+    const context = await browser.newContext({ viewport, hasTouch: true, isMobile: true });
+    const page = await context.newPage();
+    await page.goto("/index.html");
+    await expect(page.getByRole("heading", { name: "请使用电脑打开" })).toBeVisible();
+    await expect(page.getByText(/Windows \/ macOS/)).toBeVisible();
+    const geometry = await page.evaluate(() => ({
+      viewportWidth: document.documentElement.clientWidth,
+      pageWidth: document.documentElement.scrollWidth,
+    }));
+    expect(geometry.pageWidth, `mobile baseline must not overflow at ${viewport.width}px`).toBeLessThanOrEqual(geometry.viewportWidth);
+    await context.close();
+  }
 });
 
 test("a narrow desktop window is not mistaken for a phone", async ({ page }) => {
@@ -1496,6 +1511,15 @@ test("a narrow desktop window is not mistaken for a phone", async ({ page }) => 
   await page.goto("/index.html");
   await expect(page.getByRole("button", { name: "开始匹配", exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "请使用电脑打开" })).toBeHidden();
+});
+
+test("desktop remains usable at the CSS viewport equivalent of 125% browser zoom", async ({ page }) => {
+  await page.setViewportSize({ width: 1152, height: 720 });
+  await page.goto("/index.html#/home");
+  await expect(page.locator(".pc-only-gate")).toBeHidden();
+  await expect(page.locator("#app")).toBeVisible();
+  const hasHorizontalOverflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1);
+  expect(hasHorizontalOverflow).toBe(false);
 });
 
 test("signed-in top bar exposes player id and logout", async ({ page }) => {

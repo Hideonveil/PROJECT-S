@@ -11,7 +11,7 @@ import type {
 export type MatchmakingTicketRow = Record<string, any> & {
   id: string;
   user_id: string;
-  game_id: "deadlock";
+  game_id: string;
   mode: MatchMode;
   state: MatchState;
 };
@@ -24,7 +24,7 @@ export type MatchmakingGroupRow = Record<string, any> & {
 
 export type MatchmakingRuleSetRow = Record<string, any> & {
   id: string;
-  game_id: "deadlock";
+  game_id: string;
   version: string;
 };
 

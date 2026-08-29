@@ -1,10 +1,6 @@
 const DEFAULT_USERS = 200;
 const DEFAULT_CYCLES = 3;
 const DEFAULT_MINIMUM_EGRESS = 7;
-const RANK_CODES = [
-  "initiate", "seeker", "alchemist", "arcanist", "ritualist",
-  "emissary", "archon", "oracle", "phantom", "ascendant",
-];
 
 function assertId(value, label) {
   const normalized = String(value || "").trim();
@@ -44,56 +40,48 @@ function shuffled(values, seed) {
   return result;
 }
 
-function rankedMatch(index, cycleNumber) {
+function rankedMatch(index, cycleNumber, game) {
   const pairIndex = Math.floor(index / 2);
-  const role = ((pairIndex + cycleNumber) % 6) + 1;
+  const positions = game.positionOptions?.map((position) => Number(position.code)).filter(Number.isFinite) || [];
+  const role = positions[(pairIndex + cycleNumber) % positions.length];
+  const rankCodes = game.rankOptions?.map((rank) => rank.code).filter(Boolean) || [];
   return {
-    gameId: "deadlock",
+    gameId: game.id,
     mode: "ranked",
-    rankCode: RANK_CODES[(pairIndex + cycleNumber - 1) % RANK_CODES.length],
-    desiredRoles: [role],
-    ownRoles: [role],
-    teammateRoles: [role],
+    rankCode: rankCodes[(pairIndex + cycleNumber - 1) % rankCodes.length],
+    desiredRoles: role == null ? [] : [role],
+    ownRoles: role == null ? [] : [role],
+    teammateRoles: role == null ? [] : [role],
     microphonePreference: ["any", "on", "off"][(pairIndex + cycleNumber) % 3],
   };
 }
 
-function casualMatch(index, cycleNumber) {
-  const preferredTotals = [null, 2, 3, 4, 5, 6];
+function casualMatch(index, cycleNumber, game) {
+  const hardMaxPlayers = Math.max(2, Number(game.modes?.casual?.hardMaxPlayers || 2));
+  const preferredTotals = [null, ...Array.from({ length: hardMaxPlayers - 1 }, (_, offset) => offset + 2)];
   const preferredTotalPlayers = preferredTotals[(index + cycleNumber - 1) % preferredTotals.length];
   return {
-    gameId: "deadlock",
+    gameId: game.id,
     mode: "casual",
     rankCode: null,
     desiredRoles: [],
     ownRoles: [],
     teammateRoles: [],
     microphonePreference: ["any", "on", "off"][(index + cycleNumber) % 3],
-    recruitmentMode: "open",
-    desiredTeammates: 5,
-    minTeammates: 1,
     preferredTotalPlayers,
   };
 }
 
-function cycleActors(actors, runId, cycleNumber) {
+function cycleActors(actors, runId, cycleNumber, game) {
   const randomized = shuffled(actors, hashSeed(`${runId}:cycle:${cycleNumber}`));
   const half = Math.floor(randomized.length / 2);
   const rankedCount = half - (half % 2);
   return randomized.map((actor, index) => ({
     actorId: actor.actorId,
     match: index < rankedCount
-      ? rankedMatch(index, cycleNumber)
-      : casualMatch(index - rankedCount, cycleNumber),
+      ? rankedMatch(index, cycleNumber, game)
+      : casualMatch(index - rankedCount, cycleNumber, game),
   }));
-}
-
-function compatibleRank(a, b) {
-  if (!a || !b) return false;
-  if (a === "eternus" || b === "eternus") return a === b;
-  const left = RANK_CODES.indexOf(a);
-  const right = RANK_CODES.indexOf(b);
-  return left >= 0 && right >= 0 && Math.abs(left - right) <= 1;
 }
 
 export function compatibleActorIds(cycle, actorId) {
@@ -102,7 +90,9 @@ export function compatibleActorIds(cycle, actorId) {
   return cycle
     .filter((candidate) => candidate.actorId !== actorId)
     .filter((candidate) => candidate.match.gameId === actor.match.gameId && candidate.match.mode === actor.match.mode)
-    .filter((candidate) => actor.match.mode !== "ranked" || compatibleRank(actor.match.rankCode, candidate.match.rankCode))
+    // The plan deliberately creates exact-match Ranked pairs. It does not
+    // copy a game's compatibility rules; Production remains the rule owner.
+    .filter((candidate) => actor.match.mode !== "ranked" || candidate.match.rankCode === actor.match.rankCode)
     .map((candidate) => candidate.actorId);
 }
 
@@ -114,7 +104,11 @@ export function buildDistributedRunPlan({
   cycles = DEFAULT_CYCLES,
   requiredCompletedActors = null,
   minimumUniqueEgress = null,
+  game,
 } = {}) {
+  if (!game?.id || !game?.modes?.ranked?.enabled || !game?.modes?.casual?.enabled || !game?.rankOptions?.length) {
+    throw new Error("CAPACITY_DISTRIBUTED: an available public game definition is required");
+  }
   const safeRunId = assertId(runId, "run id");
   if (!Array.isArray(actors) || actors.length < 5 || actors.length > DEFAULT_USERS) {
     throw new Error(`CAPACITY_DISTRIBUTED: 5 to ${DEFAULT_USERS} actors are required`);
@@ -142,7 +136,7 @@ export function buildDistributedRunPlan({
     cycle: index + 1,
     startAt: startAt ? new Date(new Date(startAt).getTime() + 180_000 + index * 720_000).toISOString() : null,
     roomHoldMs: 120_000,
-    actors: cycleActors(actors, safeRunId, index + 1),
+    actors: cycleActors(actors, safeRunId, index + 1, game),
   }));
   for (const cycle of workloadCycles) {
     for (const actorId of actorIds) {
@@ -154,6 +148,7 @@ export function buildDistributedRunPlan({
 
   return {
     schemaVersion: 1,
+    gameId: game.id,
     runId: safeRunId,
     users: actors.length,
     cycles,

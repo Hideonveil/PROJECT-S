@@ -4,6 +4,7 @@ import path from "node:path";
 import { performance } from "node:perf_hooks";
 import { createClient } from "@supabase/supabase-js";
 import { buildActionEvent, classifyMutationOutcome, createAppendOnlyLedger, serializeError, snapshotState, timeoutError, withTimeout } from "./evidence.mjs";
+import { buildCapacityMatchInput, selectCapacityGame } from "./game-catalog.mjs";
 import {
   assertSafeOperation,
   authenticateIdentity,
@@ -116,18 +117,6 @@ export function statefulDryRunPlan({ actors = [], runId, maxUsers = STATEFUL_MAX
       globalKillSwitch: true,
     },
   };
-}
-
-function matchInput(actor) {
-  const role = String(actor.role || actor.mode || "").toLowerCase();
-  if (role === "ranked") {
-    return { gameId: "deadlock", mode: "ranked", rankCode: actor.match?.rankCode || "oracle", desiredRoles: [], ownRoles: [], teammateRoles: [], microphonePreference: "any" };
-  }
-  if (role === "fragmented") {
-    const size = actor.match?.fragmentedSize || (actor.actorId.endsWith("A") ? 1 : 5);
-    return { gameId: "deadlock", mode: "casual", desiredRoles: [], ownRoles: [], teammateRoles: [], microphonePreference: "any", desiredTeammates: size, minTeammates: size };
-  }
-  return { gameId: "deadlock", mode: "casual", desiredRoles: [], ownRoles: [], teammateRoles: [], microphonePreference: "any", desiredTeammates: 2, minTeammates: 2 };
 }
 
 function actorById(runtimes, actorId) {
@@ -545,7 +534,7 @@ export async function markOnline(runtime, options, stage, ledger) {
 async function startActor(runtime, options, stage, ledger) {
   await markOnline(runtime, options, stage, ledger);
   startHeartbeat(runtime, options, stage, ledger);
-  await statefulRequest({ runtime, options, stage, action: "matchmaking.start", method: "POST", requestPath: "/api/matchmaking/start", body: { match: matchInput(runtime.actor) }, ledger });
+  await statefulRequest({ runtime, options, stage, action: "matchmaking.start", method: "POST", requestPath: "/api/matchmaking/start", body: { match: buildCapacityMatchInput(runtime.actor, runtime.game) }, ledger });
 }
 
 async function controlGroups(runtimes, options, stage, ledger, controls) {
@@ -844,6 +833,7 @@ export async function runStatefulRehearsal({ options, manifest, credentials }) {
     requestContext: { runId: options.runId, actorId: "__system__", action: "auth.config" },
     ledger,
   });
+  const game = selectCapacityGame(config.games, options.gameId);
   const credentialsById = new Map(credentials.map((credential) => [credential.identity, credential]));
   let activeRuntimes = new Map();
   const messageLedger = [];
@@ -873,6 +863,7 @@ export async function runStatefulRehearsal({ options, manifest, credentials }) {
             tokenExpiry: session.tokenExpiry,
             clientInstanceId: session.clientInstanceId,
             config,
+            game,
             client: null,
             heartbeat: null,
             roomChannels: new Set(),

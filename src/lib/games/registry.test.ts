@@ -8,11 +8,23 @@ import type { MatchTicket, MatchmakingRuleSet } from "../matchmaking/types";
 const fakeGame: GameDefinition = {
   id: "fake-arena",
   displayName: "Fake Arena",
+  status: "available",
+  category: "TEST",
+  supportedClients: ["desktop", "mobile"],
+  icon: "gamepad2",
   assets: {},
   modes: {
-    ranked: { enabled: true, hardMaxPlayers: 2, configurationSteps: ["rank", "position", "microphone"] },
-    casual: { enabled: true, hardMaxPlayers: 4, configurationSteps: ["microphone", "preferredTotalPlayers"] },
+    ranked: { label: "Ranked", enabled: true, hardMaxPlayers: 2, configurationSteps: ["rank", "position", "microphone"] },
+    casual: { label: "Casual", enabled: true, hardMaxPlayers: 4, configurationSteps: ["microphone", "preferredTotalPlayers"] },
   },
+  rankOptions: [
+    { code: "bronze", value: "Bronze", name: "Bronze", subtitle: "" },
+    { code: "silver", value: "Silver", name: "Silver", subtitle: "" },
+  ],
+  positionOptions: [
+    { code: 1, label: "Position 1", roleLabel: "Carry" },
+    { code: 2, label: "Position 2", roleLabel: "Support" },
+  ],
   vocabulary: {
     ranks: ["bronze", "silver"],
     positions: [1, 2],
@@ -89,5 +101,11 @@ describe("game definition registry", () => {
     expect(evaluateCompatibility(ticket("fake-arena", "bronze"), ticket("fake-arena", "bronze"), rules, registry).compatible).toBe(true);
     expect(evaluateCompatibility(ticket("fake-arena", "bronze"), ticket("fake-arena", "silver"), rules, registry).hardFailures).toContain("rank_distance");
     expect(evaluateCompatibility(ticket("deadlock", "initiate"), ticket("fake-arena", "bronze"), rules, registry).hardFailures).toContain("wrong_game");
+  });
+
+  it("uses the registry's first available game instead of a hidden Deadlock default", () => {
+    const fakeOnlyRegistry = createGameRegistry([fakeGame]);
+
+    expect(normalizeMatchmakingInput({ mode: "casual" }, fakeOnlyRegistry).gameId).toBe("fake-arena");
   });
 });

@@ -2,17 +2,16 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const app = readFileSync("public/js/app.js", "utf8");
+const gameMatchInput = readFileSync("public/js/game-match-input.js", "utf8");
 const home = readFileSync("public/js/pages/home.js", "utf8");
 const room = readFileSync("public/js/pages/session-preview.js", "utf8");
 const styles = readFileSync("public/styles/product-shell.css", "utf8");
 const migration = readFileSync("supabase/migrations/20260825230000_room_first_matchmaking.sql", "utf8");
 
 describe("room-first matching UI", () => {
-  it("does not imply ranked steps before a goal is selected", () => {
-    expect(app).toContain('if (!HOME_FILTER.goal) return ["goal"]');
-    expect(home).toContain('filter.goal ? DEADLOCK_PATHS');
-  });
-
+  // Architecture/performance ratchet: source inspection protects the absence
+  // of forbidden full-render and duplicate-route calls. User-visible behavior
+  // is paired with the Room-first E2E suite in mvp-closure.spec.ts.
   it("switches goals in place after the initial game selection", () => {
     const start = app.indexOf('if (action === "home-goal")');
     const end = app.indexOf('if (action === "home-casual-intent")', start);
@@ -52,7 +51,7 @@ describe("room-first matching UI", () => {
     expect(app).toContain("function syncHomeStepperAccessibility()");
     expect(app).toContain("syncHomeStepperAccessibility();");
     expect(app).toContain("current.querySelectorAll(\".match-wizard-marker\")");
-    expect(app).toContain("nextSteps.findIndex((item) => item.classList.contains(\"is-active\"))");
+    expect(app).toContain("markers.findIndex((marker) => marker.classList.contains(\"is-active\"))");
     expect(app).toContain("window.requestAnimationFrame(() => syncHomeStepperAccessibility());");
   });
 
@@ -77,7 +76,7 @@ describe("room-first matching UI", () => {
   });
 
   it("does not show progress or start matching before a goal is chosen", () => {
-    const start = home.indexOf("function deadlockStage");
+    const start = home.indexOf("function configuredGameStage");
     const end = home.indexOf("function rolesLabel", start);
     const stage = home.slice(start, end);
     expect(stage).toContain("const progress = filter.goal");
@@ -91,8 +90,9 @@ describe("room-first matching UI", () => {
     expect(app).toContain("setCasualAdvancedOpen(Boolean(HOME_FILTER.advancedOpen))");
   });
 
-  it("keeps the selected casual recruitment intent all the way to the API contract", () => {
-    expect(app).toContain('recruitmentMode: DRAFT.goal === "娱乐"');
+  it("does not let the browser restore legacy Casual recruitment pools", () => {
+    expect(app).toContain("buildGameMatchInput({");
+    expect(gameMatchInput).not.toContain("recruitmentMode");
     expect(migration).toContain("v_ticket.metadata->>'recruitmentMode'");
   });
 

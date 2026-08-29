@@ -1,3 +1,5 @@
+import { installGameCatalog } from "./game-catalog.js";
+
 let supabase = null;
 let configCache = null;
 let cachedAccessToken = "";
@@ -83,6 +85,7 @@ export const publicDirectory = () => {
 export const getConfig = async () => {
   if (configCache) return configCache;
   configCache = await request("/api/config");
+  installGameCatalog(configCache.games);
   return configCache;
 };
 export const getState = ({ completedSessionId = "" } = {}) => {

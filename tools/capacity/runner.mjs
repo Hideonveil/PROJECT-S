@@ -48,6 +48,7 @@ export const DEFAULT_OPTIONS = Object.freeze({
   mode: "dry-run",
   baseUrl: "http://127.0.0.1:3000",
   baseUrlExplicit: false,
+  gameId: "",
   runId: "",
   maxUsers: 0,
   stages: null,
@@ -116,6 +117,9 @@ export function parseArgs(argv = []) {
       options.baseUrl = takeValue(argv, index, flag);
       options.baseUrlExplicit = true;
       index += 1;
+    } else if (flag === "--game-id") {
+      options.gameId = takeValue(argv, index, flag);
+      index += 1;
     } else if (flag === "--production-ack") {
       options.productionAck = takeValue(argv, index, flag);
       index += 1;
@@ -179,6 +183,7 @@ export function parseArgs(argv = []) {
   if (options.help) return options;
   if (!options.runId) usageError("--run-id is required");
   if (!RUN_ID.test(options.runId)) usageError("--run-id contains unsafe characters");
+  if (options.gameId && !/^[a-z0-9][a-z0-9-]*$/.test(options.gameId)) usageError("--game-id contains unsafe characters");
   if (dryRunExplicit && options.mode !== "dry-run") usageError("--dry-run cannot be combined with an execution mode");
   if (options.mode !== "dry-run" && !options.baseUrlExplicit) usageError("--base-url is required for execution");
   if (options.mode === "dry-run") return options;
@@ -599,7 +604,7 @@ export async function loadAuthConfig(baseUrl, requestOptions = {}) {
   if (response.status !== 200 || !data?.supabaseUrl || !data?.supabaseAnonKey) {
     throw new Error(`CAPACITY_AUTH: /api/config returned HTTP ${response.status}`);
   }
-  return { supabaseUrl: data.supabaseUrl, supabaseAnonKey: data.supabaseAnonKey };
+  return { supabaseUrl: data.supabaseUrl, supabaseAnonKey: data.supabaseAnonKey, games: data.games || [] };
 }
 
 export async function authenticateIdentity({ baseUrl, credential, ledger = null, runId = "", actorId = credential?.identity || "__system__" }) {
@@ -936,7 +941,7 @@ export async function writeEvidence({ directory, manifest, plan, result }) {
 }
 
 export function helpText() {
-  return `Usage:\n  pnpm capacity:run -- --dry-run --run-id <id>\n  pnpm capacity:run -- --prepare-auth --base-url <url> --run-id <id> --auth-secret-file <0600-file> --manifest-out <safe-file> --allow-production --production-ack <id>\n  pnpm capacity:run -- --execute-read-only --base-url <url> --run-id <id> --manifest <file> --auth-secret-file <0600-file> --max-users <n> --max-rps <n> --max-requests <n> --allow-production --production-ack <id>\n\nSafety:\n  dry-run is the default and performs no network request. Auth preparation accepts credentials only through hidden TTY stdin or a 0600 JSON file; credentials and access tokens never enter manifests, evidence, logs, or command arguments. Auth uses one normal /api/auth/login request per identity and reuses the returned session; identity logins are paced by --auth-delay-ms (default 10000ms). Read-only execution only permits GET/HEAD on the fixed allowlist. Production execution requires --allow-production and --production-ack=<run-id>. Stateful mode requires --stateful-approval=<run-id>; the current acceptance command uses --stages 10,50,200.\n`;
+  return `Usage:\n  pnpm capacity:run -- --dry-run --run-id <id> [--game-id <catalog-id>]\n  pnpm capacity:run -- --prepare-auth --base-url <url> --run-id <id> --auth-secret-file <0600-file> --manifest-out <safe-file> --allow-production --production-ack <id>\n  pnpm capacity:run -- --execute-read-only --base-url <url> --run-id <id> --manifest <file> --auth-secret-file <0600-file> --max-users <n> --max-rps <n> --max-requests <n> --allow-production --production-ack <id>\n\nSafety:\n  dry-run is the default and performs no network request. Auth preparation accepts credentials only through hidden TTY stdin or a 0600 JSON file; credentials and access tokens never enter manifests, evidence, logs, or command arguments. Auth uses one normal /api/auth/login request per identity and reuses the returned session; identity logins are paced by --auth-delay-ms (default 10000ms). Read-only execution only permits GET/HEAD on the fixed allowlist. Production execution requires --allow-production and --production-ack=<run-id>. Stateful mode requires --stateful-approval=<run-id>; the current acceptance command uses --stages 10,50,200. Stateful runs select the first available catalog game unless --game-id is supplied.\n`;
 }
 
 async function main() {

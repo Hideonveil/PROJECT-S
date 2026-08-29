@@ -1,8 +1,7 @@
 import { icon } from "../icons.js";
 import { brandMark, esc } from "../ui.js";
+import { gameById, gameName } from "../game-catalog.js";
 import { rankLabel } from "../ranks.js?v=20260821-rank-label-01";
-
-const ROLE_LABELS = { 1: "主核", 2: "伪核", 3: "坦克", 4: "游走", 5: "辅助", 6: "功能" };
 
 function accountActions(state) {
   if (!state.authenticated) {
@@ -20,26 +19,27 @@ function maskNickname(value) {
   return `${chars[0]}${"*".repeat(Math.min(3, chars.length - 2))}${chars.at(-1)}`;
 }
 
-function compactRank(rankCode) {
-  return rankLabel(rankCode).split("（")[0].trim();
+function compactRank(rankCode, gameId) {
+  return rankLabel(rankCode, "", gameId).split("（")[0].trim();
 }
 
-function compactRoles(roles) {
-  const labels = (Array.isArray(roles) ? roles : []).map((role) => ROLE_LABELS[Number(role)] || "").filter(Boolean).slice(0, 2);
+function compactRoles(roles, gameId) {
+  const positions = gameById(gameId)?.positionOptions || [];
+  const labels = (Array.isArray(roles) ? roles : []).map((role) => positions.find((position) => Number(position.code) === Number(role))?.roleLabel || "").filter(Boolean).slice(0, 2);
   return labels.length ? labels.join(" / ") : "不限位置";
 }
 
 function compactConfig(person) {
   const mode = person?.mode === "casual" ? "休闲" : "冲分";
-  const rank = person?.mode === "casual" ? "" : compactRank(person?.rankCode);
-  const roles = compactRoles(person?.desiredRoles);
+  const rank = person?.mode === "casual" ? "" : compactRank(person?.rankCode, person?.gameId);
+  const roles = compactRoles(person?.desiredRoles, person?.gameId);
   const mic = person?.microphonePreference === "off" ? "不开麦" : person?.microphonePreference === "on" ? "开麦" : "麦克风无所谓";
   return [mode, rank, roles, mic].filter(Boolean).join(" · ");
 }
 
 export function heroDirectoryPersonMarkup(person, extraClass = "") {
   const nickname = maskNickname(person.nickname);
-  return `<article class="hero-directory-person ${extraClass}" data-hero-directory-person aria-label="正在匹配的玩家 ${esc(nickname)}"><div class="hero-directory-person-main"><span class="hero-directory-avatar" aria-hidden="true">${icon("user", 15)}</span><b>${esc(nickname)}</b></div><div class="hero-directory-person-meta"><span>${esc(person.gameId === "deadlock" || !person.gameId ? "Deadlock" : person.gameId)}</span><i>${esc(compactConfig(person))}</i></div></article>`;
+  return `<article class="hero-directory-person ${extraClass}" data-hero-directory-person aria-label="正在匹配的玩家 ${esc(nickname)}"><div class="hero-directory-person-main"><span class="hero-directory-avatar" aria-hidden="true">${icon("user", 15)}</span><b>${esc(nickname)}</b></div><div class="hero-directory-person-meta"><span>${esc(gameName(person.gameId, person.gameId || "游戏"))}</span><i>${esc(compactConfig(person))}</i></div></article>`;
 }
 
 export function heroDirectoryMarkup(directory = []) {

@@ -21,7 +21,10 @@ export function normalizeRankCode(value: unknown): string | null {
 }
 
 export function normalizeMatchmakingInput(input: Partial<MatchmakingInput>, registry: GameRegistry = gameRegistry): MatchmakingInput {
-  const gameId = String(input.gameId || "deadlock").trim();
+  const defaultGame = registry.list().find((game) => (
+    game.status === "available" && Object.values(game.modes).some((mode) => mode.enabled)
+  ));
+  const gameId = String(input.gameId || defaultGame?.id || "").trim();
   const game = registry.require(gameId);
   const mode = input.mode === "casual" ? "casual" : "ranked";
   if (!game.modes[mode].enabled) throw new Error(`GAME_MODE_UNSUPPORTED:${gameId}:${mode}`);

@@ -4,13 +4,15 @@ import { initNodeField } from "./field.js";
 import { initHeroWaves } from "./hero-waves.js?v=20260820-hero-02";
 import { button, esc, needSummary, setProductRailHeldOpen, toast } from "./ui.js";
 import { state, update, resetState } from "./store.js";
-import { DEVICES, GAME_BY_ID, GAMES, GENRES } from "./data.js";
+import { DEVICES, GENRES } from "./data.js";
+import { defaultAvailableGame, gameById, gameName as catalogGameName, listGames } from "./game-catalog.js";
+import { buildGameMatchInput } from "./game-match-input.js";
 import { FLOW } from "./flow.js";
 import * as api from "./api.js?v=20260829-room-converge-03";
 import { authPage } from "./pages/auth.js";
 import { HERO_PREVIEW_DIRECTORY, heroDirectoryMarkup, heroDirectoryPersonMarkup, heroPreviewPage, landingPage } from "./pages/landing.js?v=20260822-directory-readonly-01";
 import { welcomePage } from "./pages/welcome.js";
-import { homeFlowStepper, homePage, matchingDirectoryMarkup, matchingDirectoryPersonMarkup } from "./pages/home.js?v=20260826-signal-card-01";
+import { homeFlowStepper, homePage, homeWizardPathFor, matchingDirectoryMarkup, matchingDirectoryPersonMarkup } from "./pages/home.js?v=20260826-signal-card-01";
 import { communityPage } from "./pages/community.js";
 import { matchingPage, matchingPreviewPage } from "./pages/matching.js";
 import { recruitingRoomFragments, roomFooterFragment, sessionPage, sessionPreviewPage } from "./pages/session-preview.js?v=20260828-room-lifecycle-v2";
@@ -211,7 +213,7 @@ function trackCandidate(pair, candidate) {
   trackedCandidatePairs.add(pair.id);
   api.trackEvent("candidate_viewed", {
     pairId: pair.id,
-    gameId: state.need?.game || "deadlock",
+    gameId: state.need?.game || defaultAvailableGame("desktop")?.id || "",
     mode: state.need?.goal === "娱乐" ? "casual" : "ranked",
   });
 }
@@ -654,8 +656,7 @@ function persistentProductShell(html) {
     const nextSteps = [...nextStepper.querySelectorAll(markerSelector)];
     if (currentSteps.length !== nextSteps.length) return;
     if (selector === "[data-home-stepper]") {
-      const activeIndex = Math.max(0, nextSteps.findIndex((item) => item.classList.contains("is-active")));
-      currentStepper.setAttribute("aria-label", `Deadlock 配置进度：第 ${activeIndex + 1} 步，共 ${nextSteps.length} 步`);
+      currentStepper.setAttribute("aria-label", nextStepper.getAttribute("aria-label") || "游戏配置进度");
     } else {
       currentStepper.setAttribute("aria-label", nextStepper.getAttribute("aria-label") || "身份创建进度");
     }
@@ -1309,7 +1310,7 @@ function prepareOnboardDraft() {
 function prepareNeedDraft() {
   const durations = ["60", "120", "180", "不限"];
   const times = ["现在就玩", "30分钟后", "晚些时候"];
-  DRAFT.game = state.need.game || "valorant";
+  DRAFT.game = state.need.game || defaultAvailableGame("desktop")?.id || "";
   DRAFT.mode = state.need.mode || "";
   DRAFT.goal = state.need.goal || "";
   DRAFT.current = Math.min(4, Math.max(1, Number(state.need.current) || 1));
@@ -1339,23 +1340,17 @@ function prepareNeedDraft() {
 }
 
 function homeWizardPath() {
-  if (!HOME_FILTER.goal) return ["goal"];
-  return HOME_FILTER.goal === "casual"
-    ? ["goal", "voice"]
-    : ["goal", "rank", "roles", "voice"];
+  return homeWizardPathFor(HOME_FILTER).map((step) => step.key);
 }
 
 function prewarmMatchArtwork() {
-  [
-    "/assets/games/deadlock-card.jpg", "/assets/games/coming-soon-card.jpg",
-    "/assets/modes/rank-hero-card.jpg", "/assets/modes/casual-hero-card.jpg",
-    "/assets/ranks/01-initiate.png", "/assets/ranks/02-seeker.png",
-    "/assets/ranks/03-acolyte.png", "/assets/ranks/04-sentinel.png",
-    "/assets/ranks/05-mystic.png", "/assets/ranks/06-ritualist.png",
-    "/assets/ranks/07-emissary.png", "/assets/ranks/08-oracle.png",
-    "/assets/ranks/09-phantom.png", "/assets/ranks/10-ascendant.png",
-    "/assets/ranks/11-eternus.png",
-  ].forEach((src) => {
+  const sources = new Set(["/assets/games/coming-soon-card.jpg"]);
+  for (const game of listGames()) {
+    if (game.assets?.card?.src) sources.add(game.assets.card.src);
+    Object.values(game.assets?.modes || {}).forEach((asset) => asset?.src && sources.add(asset.src));
+    game.rankOptions?.forEach((rank) => rank.asset?.src && sources.add(rank.asset.src));
+  }
+  sources.forEach((src) => {
     const image = new Image();
     image.decoding = "async";
     image.fetchPriority = "high";
@@ -1378,7 +1373,7 @@ function updateHomeFlowStepper() {
   const revision = ++homeStepperRevision;
   const applyNext = () => {
     if (revision !== homeStepperRevision || !current.isConnected) return;
-    current.setAttribute("aria-label", next.getAttribute("aria-label") || "Deadlock 配置进度");
+    current.setAttribute("aria-label", next.getAttribute("aria-label") || "游戏配置进度");
     current.hidden = false;
     current.removeAttribute("aria-hidden");
     current.replaceChildren(...next.childNodes);
@@ -1403,7 +1398,8 @@ function syncHomeStepperAccessibility() {
   const total = markers.length;
   if (!total) return;
   const activeIndex = Math.max(0, markers.findIndex((marker) => marker.classList.contains("is-active")));
-  current.setAttribute("aria-label", `Deadlock 配置进度：第 ${activeIndex + 1} 步，共 ${total} 步`);
+  const game = gameById(HOME_FILTER.game);
+  current.setAttribute("aria-label", `${game?.displayName || "游戏"} 配置进度：第 ${activeIndex + 1} 步，共 ${total} 步`);
 }
 
 function toggleHomeChoice(actionEl, selected) {
@@ -1562,7 +1558,7 @@ function endHomeTeamRangePointer(event) {
 
 function syncHomeFilterToDraft() {
   prepareNeedDraft();
-  DRAFT.game = "deadlock";
+  DRAFT.game = HOME_FILTER.game;
   DRAFT.mode = HOME_FILTER.goal === "casual" ? "娱乐" : "排位 / 上分";
   DRAFT.goal = HOME_FILTER.goal === "casual" ? "娱乐" : "上分";
   DRAFT.rank = HOME_FILTER.rank;
@@ -2052,7 +2048,7 @@ function applyServerSnapshot(data, { source = "state", route = "", observedGener
       online: c.player?.online !== false,
       handle: c.player?.handle || "",
       gameId: c.gameId || "",
-      gameName: (GAME_BY_ID[c.gameId] || {}).name || c.gameId || "游戏",
+      gameName: catalogGameName(c.gameId, c.gameId || "游戏"),
       playedAt: c.playedAt || "",
       playCount: c.playCount || 1,
       rating: c.rating || null,
@@ -2323,7 +2319,7 @@ function handleServerGameOver(session, expectedRoom = state.room) {
   const partner = memberModel.otherMembers[0] || sessionPartnerFor(session);
   const now = new Date();
   const time = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
-  const gameName = GAME_BY_ID[session.need?.game]?.name || session.need?.game || state.need.game || "游戏";
+  const gameName = catalogGameName(session.need?.game, session.need?.game || state.need.game || "游戏");
   const mode = session.need?.mode || state.need.mode || "";
   update({
     room: null,
@@ -2607,41 +2603,40 @@ async function reconcileRoomFirstStart(startData) {
 async function startMatch() {
   if (matchRequestPending) return;
   DRAFT.dirty = false;
-  const roleNumber = (tag) => Number(String(tag).match(/[1-6]/)?.[0]);
+  const game = gameById(DRAFT.game) || defaultAvailableGame("desktop");
+  if (!game) {
+    toast("当前没有可用游戏，请稍后重试");
+    return;
+  }
+  const positionCode = (tag) => {
+    const label = String(tag).replace(/^我的位置：|^希望队友：/, "");
+    return Number(game.positionOptions?.find((position) => position.label === label)?.code);
+  };
   const ownRoles = (DRAFT.selectedTags || [])
     .filter((tag) => String(tag).startsWith("我的位置："))
-    .map(roleNumber)
-    .filter((role) => role >= 1 && role <= 6);
+    .map(positionCode)
+    .filter(Number.isFinite);
   const teammateRoles = (DRAFT.selectedTags || [])
     .filter((tag) => String(tag).startsWith("希望队友："))
-    .map(roleNumber)
-    .filter((role) => role >= 1 && role <= 6);
-  // Keep the existing compatibility signal stable while retaining the two
-  // role selections separately for the Session readout.
-  const desiredRoles = (DRAFT.selectedTags || [])
-    .map((tag) => Number(String(tag).match(/[1-6]/)?.[0]))
-    .filter((role) => role >= 1 && role <= 6);
-  const matchInput = {
-    gameId: "deadlock",
-    mode: DRAFT.goal === "娱乐" ? "casual" : "ranked",
-    rankCode: DRAFT.goal === "娱乐" ? null : DRAFT.rank || null,
-    desiredRoles,
+    .map(positionCode)
+    .filter(Number.isFinite);
+  const mode = DRAFT.goal === "娱乐" ? "casual" : "ranked";
+  const hardMaxPlayers = Number(game.modes?.[mode]?.hardMaxPlayers || 2);
+  const matchInput = buildGameMatchInput({
+    game,
+    mode,
+    rankCode: DRAFT.rank,
     ownRoles,
     teammateRoles,
     microphonePreference: ["on", "off", "any"].includes(DRAFT.voicePref) ? DRAFT.voicePref : (DRAFT.voice === false ? "off" : "on"),
-    desiredTeammates: DRAFT.goal === "娱乐" ? 5 : undefined,
-    minTeammates: DRAFT.goal === "娱乐" ? 1 : undefined,
-    recruitmentMode: DRAFT.goal === "娱乐" ? "open" : undefined,
-    preferredTotalPlayers: DRAFT.goal === "娱乐" && DRAFT.preferredTotalPlayers
-      ? Number(DRAFT.preferredTotalPlayers)
-      : undefined,
-  };
+    preferredTotalPlayers: DRAFT.preferredTotalPlayers,
+  });
   const need = {
-    game: "deadlock", mode: DRAFT.mode, goal: DRAFT.goal, current: 1, target: DRAFT.goal === "娱乐" ? Number(matchInput.preferredTotalPlayers || 6) : 2,
+    game: game.id, mode: DRAFT.mode, goal: DRAFT.goal, current: 1, target: mode === "casual" ? Number(matchInput.preferredTotalPlayers || hardMaxPlayers) : hardMaxPlayers,
     desiredTeammates: matchInput.desiredTeammates,
     minTeammates: matchInput.minTeammates,
     time: "现在", duration: "", voice: matchInput.microphonePreference !== "off",
-    playerType: desiredRoles.length ? desiredRoles.map((role) => `${role}号位`).join(" / ") : "不限",
+    playerType: matchInput.desiredRoles.length ? matchInput.desiredRoles.map((role) => `${role}号位`).join(" / ") : "不限",
     details: { rank: DRAFT.rank || "", tags: DRAFT.selectedTags || [], voicePreference: matchInput.microphonePreference },
   };
   if (!ONLINE) {
@@ -2942,8 +2937,8 @@ async function confirmExitRoom() {
     }
     const now = new Date();
     const time = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
-    const game = GAME_BY_ID[room.need?.game || state.need.game] || {};
-    const title = `${game.name || state.need.game || "游戏"} · ${room.need?.mode || state.need.mode || ""}`;
+    const game = gameById(room.need?.game || state.need.game) || {};
+    const title = `${game.displayName || state.need.game || "游戏"} · ${room.need?.mode || state.need.mode || ""}`;
     closeSheet();
     update({
       room: null,
@@ -3007,11 +3002,11 @@ async function setRoomRating(rating) {
 async function rematchRecent(id) {
   const item = state.recentConnections.find((c) => c.id === id);
   if (!item) return;
-  prepareMatchingSetup(item.gameId || "deadlock");
+  prepareMatchingSetup(item.gameId);
 }
 
-function prepareMatchingSetup(gameId = "deadlock") {
-  HOME_FILTER.game = gameId;
+function prepareMatchingSetup(gameId = "") {
+  HOME_FILTER.game = gameById(gameId)?.id || defaultAvailableGame("desktop")?.id || "";
   HOME_FILTER.goal = "";
   HOME_FILTER.rank = "";
   HOME_FILTER.step = 0;
@@ -3035,7 +3030,7 @@ async function returnToMatchingSetup() {
       return;
     }
   }
-  prepareMatchingSetup("deadlock");
+  prepareMatchingSetup(state.need?.game);
 }
 
 async function cancelMatch() {
@@ -3530,8 +3525,8 @@ document.addEventListener("click", (event) => {
     group?.querySelectorAll(".chip").forEach((c) => c.classList.remove("chip--on"));
     actionEl.classList.add("chip--on");
     if (key === "game") {
-      const game = GAMES.find((g) => g.id === value);
-      if (game) DRAFT.mode = game.modes[0];
+      const game = gameById(value);
+      if (game) DRAFT.mode = game.modes?.ranked?.enabled ? "ranked" : game.modes?.casual?.enabled ? "casual" : "";
       render();
     }
     return;
@@ -3556,7 +3551,7 @@ document.addEventListener("click", (event) => {
 
   if (action === "wizard-game") {
     clearWizardAdvance();
-    const game = GAMES.find((g) => g.id === value);
+    const game = listGames().find((candidate) => candidate.id === value);
     if (!game) return;
     DRAFT.game = game.id;
     DRAFT.mode = "";
@@ -3581,8 +3576,12 @@ document.addEventListener("click", (event) => {
     const flow = FLOW[DRAFT.game] || {};
     DRAFT.goal = flow.goalByMode?.[value] || "";
     DRAFT.activityPos = "mode";
-    if (DRAFT.game === "deadlock") {
+    const modeKey = DRAFT.goal === "娱乐" ? "casual" : "ranked";
+    const configurationSteps = gameById(DRAFT.game)?.modes?.[modeKey]?.configurationSteps || [];
+    if (configurationSteps.includes("rank")) {
       DRAFT.activityPos = "rank";
+    } else if (configurationSteps.includes("position")) {
+      DRAFT.activityPos = "role";
     } else if (DRAFT.game === "minecraft" && value === "整合包") {
       DRAFT.activityPos = "modpack";
     } else {
@@ -3739,8 +3738,15 @@ document.addEventListener("click", (event) => {
     const order = ["game", "activity", "people", "time", "team", "details", "confirm"];
     const idx = order.indexOf(DRAFT.wizardStep);
     if (DRAFT.wizardStep === "activity" && DRAFT.activityPos !== "mode") {
-      if (DRAFT.game === "deadlock") {
-        DRAFT.activityPos = DRAFT.activityPos === "role" ? "hero" : DRAFT.activityPos === "hero" ? "rank" : "mode";
+      const modeKey = DRAFT.goal === "娱乐" ? "casual" : "ranked";
+      const configurationSteps = gameById(DRAFT.game)?.modes?.[modeKey]?.configurationSteps || [];
+      if (configurationSteps.includes("rank") || configurationSteps.includes("position")) {
+        const positions = [
+          ...(configurationSteps.includes("rank") ? ["rank"] : []),
+          ...(configurationSteps.includes("position") ? ["role"] : []),
+        ];
+        const currentIndex = positions.indexOf(DRAFT.activityPos);
+        DRAFT.activityPos = currentIndex > 0 ? positions[currentIndex - 1] : "mode";
       } else {
         DRAFT.activityPos = "mode";
       }
@@ -4178,7 +4184,6 @@ async function detectOnline() {
     return false;
   }
 }
-
 
 const [online] = await Promise.all([detectOnline(), authController.restoreSession()]);
 ONLINE = online;

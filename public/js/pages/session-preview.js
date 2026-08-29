@@ -1,6 +1,6 @@
 import { avatarWrap } from "../avatar.js";
 import { icon } from "../icons.js";
-import { GAME_BY_ID } from "../data.js";
+import { gameName } from "../game-catalog.js";
 import { rankLabel } from "../ranks.js?v=20260821-rank-label-01";
 import { esc, homeShell } from "../ui.js";
 import { memberDisplayName, sessionMembers } from "../session-members.js";
@@ -29,7 +29,7 @@ function modeLabel(need) {
 }
 
 function gameLabel(need) {
-  return GAME_BY_ID[need?.game]?.name || need?.game || "Deadlock";
+  return gameName(need?.game, need?.game || "游戏");
 }
 
 function voiceLabel(need) {
@@ -39,7 +39,7 @@ function voiceLabel(need) {
 
 function rankValue(need) {
   if (modeLabel(need) === "休闲") return "休闲";
-  return rankLabel(need?.details?.rank || need?.rankCode, "段位待定");
+  return rankLabel(need?.details?.rank || need?.rankCode, "段位待定", need?.game);
 }
 
 function roleValue(need) {

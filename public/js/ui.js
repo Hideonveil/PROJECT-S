@@ -1,6 +1,6 @@
 import { icon } from "./icons.js";
 import { avatarWrap } from "./avatar.js";
-import { GAME_BY_ID } from "./data.js";
+import { gameName } from "./game-catalog.js";
 
 let productRailHeldOpen = false;
 let toastTimer = 0;
@@ -96,10 +96,10 @@ function detailLine(details) {
 }
 
 export function needSummary(need, { compact = false, title = "当前需求" } = {}) {
-  const game = GAME_BY_ID[need.game] || { name: need.game || "未知游戏" };
+  const resolvedGameName = gameName(need.game, need.game || "未知游戏");
   return `<div class="need-block">
     <div class="need-block-label">${icon("radio", 13)}${esc(title)}</div>
-    <div class="need-line"><strong>${esc(game.name)}</strong><span>${esc(need.mode || "")}</span></div>
+    <div class="need-line"><strong>${esc(resolvedGameName)}</strong><span>${esc(need.mode || "")}</span></div>
     <div class="need-line"><span>${icon("target", 14)}</span><span>${esc(need.goal || "还没有写目标")}</span></div>
     ${detailLine(need.details || {})}
     <div class="need-line">

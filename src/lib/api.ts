@@ -73,7 +73,7 @@ export async function publicMatchDirectory(limit = 6, options: { strict?: boolea
     .map((row) => ({
       ticketId: row.id,
       nickname: maskPublicNickname(profileById.get(row.user_id)?.nickname),
-      gameId: row.game_id || "deadlock",
+      gameId: row.game_id,
       mode: row.mode || "ranked",
       rankCode: row.rank_code || null,
       desiredRoles: Array.isArray(row.desired_roles) ? row.desired_roles : [],

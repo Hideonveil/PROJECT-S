@@ -25,6 +25,17 @@ function nodes(count = 10) {
   }));
 }
 
+const game = {
+  id: "fake-arena",
+  status: "available",
+  modes: {
+    ranked: { enabled: true, hardMaxPlayers: 2 },
+    casual: { enabled: true, hardMaxPlayers: 6 },
+  },
+  rankOptions: ["initiate", "seeker", "alchemist", "arcanist", "ritualist", "emissary", "archon", "oracle", "phantom", "ascendant"].map((code) => ({ code })),
+  positionOptions: Array.from({ length: 6 }, (_, index) => ({ code: index + 1 })),
+};
+
 describe("distributed capacity coordinator contract", () => {
   it("treats a Casual Room with one peer as matched despite a six-player soft preference", () => {
     expect(actorMatched({ room: { members: [{ status: "active" }, { status: "active" }] }, session: null }, {
@@ -39,6 +50,7 @@ describe("distributed capacity coordinator contract", () => {
       runId: "cap200-three-cycle",
       actors: actors(),
       nodes: nodes(),
+      game,
     });
 
     expect(plan).toMatchObject({
@@ -69,6 +81,7 @@ describe("distributed capacity coordinator contract", () => {
       actors: actors(),
       nodes: nodes(),
       cycles: 1,
+      game,
     });
 
     expect(plan.cycles).toBe(1);
@@ -81,6 +94,7 @@ describe("distributed capacity coordinator contract", () => {
       runId: "cap10-even-ranked",
       actors: actors(10),
       nodes: nodes(1),
+      game,
     });
 
     for (const cycle of plan.workload.cycles) {
@@ -90,7 +104,7 @@ describe("distributed capacity coordinator contract", () => {
   });
 
   it("passes only when at least 180 distinct actors finish all three cycles and exit", () => {
-    const plan = buildDistributedRunPlan({ runId: "cap200-pass", actors: actors(), nodes: nodes() });
+    const plan = buildDistributedRunPlan({ runId: "cap200-pass", actors: actors(), nodes: nodes(), game });
     const reports = plan.assignments.map((assignment, nodeIndex) => ({
       nodeId: assignment.nodeId,
       egressId: `egress-${nodeIndex + 1}`,
@@ -116,7 +130,7 @@ describe("distributed capacity coordinator contract", () => {
 
   it("writes one 0600 credential shard per agent without leaking secrets into job plans", async () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), "jiyuan-capacity-distributed-"));
-    const plan = buildDistributedRunPlan({ runId: "cap200-bundles", actors: actors(), nodes: nodes() });
+    const plan = buildDistributedRunPlan({ runId: "cap200-bundles", actors: actors(), nodes: nodes(), game });
     const credentials = actors().map((actor) => ({ identity: actor.actorId, identifier: `${actor.actorId}@example.invalid`, password: `secret-${actor.actorId}` }));
     try {
       const bundles = await writeAgentBundles({ directory, plan, credentials });
@@ -135,7 +149,7 @@ describe("distributed capacity coordinator contract", () => {
   });
 
   it("continues non-fatally when one actor fails and exits every authenticated actor", async () => {
-    const plan = buildDistributedRunPlan({ runId: "cap200-agent", actors: actors(), nodes: nodes() });
+    const plan = buildDistributedRunPlan({ runId: "cap200-agent", actors: actors(), nodes: nodes(), game });
     const assignment = plan.assignments[0];
     const actorSet = new Set(assignment.actorIds);
     const job = {

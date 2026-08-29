@@ -1,10 +1,10 @@
-import { GAME_BY_ID } from "../data.js";
+import { gameName } from "../game-catalog.js";
 import { icon } from "../icons.js";
 import { rankLabel } from "../ranks.js?v=20260821-rank-label-01";
 import { esc, homeShell } from "../ui.js";
 
 function queryPills(need) {
-  const game = GAME_BY_ID[need.game]?.name || need.game || "Deadlock";
+  const game = gameName(need.game, need.game || "游戏");
   const details = need.details || {};
   const values = [
     ["gamepad2", game],
@@ -37,9 +37,9 @@ function memberInitial(member) {
   return Array.from(memberName(member, "玩").trim() || "玩")[0] || "玩";
 }
 
-function memberRank(member, mode) {
+function memberRank(member, mode, gameId) {
   if ((member?.mode || mode) === "casual") return "休闲模式";
-  return rankLabel(member?.rankCode || member?.rank_code, "段位待定");
+  return rankLabel(member?.rankCode || member?.rank_code, "段位待定", gameId);
 }
 
 function memberMicrophone(member, fallbackNeed) {
@@ -72,7 +72,7 @@ function matchingRosterMarkup(state, { group, candidate, awaiting, isWaiting, ta
   const row = (member, mine = false) => {
     const ready = member.decision === "accepted" || mine;
     const status = mine ? "你 · 已进入匹配" : ready ? "已加入" : awaiting ? "正在连接" : isWaiting ? "等待确认" : "正在匹配";
-    const rank = memberRank(member, mode);
+    const rank = memberRank(member, mode, state.need?.game);
     const microphone = memberMicrophone(member, mine ? state.need : null);
     return `<li class="matching-roster-member ${ready ? "is-ready" : ""}">
       <span class="matching-roster-avatar" aria-hidden="true">${esc(memberInitial(member))}</span>

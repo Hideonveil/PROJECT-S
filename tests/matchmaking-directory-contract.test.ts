@@ -5,9 +5,11 @@ const status = readFileSync("src/lib/matchmaking/status.ts", "utf8");
 const home = readFileSync("public/js/pages/home.js", "utf8");
 
 describe("matchmaking directory contract", () => {
-  it("publishes only a small, active Deadlock waiting-pool preview", () => {
+  // Architecture ratchet: query projection/privacy cannot be observed through
+  // the browser mock. The visible directory behavior is paired with the E2E
+  // lobby-preview coverage in mvp-closure.spec.ts.
+  it("publishes only a small, active waiting-pool preview", () => {
     expect(status).toContain("const directoryTickets");
-    expect(status).toContain(".eq(\"game_id\", \"deadlock\")");
     expect(status).toContain(".eq(\"state\", \"searching\")");
     expect(status).toContain("nickname: directoryProfileById");
     expect(status).not.toContain("friendCode: directory");

@@ -6,13 +6,14 @@ import { buildDistributedRunPlan, summarizeDistributedRun } from "./distributed-
 import { buildAgentJob, writeAgentBundles } from "./distributed-bundles.mjs";
 import { runDistributedAgent } from "./distributed-agent.mjs";
 import { createProductionAgentDriver } from "./production-agent-driver.mjs";
+import { loadCapacityGame } from "./game-catalog.mjs";
 import { loadManifest, readStatefulCredentialsFile } from "./runner.mjs";
 
 function usage(message = "") {
   if (message) process.stderr.write(`${message}\n`);
   process.stderr.write(`Usage:
-  distributed-cli.mjs prepare --run-id <id> --manifest <safe.json> --credentials <0600.json> --users <10|200> --nodes <1|7..10> --start-at <ISO> [--output <dir>]
-  distributed-cli.mjs plan --run-id <id> --manifest <safe.json> --users <10|200> --nodes <1|7..10> --cycles <1|3> --start-at <ISO> --output <plan.json>
+  distributed-cli.mjs prepare --base-url <url> --run-id <id> --manifest <safe.json> --credentials <0600.json> --users <10|200> --nodes <1|7..10> --start-at <ISO> [--output <dir>]
+  distributed-cli.mjs plan --base-url <url> --run-id <id> --manifest <safe.json> --users <10|200> --nodes <1|7..10> --cycles <1|3> --start-at <ISO> --output <plan.json>
   distributed-cli.mjs job --plan <plan.json> --node-id <node-01> --output <job.json>
   distributed-cli.mjs agent --job <job.json> --credentials <0600.json> --base-url <url> --report <report.json> --allow-production --production-ack <run-id>
   distributed-cli.mjs summarize --plan <plan.json> --reports <dir> --output <summary.json>
@@ -51,7 +52,7 @@ async function writePrivateJson(file, value) {
 }
 
 async function prepare(options) {
-  if (!options.runId || !options.manifest || !options.credentials || !options.startAt) throw new Error("prepare requires run id, manifest, credentials, and start time");
+  if (!options.baseUrl || !options.runId || !options.manifest || !options.credentials || !options.startAt) throw new Error("prepare requires base URL, run id, manifest, credentials, and start time");
   const users = Number(options.users || 200);
   const nodeCount = Number(options.nodes || (users === 200 ? 10 : 1));
   const cycles = Number(options.cycles || 3);
@@ -65,7 +66,8 @@ async function prepare(options) {
   const credentialIds = new Set(credentials.map((credential) => credential.identity));
   for (const actor of actors) if (!credentialIds.has(actor.actorId)) throw new Error(`missing credential for ${actor.actorId}`);
   const nodes = Array.from({ length: nodeCount }, (_, index) => ({ nodeId: `node-${String(index + 1).padStart(2, "0")}` }));
-  const plan = buildDistributedRunPlan({ runId: options.runId, actors, nodes, cycles, startAt: startAt.toISOString() });
+  const game = await loadCapacityGame(options.baseUrl, options.gameId);
+  const plan = buildDistributedRunPlan({ runId: options.runId, actors, nodes, cycles, startAt: startAt.toISOString(), game });
   const directory = options.output || path.join(os.tmpdir(), `jiyuan-capacity-${options.runId}`);
   const planFile = path.join(directory, "plan.json");
   await writePrivateJson(planFile, plan);
@@ -75,7 +77,7 @@ async function prepare(options) {
 }
 
 async function createPlanCommand(options) {
-  if (!options.runId || !options.manifest || !options.startAt || !options.output) throw new Error("plan requires run id, manifest, start time, and output");
+  if (!options.baseUrl || !options.runId || !options.manifest || !options.startAt || !options.output) throw new Error("plan requires base URL, run id, manifest, start time, and output");
   const users = Number(options.users || 200);
   const nodeCount = Number(options.nodes || (users === 200 ? 10 : 1));
   const cycles = Number(options.cycles || 3);
@@ -85,7 +87,8 @@ async function createPlanCommand(options) {
   const actors = manifest.actors.slice(0, users).map((actor) => ({ actorId: actor.actorId, userId: actor.userId, profile: actor.profile || "synthetic_test" }));
   if (actors.length !== users) throw new Error(`manifest contains only ${actors.length} actors`);
   const nodes = Array.from({ length: nodeCount }, (_, index) => ({ nodeId: `node-${String(index + 1).padStart(2, "0")}` }));
-  const plan = buildDistributedRunPlan({ runId: options.runId, actors, nodes, cycles, startAt: startAt.toISOString() });
+  const game = await loadCapacityGame(options.baseUrl, options.gameId);
+  const plan = buildDistributedRunPlan({ runId: options.runId, actors, nodes, cycles, startAt: startAt.toISOString(), game });
   await writePrivateJson(options.output, plan);
   process.stdout.write(`${JSON.stringify({ runId: plan.runId, users: plan.users, nodes: plan.assignments.length, plan: options.output })}\n`);
 }
