@@ -1,15 +1,19 @@
 # 机缘当前状态
 
-> 状态快照日期：2026-08-25（Asia/Shanghai）
+> 状态快照日期：2026-08-29（Asia/Shanghai）
 > 
 > 本文件记录当前事实，不是下一轮开发计划。若与旧交接文档冲突，以本文件中的已验证生产证据和当前源码为准。
 
-> 2026-08-29 working-tree fact：新游戏扩展边界、权威 RoomProjection、Room operation
-> receipts、版本化 Realtime invalidation、事件唤醒 + 15 秒 safety sweep 和旧接口调用观测已在
-> 本地实现。`typecheck`、`107 test files / 451 tests` 与 Production build 均通过。三条
-> forward-only migration 已在 Production Supabase SQL Editor 成功执行并完成只读验证；
-> migration history 仍是 `NOT_RECORDED`。应用 runtime 当前尚未部署，因此新 API、浏览器同步和
-> matcher 调度仍只属于本地候选，不得提前解释为 Production 已启用。
+> 2026-08-29 Production fact：新游戏 `GameDefinition` registry + Deadlock adapter、权威
+> RoomProjection、Room operation receipts、版本化 Realtime invalidation、事件唤醒 + 15 秒
+> safety sweep、旧接口调用观测、事务 Room shell fast path 与 Casual singleton bounded
+> consolidation 已部署。Production runtime=`aa63b34`；三条 forward-only migration 已在
+> Production Supabase SQL Editor 执行并完成只读验证，migration history 仍为 `NOT_RECORDED`。
+> `typecheck`、`108 test files / 455 tests`、Production build 全部通过。最终 5-user smoke：
+> authenticated/presence/room shell=`5/5`，Ranked 双端成员=`2/2`，Casual 三端成员=`3/3`，
+> cleanup errors=`0`；health live/ready，app/gateway restart=`0`、OOM=`false`，最近 critical
+> logs/server errors=`0`，临时凭据文件=`0`。第二款游戏仍须通过独立 adapter、资产、规则与容量
+> 场景测试接入，不复制 Auth → Ticket → Room → Session 通用生命周期。
 
 > 2026-08-25 治理修正：唯一 canonical root 为
 > `/Users/jasonhu/Documents/ChatGPT/project/JY_source`。`REAL PRODUCTION USERS = 0`；当前

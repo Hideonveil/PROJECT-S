@@ -2,6 +2,15 @@
 
 > 只记录已经影响 Production、或已完成 Production 验收的事件。测试中的本地改动、未部署方案和未授权修复不写入本表。
 
+## 2026-08-29 — Room consistency、Matcher safety 与游戏扩展边界发布
+
+- Production 应用依次发布 `b98f42b`、`71478e4`、`c22a54e`、`aa63b34`；最终 runtime health version 为 `aa63b34`。新增统一 `GameDefinition` registry 与 Deadlock adapter，后续游戏复用 Auth → Ticket → Room → Session 通用生命周期，只提供自己的配置、词汇、规则、资源与容量场景。
+- Production 已执行并只读确认 `20260829160000_authoritative_room_projection.sql`、`20260829163000_room_operation_receipts.sql`、`20260829164500_publish_room_state_events.sql`；migration history 为 `NOT_RECORDED`，未 replay/repair 历史 migration。
+- Room 首屏改为从创建 ticket/Room 的同一事务结果立即绘制，不再与后台 Matcher 的第二次 resolver 查询竞争；刷新/断线恢复仍只能通过服务端权威资格判断，历史 active member 不会因此恢复成假 Room。
+- Room mutation 使用稳定 operation id + 原子 receipt；Realtime 变为版本化 invalidation，成员/聊天/投票/终态通过权威 projection 水合。Persistent Matcher 使用事件唤醒、15 秒带 jitter safety sweep、DB-global lease、有限并发、冷却与冲突预算。
+- Production smoke 发现并修复两项后段问题：退出已提交后因重复读取旧 Room 返回假 500；3 个 Casual 并发启动可能形成 `2+1` 分裂且无法合流。最终实现幂等退出响应和单人组有界合流，每 tick 最多一次 consolidation 写尝试，不移动多人成组 Room。
+- 最终验证：`108 test files / 455 tests PASS`、typecheck/build PASS；5 个普通 synthetic identities 的 authenticated/presence/Room shell 均 `5/5`，Ranked `2/2`、Casual `3/3`，`casual_member_counts=[3,3,3]`，`cleanup_errors=[]`、业务 errors=[]。收尾 health live/ready，app/gateway restart `0`、OOM `false`，最近 critical logs/server errors `0`，临时凭据文件 `0`。
+
 ## 2026-08-28 — chat containment release and distributed 200-user single-cycle result
 
 - Production 部署 `e98e1c0`：Room 聊天面板桌面高度固定为 516px，消息列表内部滚动，长聊天不再拉长整个 Room；线上 `/api/health/live` 与 `/api/health` 均通过，app healthy、restart `0`、OOM `false`。同 commit 将 capacity runner 的 Room 状态读取改为 Realtime 驱动 + 12 秒带 jitter 的稀疏 reconciliation，移除 2 秒同步轮询放大。
