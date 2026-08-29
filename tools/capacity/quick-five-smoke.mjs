@@ -5,16 +5,10 @@
 import { readFile } from "node:fs/promises";
 
 const authFile = process.argv.find((arg) => arg.startsWith("--auth-file="))?.slice(12);
-const envFile = process.argv.find((arg) => arg.startsWith("--env-file="))?.slice(11);
-if (!authFile || !envFile) throw new Error("SMOKE: --auth-file and --env-file are required");
+if (!authFile) throw new Error("SMOKE: --auth-file is required");
 
-const env = Object.fromEntries((await readFile(envFile, "utf8")).split(/\r?\n/).filter(Boolean).map((line) => {
-  const index = line.indexOf("="); return [line.slice(0, index), line.slice(index + 1)];
-}));
 const baseUrl = "https://www.jiyuan.online";
-const supabaseUrl = String(env.NEXT_PUBLIC_SUPABASE_URL || "").replace(/\/$/, "");
-const apiKey = env.NEXT_PUBLIC_SUPABASE_ANON_KEY || env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || "";
-if (!supabaseUrl || !apiKey) throw new Error("SMOKE: public auth configuration unavailable");
+const smokeInstance = `quick-five:${crypto.randomUUID()}`;
 const identities = (JSON.parse(await readFile(authFile, "utf8")).identities || []).slice(0, 5);
 if (identities.length !== 5) throw new Error("SMOKE: five identities required");
 
@@ -29,13 +23,17 @@ async function json(url, options = {}) {
   return body;
 }
 async function login(identity) {
-  const session = await json(`${supabaseUrl}/auth/v1/token?grant_type=password`, {
-    method: "POST", headers: { apikey: apiKey, "Content-Type": "application/json" },
-    body: JSON.stringify({ email: identity.identifier, password: identity.password }),
+  const clientInstanceId = `${smokeInstance}:${identity.identity}`;
+  const loginResult = await json(new URL("/api/auth/login", baseUrl), {
+    method: "POST", headers: { "Content-Type": "application/json", "X-Client-Instance-ID": clientInstanceId },
+    body: JSON.stringify({ identifier: identity.identifier, password: identity.password }),
   });
-  return { identity: identity.identity, token: session.access_token };
+  if (!loginResult?.session?.access_token) throw new Error("AUTH_SESSION_MISSING");
+  return { identity: identity.identity, token: loginResult.session.access_token, clientInstanceId };
 }
-function headers(actor) { return { Authorization: `Bearer ${actor.token}`, "Content-Type": "application/json" }; }
+function headers(actor) {
+  return { Authorization: `Bearer ${actor.token}`, "Content-Type": "application/json", "X-Client-Instance-ID": actor.clientInstanceId };
+}
 async function call(actor, path, body = undefined) {
   return json(`${baseUrl}${path}`, { method: body === undefined ? "GET" : "POST", headers: headers(actor), body: body === undefined ? undefined : JSON.stringify(body) });
 }

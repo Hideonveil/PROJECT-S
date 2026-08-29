@@ -26,6 +26,15 @@ const actors = Array.from({ length: 100 }, (_, index) => ({
 }));
 
 describe("capacity runner safety contract", () => {
+  it("routes the quick Production smoke through the application device-session contract", async () => {
+    // Security architecture ratchet: the smoke must never bypass the
+    // application login endpoint or omit the single-device client identity.
+    const source = await readFile(path.join(process.cwd(), "tools/capacity/quick-five-smoke.mjs"), "utf8");
+    expect(source).toContain('"/api/auth/login"');
+    expect(source).toContain('"X-Client-Instance-ID"');
+    expect(source).not.toContain("/auth/v1/token?grant_type=password");
+  });
+
   it("defaults to a no-network dry run", () => {
     const options = parseArgs(["--run-id", "cap100-test"]);
     expect(options.mode).toBe("dry-run");
