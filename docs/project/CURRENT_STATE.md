@@ -4,6 +4,13 @@
 > 
 > 本文件记录当前事实，不是下一轮开发计划。若与旧交接文档冲突，以本文件中的已验证生产证据和当前源码为准。
 
+> 2026-08-29 战略事实：项目已从 Deadlock-only Private Pilot 收敛阶段切换到“四游戏 +
+> 全功能手机端 + 共享网站功能”的正式开放前建设阶段。正式开放目标游戏为 Deadlock、无畏契约、
+> 王者荣耀、三角洲行动；三款新游戏按无畏契约 → 王者荣耀 → 三角洲行动逐款完成 PC + 手机
+> 全链路。最终极限测试延后到全功能完成后，按 50 → 100 → 200 → 300 → 500 执行，200 人为
+> 正式开放最低容量线。当前活动计划见 `PRELAUNCH_FOUR_GAME_MOBILE_PLAN.md` 和 `DEC-016`；
+> 只有正式开放 Gate 完整 PASS 后才允许删除临时计划，并必须先写回最终事实和验证证据。
+
 > 2026-08-29 Production fact：新游戏 `GameDefinition` registry + Deadlock adapter、权威
 > RoomProjection、Room operation receipts、版本化 Realtime invalidation、事件唤醒 + 15 秒
 > safety sweep、旧接口调用观测、事务 Room shell fast path 与 Casual singleton bounded
@@ -66,12 +73,12 @@
 
 ## 1. 当前阶段
 
-- 当前阶段：Final Private Pilot Gate（`PENDING / NO-GO`）。
-- 下一阶段目标：5–10 名真实玩家的 Private Pilot。
+- 当前阶段：四游戏 + 手机端正式开放前建设（`ACTIVE / GATE NOT ASSESSED`）。
+- 正式开放目标：Deadlock、无畏契约、王者荣耀、三角洲行动同时具备 PC + 手机完整主链路和共享网站功能。
 - 当前 New P0：`1`（`MATCHMAKING_RESERVATION_ROLLBACK_STORM`，修复后仍待 Production 归因与收敛验证）。
 - 已确认关闭的 P0：`LEGACY_ROOM_DUAL_RENDER_PATH`、`ROOM_SESSION_TERMINAL_LIFECYCLE_GHOST`、`REFRESH_PAGEHIDE_FALSE_EXIT`。
-- 当前唯一任务：由 03 审核并补齐 Final Private Pilot Gate 剩余 evidence；不得把已关闭 P0 误写成 Final Gate PASS，也不得自动替代 03 给出最终 Gate 结论。
-- 本阶段不扩大产品、测试或审计范围；P0 Active Room regression 已完成并通过，后续仅执行 03 明确要求的剩余 Gate 证据。
+- 当前实施顺序和单游戏 Gate 以 `PRELAUNCH_FOUR_GAME_MOBILE_PLAN.md` 为准；旧 Final Private Pilot Gate 不再是唯一任务。
+- 本阶段允许四游戏、全功能手机端与已确认共享网站功能扩展，但仍必须遵守 `DEC-015` 的统一游戏扩展边界。
 - 容量验证工具支持至 `500`，并支持按授权选择 accelerated checkpoints；本轮实际验证为 40-user 单档。`capstate500-terminalized-20260825` 的 5-user 功能路径与 lifecycle 收敛为 `PASS`，DB CPU peak=`11%`；本轮按用户要求未采集 DB CPU，40-user Matching 未完成，75 及以上不执行。
 
 ## 2. Git 与源码基线
@@ -157,15 +164,16 @@
 
 ## 5. 已知 blocker / 风险
 
-### 当前 Gate 需要保留的未闭合项
+### 历史 Private Pilot Gate 未闭合项（保留证据，不再作为当前活动 Gate）
 
-- Final Private Pilot Gate：`PENDING / NO-GO`。
+- Final Private Pilot Gate 在此前阶段的最终状态：`PENDING / NO-GO`。
 - Matching transition Refresh：`PENDING`。
 - Matching Back / Forward：`PENDING`。
 - Minimum Security：`PENDING`。
 - Minimum Observability：`PENDING`。
 - Desktop UI 1366×768 / 1440×900 / 1920×1080：`PENDING`。
-- 以上是 Gate Evidence 缺口，不是新的 P0；不得把 P0 closure 写成 Final Gate PASS。
+- 以上是此前 Gate Evidence 缺口，不是新的 P0；它们不等于当前正式开放 Gate，后续仅在
+  `PRELAUNCH_FOUR_GAME_MOBILE_PLAN.md` 的对应验收项需要时复用或重新验证。
 
 ### 非阻断但必须保留的事实
 
@@ -187,12 +195,15 @@
 - 三人 `members[]`、三人 Goodbye、基础 Refresh / Active Session recovery。
 - 新 ghost、matching / playing residue 的完整历史 Gate。
 
-只在 Final Private Pilot Gate 明确要求时执行对应的最小 Refresh attack、Security、Observability 和 Desktop UI 检查。
+后续按单游戏 correctness Gate 和最终正式开放 Gate 的实际覆盖范围复用这些证据；新增游戏、手机端或
+共享功能改变相关路径时，必须做针对性回归，不能用旧 Deadlock 证据替代。
 
 ## 7. 明确禁止
 
 - 不清理历史 5 个 ghost Room。
 - 不 replay 缺失的旧 migration，不 repair 生产 migration history。
-- 不新增无关 migration、功能或 UI。
-- 不扩展 Community、Friends 正式功能、第二款游戏或商业化。
+- 不新增与四游戏、手机端、共享功能或正式开放 Gate 无关的 migration、功能或 UI。
+- 不扩展商业化、大型内容社区或推荐算法；不以这些范围外工作阻塞当前计划。
+- 新游戏必须复用统一 `GameDefinition` / adapter 与共享 Auth → Ticket → Room → Session 生命周期，
+  不得复制第二套 Matching、Room、Session 或恢复事实源。
 - 不把 P1 / P2 / Public Beta backlog 重新升级为当前 P0。

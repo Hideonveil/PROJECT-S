@@ -1,6 +1,6 @@
 # 机缘 Backlog
 
-> 本文件收纳非当前 P0 的工作，防止后续 Agent 把它们重新升级为当前任务。当前唯一任务仍是 Final Private Pilot Gate；除非用户明确授权，不从本列表扩展范围。
+> 本文件收纳不属于当前四游戏 + 手机端正式开放计划的后续工作。当前活动范围和顺序见 `PRELAUNCH_FOUR_GAME_MOBILE_PLAN.md`；不得再把旧 Deadlock-only Private Pilot 限制解释为当前范围。
 
 ## 当前没有新的已确认 P0
 
@@ -33,13 +33,8 @@
 
 ## Future / 明确不属于当前 MVP
 
-- Community。
-- Friends 正式产品化和邀请体系。
-- 第二款游戏及更多游戏规则。共享 `GameDefinition` 注册表、Deadlock adapter 与 fake-game
-  跨游戏合同已经具备；真实接入仍需新增该游戏自己的定义、素材、配置呈现、规则测试和容量场景。
-  禁止复制共享生命周期，也禁止新增散落的 `game === "deadlock"` / 游戏名分支。
 - 商业化、付费、广告或增长系统。
-- 语音、移动端专属体验和无关设计系统重构。
+- 大型内容社区、推荐算法和与正式开放 Gate 无关的设计系统重构。
 
 ## 历史基线（不作为待办）
 

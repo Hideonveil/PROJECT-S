@@ -64,9 +64,10 @@
 
 ## DEC-010 — MVP 范围保持收敛
 
-- 状态：ACTIVE
+- 状态：SUPERSEDED BY DEC-016（2026-08-29）
 - 决策：当前只维护已验证的 Deadlock MVP 核心链路，不扩展 Community、Friends 正式功能、第二款游戏、商业化或无关 UI / 技术审计。
 - 原因：当前目标是 5–10 人 Private Pilot，不是继续扩大产品面。
+- 历史说明：该约束只描述此前 Deadlock Private Pilot 阶段；不得再用它阻止已获授权的四游戏、手机端和共享网站功能计划。
 
 ## DEC-011 — 生产恢复能力必须有实际证据
 
@@ -104,3 +105,13 @@
 - 接入门槛：真实第二款游戏开发前，先用一个最小 fake game 完成注册、配置页渲染、候选兼容、Room shell/hydration、Session 收敛和容量 runner 合同测试；通过后再接真实资产和规则。
 - 迁移约束：当前 Deadlock hardcode 属于兼容债务，可在 Deadlock 稳定运行期间保留；但在第二款 Production 游戏进入开发前必须收敛到注册表/适配器。不得为了未来可能性提前重写当前稳定的 Matching V2。
 - 实施状态（2026-08-29）：共享 `GameDefinition` registry、Deadlock 规则 adapter 与 fake-game 兼容性合同测试已落地；通用 Auth → Ticket → Room → Session 生命周期未复制。真实第二款游戏仍必须补自己的 UI 素材/配置呈现、规则测试与容量场景，不能把 fake game 当成已完成的产品接入。
+
+## DEC-016 — 正式开放前采用四游戏 + 全功能手机端路线
+
+- 状态：ACTIVE / TEMPORARY UNTIL OFFICIAL-OPEN GATE PASS
+- 决策：正式开放版本同时支持 Deadlock、无畏契约、王者荣耀和三角洲行动。三款新游戏按 `无畏契约 → 王者荣耀 → 三角洲行动` 逐款研究、实现和测试；每款同时完成 PC 与手机主链路。手机端与 PC 共用领域状态和 API，但采用保持机缘视觉语言的竖屏专属展示层。
+- 共享功能：个人资料、分游戏资料、好友、最近队友、再次联系、通知、举报、拉黑、Contact Us、单设备登录、网络恢复和轻量社区进入正式开放前范围；大型内容社区、推荐算法和商业化不在本轮范围。
+- 容量顺序：四游戏、手机端和共享功能完成前不做最终最大压力探顶；单游戏只做 10–20 账号 correctness smoke。最终按 `50 → 100 → 200 → 300 → 500` 执行四游戏混合、多 IP、正常登录开始的全链路测试，200 人为正式开放最低容量线。
+- 当前可见性：项目尚未正式对外开放，开发期间从开发者视角推进，三款新游戏无需额外 Feature Flag、隐藏入口或普通用户测试文案。
+- 实施事实源：`docs/project/PRELAUNCH_FOUR_GAME_MOBILE_PLAN.md`。该文件是临时执行计划，不是永久领域模型。
+- 退休规则：只有正式开放 Gate 全部 PASS 后，才删除临时计划及其活动引用；先把最终事实写入 `CURRENT_STATE.md` / `CHANGELOG.md`，再将本决策标记为 `RETIRED / GATE PASSED`。不得删除稳定决策 ID 的历史记录。
