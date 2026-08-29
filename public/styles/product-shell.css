@@ -2008,6 +2008,7 @@ body.is-project-transitioning { overflow: hidden; }
   border-top: 2px solid var(--product-black);
   background: #b9a5ff;
   color: var(--product-black);
+  pointer-events: none;
 }
 
 .product-ticker-track {

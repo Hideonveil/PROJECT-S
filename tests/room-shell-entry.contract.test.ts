@@ -10,6 +10,9 @@ const instrumentation = readFileSync("src/instrumentation.ts", "utf8");
 
 const startMatchSource = app.slice(app.indexOf("async function startMatch()"), app.indexOf("function startMatchingFlow()"));
 
+// Performance architecture ratchet: a public response cannot prove that the
+// start route did not synchronously invoke the matcher or issue a fallback
+// state read. Shell timing and visible behavior are also covered by browser E2E.
 describe("room shell entry fast path", () => {
   it("does not await a synchronous matcher attempt before returning start", () => {
     expect(service).not.toContain('if (input.mode === "casual") await attemptCasualGroup(userId);');
@@ -27,11 +30,11 @@ describe("room shell entry fast path", () => {
 
   it("keeps the entry transition visual-only and does not add a full state fallback read", () => {
     expect(app).toContain("if (startData?.room)");
-    expect(app).toContain("applyServerSnapshot({ room: startData.room })");
+    expect(app).toContain('applyServerSnapshot({ room: startData.room }, { source: "start" })');
     expect(app).not.toContain("const ROOM_FIRST_RECONCILE_DELAYS_MS = [0, 300];");
     expect(startMatchSource).not.toContain("await api.getState()");
     expect(startMatchSource).toContain('label: "正在进入招募"');
-    expect(startMatchSource).toContain("replaceCanonicalRoute(\"#/room\")");
+    expect(startMatchSource).toContain("if (!(await reconcileRoomFirstStart(response)))");
   });
 
   it("renders a chat skeleton while the Room shell hydrates", () => {

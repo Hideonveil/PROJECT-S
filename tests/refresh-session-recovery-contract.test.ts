@@ -24,9 +24,12 @@ describe("active Session refresh recovery", () => {
   });
 
   it("restores active rooms from the server snapshot on resume", () => {
-    expect(app).toContain('const snapshot = await api.getState();');
-    expect(app).toContain('if (restoreRoute && !isRecruitmentExitRoom(snapshot.room) && isActiveSessionRoom(snapshot.room)');
-    expect(authController).toContain('["home", "auth", "welcome", "matching"].includes(getRouteName())');
+    const authority = read("public/js/room-authority.js");
+    expect(app).toContain("const read = await readServerState();");
+    expect(app).toContain("observedGeneration: read.observedGeneration");
+    expect(authController).toContain("const observedGeneration = captureRoomAuthority();");
+    expect(authController).toContain('applyServerSnapshot(snapshot, { source: "state", route: authorityRoute, observedGeneration });');
+    expect(authority).toContain('return ROOM_SWITCH_SOURCES.has(source) ? "enter-room" : "prompt-resume";');
     expect(app).toContain('replaceCanonicalRoute("#/room")');
     expect(app).toContain("history.replaceState");
   });

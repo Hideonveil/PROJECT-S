@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { createRoomAuthority } from "../public/js/room-authority.js";
 
 const app = readFileSync("public/js/app.js", "utf8");
 const startRoute = readFileSync("src/app/api/matchmaking/start/route.ts", "utf8");
@@ -13,10 +14,21 @@ describe("recruitment flow responsiveness", () => {
   });
 
   it("suppresses stale recruiting snapshots while a user is leaving", () => {
-    expect(app).toContain("recruitmentExitPending");
-    expect(app).toContain("recruitmentExitRoomId");
-    expect(app).toContain("isRecruitmentExitRoom");
-    expect(app).not.toContain('recruitmentExitPending && parseRoute().name === "room"');
+    const authority = createRoomAuthority({
+      normalizeRoom: (room: any) => room,
+      roomSignature: (room: any) => JSON.stringify(room),
+      isResumableRoom: () => true,
+    });
+    const room = { id: "room-1", realtimeVersion: 1, recruiting: true };
+    authority.dispatch({ type: "snapshot", room, source: "start", route: "home" });
+    authority.dispatch({ type: "begin-exit", roomId: room.id });
+
+    expect(authority.dispatch({
+      type: "snapshot",
+      room: { ...room, realtimeVersion: 2 },
+      source: "realtime",
+      route: "room",
+    })).toMatchObject({ decision: "ignore", reason: "exit-pending" });
   });
 
   it("uses a continuous recruitment scan and leaves action icons still", () => {

@@ -24,6 +24,13 @@ export async function openRealtime(handlers) {
   let pollTimer = 0;
   let roomReconcileTimer = 0;
   let pollDelay = 4000;
+  const readState = async () => {
+    const observedGeneration = handlers.checkpoint?.();
+    return { data: await getState(), observedGeneration };
+  };
+  const emitState = ({ data, observedGeneration }) => {
+    handlers.hello?.(data, { observedGeneration });
+  };
   const clearRefresh = () => {
     if (refreshTimer) {
       window.clearTimeout(refreshTimer);
@@ -57,9 +64,9 @@ export async function openRealtime(handlers) {
   const refresh = async () => {
     if (closed) return false;
     try {
-      const data = await getState();
+      const read = await readState();
       if (closed) return false;
-      handlers.hello?.(data);
+      emitState(read);
       handlers.connection?.("online");
       return true;
     } catch {
@@ -146,9 +153,10 @@ export async function openRealtime(handlers) {
     .on("postgres_changes", { event: "*", schema: "public", table: "rooms" }, async () => {
       if (closed) return;
       try {
-        const data = await getState();
+        const read = await readState();
+        const { data } = read;
         if (closed) return;
-        handlers.hello?.(data);
+        emitState(read);
         if (data.room) handlers.room?.({ room: data.room });
         if (data.session) handlers["game-over"]?.({ session: data.session });
       } catch {
@@ -158,9 +166,10 @@ export async function openRealtime(handlers) {
     .on("postgres_changes", { event: "INSERT", schema: "public", table: "sessions" }, async () => {
       if (closed) return;
       try {
-        const data = await getState();
+        const read = await readState();
+        const { data } = read;
         if (closed) return;
-        handlers.hello?.(data);
+        emitState(read);
         if (data.session) handlers["game-over"]?.({ session: data.session });
       } catch {
         if (!closed) handlers.connection?.("offline");
@@ -169,9 +178,10 @@ export async function openRealtime(handlers) {
     .on("postgres_changes", { event: "UPDATE", schema: "public", table: "sessions" }, async (payload) => {
       if (closed) return;
       try {
-        const data = await getState();
+        const read = await readState();
+        const { data } = read;
         if (closed) return;
-        handlers.hello?.(data);
+        emitState(read);
         // A normal mutual goodbye updates the Session row. Do not rely on a
         // rooms event arriving first; the player who initiated the goodbye
         // must also receive the post-game feedback screen.

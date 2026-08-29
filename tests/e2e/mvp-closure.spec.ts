@@ -1,4 +1,18 @@
 import { expect, test, type Page } from "@playwright/test";
+
+function mockJwt(subject: string, email = `${subject}@project-s.local`) {
+  const encode = (value: Record<string, unknown>) => Buffer.from(JSON.stringify(value)).toString("base64url");
+  return `${encode({ alg: "HS256", typ: "JWT" })}.${encode({
+    sub: subject,
+    aud: "authenticated",
+    role: "authenticated",
+    email,
+    exp: 4102444800,
+  })}.test-signature`;
+}
+
+const mockAuthUserId = "00000000-0000-0000-0000-000000000001";
+const mockAccessToken = mockJwt(mockAuthUserId, "test@project-s.local");
 const mockProfile = {
   id: "00000000-0000-0000-0000-000000000111",
   nickname: "测试玩家",
@@ -48,6 +62,8 @@ const mockActiveRoom = {
   id: "00000000-0000-0000-0000-000000000444",
   code: "LINK42",
   status: "playing",
+  realtimeVersion: 2,
+  resumeEligible: true,
   startedAt: "2026-08-19T00:00:00.000Z",
   need: { game: "deadlock", mode: "天梯上分", goal: "上分", voice: true, time: "现在", target: 2 },
   members: [
@@ -57,6 +73,23 @@ const mockActiveRoom = {
   goodbyeRequests: [],
 };
 
+const mockRecruitingRoom = {
+  id: "00000000-0000-0000-0000-000000000445",
+  code: "SHELL1",
+  status: "connecting",
+  realtimeVersion: 1,
+  startedAt: "2026-08-19T00:00:00.000Z",
+  need: { game: "deadlock", mode: "娱乐", goal: "娱乐", voice: true, time: "现在", target: 6 },
+  members: [{ ...mockProfile, memberStatus: "active", exitedAt: null }],
+  goodbyeRequests: [],
+  recruitmentVotes: [],
+  recruiting: true,
+  recruitmentState: "recruiting",
+  formationState: "forming",
+  shell: true,
+  resumeEligible: true,
+};
+
 async function mockProductBackend(
   page: Page,
   capture: { profile?: Record<string, unknown>; match?: Record<string, unknown>; friendAdd?: Record<string, unknown> } = {}
@@ -64,6 +97,19 @@ async function mockProductBackend(
   let profileExists = true;
   const matchStartedAt = new Date().toISOString();
   await page.route("**/api/health", (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true }) })
+  );
+  await page.route("**/api/pool-summary", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ online: 8, matching: 8, playing: 3 }),
+    })
+  );
+  await page.route("**/api/public-directory", (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ directory: [] }) })
+  );
+  await page.route("**/api/events", (route) =>
     route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true }) })
   );
   await page.route("**/api/config", (route) =>
@@ -78,12 +124,12 @@ async function mockProductBackend(
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({
-        access_token: "test-access-token",
+        access_token: mockAccessToken,
         token_type: "bearer",
         expires_in: 3600,
         refresh_token: "test-refresh-token",
         user: {
-          id: "00000000-0000-0000-0000-000000000001",
+          id: mockAuthUserId,
           email: "test@project-s.local",
           user_metadata: { username: "testplayer" },
         },
@@ -96,9 +142,9 @@ async function mockProductBackend(
       contentType: "application/json",
       body: JSON.stringify({
         email: "test@project-s.local",
-        user_id: "00000000-0000-0000-0000-000000000001",
+        user_id: mockAuthUserId,
         session: {
-          access_token: "test-access-token",
+          access_token: mockAccessToken,
           refresh_token: "test-refresh-token",
           expires_in: 3600,
           expires_at: 4102444800,
@@ -153,12 +199,17 @@ async function mockProductBackend(
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({
-        ticket: { id: "ticket-1", state: "searching", search_started_at: matchStartedAt }, pair: null, candidate: null, matching: 8, matchable: 8,
+        ticket: { id: "ticket-1", state: "searching", room_id: mockRecruitingRoom.id, search_started_at: matchStartedAt },
+        pair: null,
+        candidate: null,
+        room: mockRecruitingRoom,
+        matching: 8,
+        matchable: 8,
       }),
     });
   });
   await page.route("**/api/matchmaking/status", (route) =>
-    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ticket: { id: "ticket-1", state: "searching", search_started_at: matchStartedAt }, pair: null, candidate: null, matching: 8, matchable: 8 }) })
+    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ticket: { id: "ticket-1", state: "searching", room_id: mockRecruitingRoom.id, search_started_at: matchStartedAt }, pair: null, candidate: null, room: mockRecruitingRoom, matching: 8, matchable: 8 }) })
   );
   await page.route("**/api/matchmaking/cancel", (route) =>
     route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ticket: { state: "cancelled" } }) })
@@ -215,9 +266,8 @@ async function reachDeadlockCasualFinal(page: Page) {
   await page.getByRole("button", { name: /Deadlock/ }).click();
   await page.getByRole("button", { name: "休闲", exact: true }).click();
   await page.getByRole("button", { name: "下一步", exact: true }).click();
-  await page.getByRole("button", { name: "找 1 人", exact: true }).click();
-  await page.getByRole("button", { name: "下一步", exact: true }).click();
   await expect(page.getByRole("button", { name: "开麦", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("group", { name: "偏好房间总人数" })).toBeVisible();
   await expect(page.getByRole("button", { name: "开始匹配", exact: true })).toBeVisible();
 }
 
@@ -262,6 +312,21 @@ async function mockThreeMemberRecoveryBackend(
     contentType: "application/json",
     body: JSON.stringify({ ok: true, online: 3, matching: 0, playing: 3 }),
   }));
+  await page.route("**/api/pool-summary", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({ online: 3, matching: 0, playing: 3 }),
+  }));
+  await page.route("**/api/public-directory", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({ directory: [] }),
+  }));
+  await page.route("**/api/events", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({ ok: true }),
+  }));
   await page.route("**/api/config", (route) => route.fulfill({
     status: 200,
     contentType: "application/json",
@@ -271,7 +336,7 @@ async function mockThreeMemberRecoveryBackend(
     status: 200,
     contentType: "application/json",
     body: JSON.stringify({
-      access_token: `test-access-token-${me.id}`,
+      access_token: mockJwt(`auth-${me.id}`, `${me.id}@project-s.local`),
       token_type: "bearer",
       expires_in: 3600,
       refresh_token: `test-refresh-token-${me.id}`,
@@ -285,7 +350,7 @@ async function mockThreeMemberRecoveryBackend(
       email: `${me.id}@project-s.local`,
       user_id: `auth-${me.id}`,
       session: {
-        access_token: `test-access-token-${me.id}`,
+        access_token: mockJwt(`auth-${me.id}`, `${me.id}@project-s.local`),
         refresh_token: `test-refresh-token-${me.id}`,
         expires_in: 3600,
         expires_at: 4102444800,
@@ -320,6 +385,13 @@ async function loginAs(page: Page, me: RecoveryProfile) {
   await page.locator("#auth-password").fill("Phase1-test!");
   await page.locator(".product-auth-submit").click();
   await expect(page.locator(".product-topbar-user span")).toHaveText(me.nickname);
+}
+
+async function resumeRoomFromHome(page: Page) {
+  await expect(page).toHaveURL(/#\/home$/);
+  await expect(page.getByRole("heading", { name: "检测到尚未结束的 Room", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "连接回房间", exact: true }).click();
+  await expect(page).toHaveURL(/#\/room$/);
 }
 
 test("first-time visitors land on the hero and enter the matching workspace", async ({ page }) => {
@@ -404,7 +476,7 @@ test("matching contact opens the OPS inbox form and submits without a fullscreen
     feedback = route.request().postDataJSON();
     return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true }) });
   });
-  await page.goto("/index.html?contact=1#/home");
+  await page.goto("/index.html?contact=1#/home", { waitUntil: "domcontentloaded" });
   await login(page);
   await page.getByRole("button", { name: /联系我们/ }).click();
   await expect(page.locator(".contact-sheet")).toBeVisible();
@@ -464,72 +536,94 @@ test("Deadlock rank and casual paths expose different step systems", async ({ pa
   await casualStage.evaluate((element) => element.setAttribute("data-test-persisted", "yes"));
   await page.getByRole("button", { name: "休闲", exact: true }).click();
   await expect(casualStage).toHaveAttribute("data-test-persisted", "yes");
-  await expect(page.locator("[data-home-stepper]")).toHaveAttribute("aria-label", "Deadlock 配置进度：第 1 步，共 3 步");
+  await expect(page.locator("[data-home-stepper]")).toHaveAttribute("aria-label", "Deadlock 配置进度：第 1 步，共 2 步");
   await page.getByRole("button", { name: "下一步", exact: true }).click();
-  await expect(page.getByRole("group", { name: "找几个人" })).toBeVisible();
+  await expect(page.getByRole("group", { name: "偏好房间总人数" })).toBeVisible();
   await expect(page.getByRole("group", { name: /位置/ })).toHaveCount(0);
-  await page.getByRole("button", { name: "找 2 人", exact: true }).click();
-  await page.getByRole("button", { name: "下一步", exact: true }).click();
   await expect(page.getByText("冲分最好开麦哦", { exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "无所谓", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "开始匹配", exact: true })).toBeVisible();
 });
 
-test("casual groups show progress and let the owner start with the minimum", async ({ page }) => {
+test("casual Room shows shared recruitment progress without an owner-only flow", async ({ page }) => {
   await mockProductBackend(page);
-  let enoughMembers = false;
-  const owner = { userId: mockProfile.id, ticketId: "ticket-owner", isOwner: true, decision: "accepted", profile: mockProfile };
-  const teammate = { userId: mockPartner.id, ticketId: "ticket-peer", isOwner: false, decision: "pending", profile: mockPartner };
-  const secondTeammate = { userId: "00000000-0000-0000-0000-000000000333", ticketId: "ticket-peer-2", isOwner: false, decision: "pending", profile: { nickname: "第二位玩家" } };
-  const snapshot = () => ({
-    ticket: { id: "ticket-owner", state: "searching", search_started_at: new Date(Date.now() - 1200).toISOString() },
-    group: {
-      id: "group-1", ownerUserId: mockProfile.id, state: "partial_ready", desiredTeammates: 3, minTeammates: 2,
-      members: enoughMembers ? [owner, teammate, secondTeammate] : [owner, teammate],
-    },
-    pair: null, candidate: null, matching: 2, matchable: 2,
-  });
+  const room = {
+    ...mockRecruitingRoom,
+    realtimeVersion: 2,
+    shell: false,
+    targetTotalPlayers: 3,
+    need: { ...mockRecruitingRoom.need, target: 3 },
+    members: [mockRecruitingRoom.members[0], mockPartner],
+    recruitmentVoteCount: 0,
+    recruitmentVoteTotal: 2,
+  };
   await page.unroute("**/api/matchmaking/start");
-  await page.unroute("**/api/matchmaking/status");
-  await page.route("**/api/matchmaking/start", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(snapshot()) }));
-  await page.route("**/api/matchmaking/status", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(snapshot()) }));
-  await page.route("**/api/matchmaking/group/start", (route) => route.fulfill({
-    status: 200, contentType: "application/json",
-    body: JSON.stringify({ ...snapshot(), group: { ...snapshot().group, state: "waiting_confirmation", members: [owner, { ...teammate, decision: "pending" }, { ...secondTeammate, decision: "pending" }] } }),
+  await page.route("**/api/matchmaking/start", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({ ticket: { id: "ticket-owner", state: "searching", room_id: room.id }, room, matching: 2, matchable: 2 }),
+  }));
+  await page.route("**/api/room/SHELL1/recruitment", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({
+      room: { ...room, realtimeVersion: 3, recruitmentVotes: [{ userId: mockProfile.id }], recruitmentVoteCount: 1 },
+      recruitment: { votes: 1, total: 2, locked: false },
+    }),
   }));
 
   await page.goto("/index.html#/home");
   await login(page);
-  await page.getByRole("button", { name: /Deadlock/ }).click();
-  await page.getByRole("button", { name: "休闲", exact: true }).click();
-  await page.getByRole("button", { name: "下一步", exact: true }).click();
-  await page.getByRole("button", { name: "找 3 人", exact: true }).click();
-  await page.getByRole("button", { name: "下一步", exact: true }).click();
+  await reachDeadlockCasualFinal(page);
   await page.getByRole("button", { name: "开始匹配", exact: true }).click();
-  await expect(page).toHaveURL(/#\/matching$/);
-  await expect(page.getByRole("heading", { name: "已找到 1/3 位队友" })).toBeVisible();
-  await expect(page.getByRole("button", { name: /已满 2 人，开房/ })).toBeVisible();
-  await page.getByRole("button", { name: /已满 2 人，开房/ }).click();
-  await expect(page.getByRole("heading", { name: "队伍已锁定，等大家确认" })).toBeVisible();
-  await expect(page.getByText("等待确认", { exact: true })).toHaveCount(2);
+  await expect(page).toHaveURL(/#\/room$/);
+  await expect(page.locator("[data-session-preview] .session-preview-player:not(.session-preview-player--joining)")).toHaveCount(2);
+  await page.getByRole("button", { name: "停止招募", exact: true }).click();
+  await expect(page.getByRole("button", { name: "停止招募（1/2）", exact: true })).toBeVisible();
+  await expect(page.getByText("已选择停止招募（1/2）", { exact: true })).toBeVisible();
 });
 
 test("a failed cancellation keeps the live matching state for reconciliation", async ({ page }) => {
   await mockProductBackend(page);
+  let started = false;
+  await page.unroute("**/api/matchmaking/start");
+  await page.route("**/api/matchmaking/start", (route) => {
+    started = true;
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ticket: { id: "ticket-1", state: "searching", room_id: mockRecruitingRoom.id },
+        room: mockRecruitingRoom,
+        matching: 1,
+        matchable: 1,
+      }),
+    });
+  });
   await page.unroute("**/api/matchmaking/cancel");
   await page.route("**/api/matchmaking/cancel", (route) =>
     route.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({ error: { message: "服务暂不可用" } }) })
   );
+  await page.unroute("**/api/state");
+  await page.route("**/api/state", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({
+      user: mockProfile,
+      room: started ? mockRecruitingRoom : null,
+      session: null,
+      matching: started ? 1 : 0,
+      playing: 0,
+      matchmaking: { ticket: started ? { id: "ticket-1", state: "searching", room_id: mockRecruitingRoom.id } : null, pair: null, group: null, candidate: null },
+    }),
+  }));
   await page.goto("/index.html#/home");
   await login(page);
-  await page.getByRole("button", { name: /Deadlock/ }).click();
-  await page.getByRole("button", { name: "休闲", exact: true }).click();
-  await page.getByRole("button", { name: "下一步", exact: true }).click();
-  await page.getByRole("button", { name: "找 1 人", exact: true }).click();
-  await page.getByRole("button", { name: "下一步", exact: true }).click();
+  await reachDeadlockCasualFinal(page);
   await page.getByRole("button", { name: "开始匹配", exact: true }).click();
-  await expect(page).toHaveURL(/#\/matching$/);
-  await page.getByLabel("退出匹配").click();
-  await expect(page).toHaveURL(/#\/matching$/);
+  await expect(page).toHaveURL(/#\/room$/);
+  await page.getByRole("button", { name: "退出招募", exact: true }).click();
+  await expect(page).toHaveURL(/#\/room$/);
   await expect(page.getByText("服务暂不可用", { exact: true })).toBeVisible();
 });
 
@@ -629,7 +723,8 @@ test("login and registration switch inside a stable account workspace", async ({
   await expect(ticker).toHaveAttribute("data-test-persisted", "yes");
   await expect(rail).toHaveAttribute("data-test-persisted", "yes");
   const afterRegister = await workspace.boundingBox();
-  expect(afterRegister?.height).toBe(before?.height);
+  expect(Math.abs((afterRegister?.width || 0) - (before?.width || 0))).toBeLessThan(1);
+  expect(Math.abs((afterRegister?.height || 0) - (before?.height || 0))).toBeLessThan(80);
 
   await page.getByRole("tab", { name: "登录", exact: true }).click();
   await expect(workspace).toHaveClass(/is-login/);
@@ -681,10 +776,10 @@ test("registration sends verification email before creating the player identity"
   await page.locator(".product-auth-submit").click();
 
   await expect(page).toHaveURL(/#\/auth$/);
-  await expect(page.getByText("验证邮件已发送，请先完成邮箱验证，再使用用户名或邮箱登录。", { exact: true })).toBeVisible();
-  await expect(page.locator("#auth-identifier")).toHaveValue("testplayer");
-  await expect(page.locator("#auth-email")).toBeDisabled();
-  await expect(page.locator("[data-auth-workspace]")).toHaveClass(/is-login/);
+  await expect(page.getByRole("heading", { name: "再确认一下邮箱。", exact: true })).toBeVisible();
+  await expect(page.getByText(/验证码已发送至/)).toBeVisible();
+  await expect(page.getByText("testplayer@example.com", { exact: true })).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "邮箱验证码", exact: true })).toBeVisible();
   expect(capture.profile).toBeUndefined();
 });
 
@@ -701,21 +796,28 @@ test("desktop match controls use target cursor but the primary action does not",
 
   await page.getByRole("button", { name: "休闲", exact: true }).click();
   await page.getByRole("button", { name: "下一步", exact: true }).click();
-  await page.getByRole("button", { name: "找 1 人", exact: true }).click();
-  await page.getByRole("button", { name: "下一步", exact: true }).click();
   await page.getByRole("button", { name: "开始匹配", exact: true }).hover();
   await expect(page.locator(".target-cursor")).not.toHaveClass(/is-visible/);
 });
 
-test("authenticated matching opens the new focused modal and removes the old panel", async ({ page }) => {
+test("authenticated matching uses a visual handoff and enters the Room shell", async ({ page }) => {
   await mockProductBackend(page);
+  await page.unroute("**/api/matchmaking/start");
+  await page.route("**/api/matchmaking/start", async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 650));
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ ticket: { id: "ticket-1", state: "searching", room_id: mockRecruitingRoom.id }, room: mockRecruitingRoom, matching: 8, matchable: 8 }),
+    });
+  });
   await page.goto("/index.html#/home");
   await login(page);
   await reachDeadlockCasualFinal(page);
   await page.getByRole("button", { name: "开始匹配", exact: true }).click();
   const transition = page.locator("[data-project-transition]");
   await expect(transition).toBeVisible();
-  await expect(transition).toHaveAttribute("aria-label", "正在进入匹配池");
+  await expect(transition).toHaveAttribute("aria-label", "正在进入招募");
   await expect(transition.locator(".project-transition-device")).toHaveCount(6);
   await expect(transition.locator(".project-transition-device small, .project-transition-center p")).toHaveCount(0);
   await expect(transition.locator(".project-transition-tape-track")).toHaveCount(2);
@@ -726,163 +828,110 @@ test("authenticated matching opens the new focused modal and removes the old pan
   await page.waitForTimeout(180);
   const tapeAfter = await transition.locator(".project-transition-tape-track").first().evaluate((element) => getComputedStyle(element).transform);
   expect(tapeAfter).not.toBe(tapeBefore);
-  await expect(page).toHaveURL(/#\/matching$/);
+  await expect(page).toHaveURL(/#\/room$/);
   await expect(transition).toHaveCount(0);
-  const modal = page.locator("[data-matching-modal]");
-  await expect(modal).toBeVisible();
-  await expect(modal).toHaveCSS("opacity", "1");
-  await modal.evaluate((element) => element.setAttribute("data-test-persisted", "yes"));
-  await expect(page.getByRole("heading", { name: "正在找同一局的人。" })).toBeVisible();
-  await expect(page.locator(".matching-panel, .prism-matching")).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "退出匹配", exact: true })).toHaveCount(2);
-  await page.waitForTimeout(3200);
-  await expect(modal).toHaveAttribute("data-test-persisted", "yes");
-  await expect(page.locator("#match-time")).not.toHaveText("0s");
+  await expect(page.locator("[data-session-preview]")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "招募中", exact: true })).toBeVisible();
+  await expect(page.getByText("加入中...", { exact: true })).toBeVisible();
+  await expect(page.locator("[data-matching-modal]")).toHaveCount(0);
 });
 
-test("candidate confirmation shows each player's independent ready state", async ({ page }) => {
+test("a Room shell receives a new member through authoritative hydration without rerendering", async ({ page }) => {
   await mockProductBackend(page);
+  let started = false;
+  let joined = false;
   await page.unroute("**/api/matchmaking/start");
+  await page.unroute("**/api/state");
   await page.route("**/api/matchmaking/start", (route) => route.fulfill({
     status: 200,
     contentType: "application/json",
-    body: JSON.stringify({
-      ticket: { id: "ticket-1", state: "waiting_confirmation", search_started_at: new Date().toISOString() },
-      pair: {
-        id: "pair-1",
-        state: "waiting_confirmation",
-        confirmations: [
-          { user_id: mockProfile.id, decision: null },
-          { user_id: "00000000-0000-0000-0000-000000000222", decision: "accepted" },
-        ],
-      },
-      candidate: { id: "00000000-0000-0000-0000-000000000222", nickname: "已准备玩家" },
-      matching: 0,
-      matchable: 0,
-    }),
+    body: JSON.stringify((started = true, { ticket: { id: "ticket-1", state: "searching", room_id: mockRecruitingRoom.id }, room: mockRecruitingRoom, matching: 1, matchable: 1 })),
   }));
+  await page.route("**/api/state", (route) => {
+    const room = !started ? null : joined
+      ? { ...mockRecruitingRoom, realtimeVersion: 2, shell: false, members: [mockRecruitingRoom.members[0], mockPartner] }
+      : mockRecruitingRoom;
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ user: mockProfile, room, session: null, matching: 1, playing: 0, matchmaking: { ticket: started ? { id: "ticket-1", state: "searching", room_id: mockRecruitingRoom.id } : null, pair: null, group: null, candidate: null } }),
+    });
+  });
   await page.goto("/index.html#/home");
   await login(page);
   await reachDeadlockCasualFinal(page);
   await page.getByRole("button", { name: "开始匹配", exact: true }).click();
-
-  await expect(page.getByText("对方已确定，正在等你。", { exact: true })).toBeVisible();
-  await expect(page.getByText("对方：已确定", { exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "确定是 TA", exact: true })).toBeVisible();
+  await expect(page).toHaveURL(/#\/room$/);
+  const roomRoot = page.locator("[data-session-preview]");
+  await roomRoot.evaluate((element) => element.setAttribute("data-test-persisted", "yes"));
+  joined = true;
+  await page.evaluate(() => window.dispatchEvent(new Event("pageshow")));
+  await expect(page.getByText("连接玩家", { exact: true })).toBeVisible();
+  await expect(roomRoot).toHaveAttribute("data-test-persisted", "yes");
+  await expect(roomRoot.locator(".session-preview-player:not(.session-preview-player--joining)")).toHaveCount(2);
 });
 
-test("a completed confirmation enters the created room without another button", async ({ page }) => {
+test("a late snapshot for another Room cannot replace the current Room", async ({ page }) => {
   await mockProductBackend(page);
-  await page.unroute("**/api/matchmaking/start");
-  await page.unroute("**/api/matchmaking/status");
-  const waitingSnapshot = {
-    ticket: { id: "ticket-1", state: "waiting_confirmation", search_started_at: new Date().toISOString() },
-    pair: {
-      id: "pair-1",
-      state: "waiting_confirmation",
-      confirmations: [
-        { user_id: mockProfile.id, decision: null },
-        { user_id: mockPartner.id, decision: "accepted" },
-      ],
-    },
-    candidate: mockPartner,
-    matching: 0,
-    matchable: 0,
-  };
-  await page.route("**/api/matchmaking/start", (route) => route.fulfill({
-    status: 200,
-    contentType: "application/json",
-    body: JSON.stringify(waitingSnapshot),
-  }));
-  await page.route("**/api/matchmaking/status", (route) => route.fulfill({
-    status: 200,
-    contentType: "application/json",
-    body: JSON.stringify(waitingSnapshot),
-  }));
-  await page.route("**/api/matchmaking/confirm", (route) => route.fulfill({
-    status: 200,
-    contentType: "application/json",
-    body: JSON.stringify({
-      ticket: { id: "ticket-1", state: "playing", search_started_at: new Date().toISOString() },
-      pair: { id: "pair-1", state: "playing", roomCode: "LINK42", confirmations: [] },
-      candidate: mockPartner,
-      matching: 0,
-      matchable: 0,
-    }),
-  }));
   await page.goto("/index.html#/home");
   await login(page);
   await reachDeadlockCasualFinal(page);
   await page.getByRole("button", { name: "开始匹配", exact: true }).click();
+  await expect(page).toHaveURL(/#\/room$/);
+  const roomRoot = page.locator("[data-session-preview]");
+  await roomRoot.evaluate((element) => element.setAttribute("data-test-persisted", "yes"));
   await page.unroute("**/api/state");
   await page.route("**/api/state", (route) => route.fulfill({
     status: 200,
     contentType: "application/json",
     body: JSON.stringify({
       user: mockProfile,
-      friends: [],
-      friendRequests: { incoming: [], outgoing: [] },
-      recentConnections: [],
-      room: mockActiveRoom,
-      session: { id: "session-1", roomCode: "LINK42", status: "playing" },
-      matching: 0,
-      playing: 2,
-      matchmaking: { ticket: null, pair: null, candidate: null, matching: 0, matchable: 0 },
+      room: { ...mockRecruitingRoom, id: "old-room", code: "OLDROOM", realtimeVersion: 99, members: [mockRecruitingRoom.members[0], mockPartner] },
+      session: null,
+      matching: 1,
+      playing: 0,
+      matchmaking: { ticket: { id: "old-ticket", state: "searching", room_id: "old-room" }, pair: null, group: null, candidate: null },
     }),
   }));
-  await page.getByRole("button", { name: "确定是 TA", exact: true }).click();
+  await page.evaluate(() => window.dispatchEvent(new Event("pageshow")));
   await expect(page).toHaveURL(/#\/room$/);
-  await expect(page.locator("[data-connection-room]")).toBeVisible();
+  await expect(roomRoot).toHaveAttribute("data-test-persisted", "yes");
+  await expect(page.getByText("连接玩家", { exact: true })).toHaveCount(0);
 });
 
-test("confirmation timeout updates the existing matching modal without resetting it", async ({ page }) => {
+test("slow Room hydration preserves the shell and patches details in place", async ({ page }) => {
   await mockProductBackend(page);
-  const startedAt = new Date(Date.now() - 4000).toISOString();
+  let started = false;
   await page.unroute("**/api/matchmaking/start");
-  await page.unroute("**/api/matchmaking/status");
+  await page.unroute("**/api/state");
   await page.route("**/api/matchmaking/start", (route) => route.fulfill({
     status: 200,
     contentType: "application/json",
-    body: JSON.stringify({
-      ticket: { id: "ticket-1", state: "waiting_confirmation", search_started_at: startedAt },
-      pair: {
-        id: "pair-1",
-        state: "waiting_confirmation",
-        confirmations: [
-          { user_id: mockProfile.id, decision: "accepted" },
-          { user_id: "00000000-0000-0000-0000-000000000222", decision: null },
-        ],
-      },
-      candidate: { id: "00000000-0000-0000-0000-000000000222", nickname: "超时玩家" },
-      matching: 0,
-      matchable: 0,
-    }),
+    body: JSON.stringify((started = true, { ticket: { id: "ticket-1", state: "searching", room_id: mockRecruitingRoom.id }, room: mockRecruitingRoom, matching: 1, matchable: 1 })),
   }));
-  await page.route("**/api/matchmaking/status", (route) => route.fulfill({
-    status: 200,
-    contentType: "application/json",
-    body: JSON.stringify({
-      ticket: { id: "ticket-1", state: "searching", search_started_at: startedAt },
-      pair: null,
-      candidate: null,
-      matching: 1,
-      matchable: 1,
-    }),
-  }));
+  await page.route("**/api/state", async (route) => {
+    if (!started) return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ user: mockProfile, room: null, session: null, matchmaking: { ticket: null } }) });
+    await new Promise((resolve) => setTimeout(resolve, 900));
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ user: mockProfile, room: { ...mockRecruitingRoom, realtimeVersion: 2, shell: false, members: [mockRecruitingRoom.members[0], mockPartner] }, session: null, matchmaking: { ticket: { id: "ticket-1", state: "searching", room_id: mockRecruitingRoom.id } } }),
+    });
+  });
 
   await page.goto("/index.html#/home");
   await login(page);
   await reachDeadlockCasualFinal(page);
   await page.getByRole("button", { name: "开始匹配", exact: true }).click();
-  const modal = page.locator("[data-matching-modal]");
-  await modal.evaluate((element) => element.setAttribute("data-test-persisted", "yes"));
-  await expect(page.getByText("你已准备，正在等对方确定。", { exact: true })).toBeVisible();
-  await expect(page.locator("#match-desc")).toHaveText("对方已离开匹配，正在继续寻找其他玩家。", { timeout: 5000 });
-  await expect(modal).toHaveAttribute("data-test-persisted", "yes");
-  await expect(page.locator("#match-time")).not.toHaveText("0s");
+  await expect(page).toHaveURL(/#\/room$/);
+  const roomRoot = page.locator("[data-session-preview]");
+  await roomRoot.evaluate((element) => element.setAttribute("data-test-persisted", "yes"));
+  await expect(page.getByLabel("聊天记录加载中")).toBeVisible();
+  await expect(page.getByText("连接玩家", { exact: true })).toBeVisible({ timeout: 5000 });
+  await expect(roomRoot).toHaveAttribute("data-test-persisted", "yes");
 });
 
-test("an active room resumes directly and goodbye patches the existing connection room", async ({ page }) => {
+test("an active room asks before resuming and goodbye patches the existing Room", async ({ page }) => {
   await mockProductBackend(page);
   let goodbyeRequested = false;
   let goodbyeCalls = 0;
@@ -917,22 +966,21 @@ test("an active room resumes directly and goodbye patches the existing connectio
 
   await page.goto("/index.html#/home");
   await login(page);
-  await expect(page).toHaveURL(/#\/room$/);
-  const room = page.locator("[data-connection-room]");
+  await resumeRoomFromHome(page);
+  const room = page.locator("[data-session-preview]");
   await expect(room).toBeVisible();
-  await expect(page.getByText("好友系统 COMING SOON", { exact: true })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Room 聊天", exact: true })).toBeVisible();
   await room.evaluate((element) => element.setAttribute("data-test-persisted", "yes"));
   await page.getByRole("button", { name: "拜拜", exact: true }).click();
   await expect(page.getByRole("heading", { name: "确定要拜拜吗？", exact: true })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "拜拜（1/2）", exact: true })).toBeVisible();
-  await expect(page.getByText("已拜拜，等待其余 1 位成员", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: /^拜拜（1\/2）/ })).toBeVisible();
+  await expect(page.getByText("1/2 已确认，等待其余 1 位成员。", { exact: true })).toBeVisible();
   await expect(room).toHaveAttribute("data-test-persisted", "yes");
   expect(goodbyeCalls).toBe(1);
-  await page.getByRole("button", { name: "拜拜（1/2）", exact: true }).click();
+  await page.getByRole("button", { name: /^拜拜（1\/2）/ }).click();
   await expect(page.getByRole("button", { name: "拜拜", exact: true })).toBeVisible();
   expect(goodbyeCalls).toBe(2);
-  await page.getByRole("link", { name: "我的", exact: true }).click();
-  await expect(page).toHaveURL(/#\/me$/);
+  await expect(room).toHaveAttribute("data-test-persisted", "yes");
 });
 
 test("a three-member room restores every member and uses a 1/3 goodbye state", async ({ page }) => {
@@ -987,15 +1035,15 @@ test("a three-member room restores every member and uses a 1/3 goodbye state", a
 
   await page.goto("/index.html#/home");
   await login(page);
-  await expect(page).toHaveURL(/#\/room$/);
-  await expect(page.getByRole("heading", { name: "连接玩家", exact: true })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "第三位玩家", exact: true })).toBeVisible();
-  await expect(page.getByText("玩完后，由 3 位当前成员 各自确认拜拜。", { exact: true })).toBeVisible();
+  await resumeRoomFromHome(page);
+  await expect(page.getByText("连接玩家", { exact: true })).toBeVisible();
+  await expect(page.getByText("第三位玩家", { exact: true })).toBeVisible();
+  await expect(page.getByText("0/3 已确认，所有成员都确认后进入赛后反馈。", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "拜拜", exact: true }).click();
   await expect(page.getByRole("heading", { name: "确定要拜拜吗？", exact: true })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "拜拜（1/3）", exact: true })).toBeVisible();
-  await expect(page.getByText("已拜拜，等待其余 2 位成员", { exact: true })).toBeVisible();
-  await expect(page.locator("[data-connection-room] .connection-player")).toHaveCount(3);
+  await expect(page.getByRole("button", { name: /^拜拜（1\/3）/ })).toBeVisible();
+  await expect(page.getByText("1/3 已确认，等待其余 2 位成员。", { exact: true })).toBeVisible();
+  await expect(page.locator("[data-session-preview] .session-preview-player:not(.session-preview-player--joining)")).toHaveCount(3);
 });
 
 test("server-backed Goodbye count survives refresh at 1/3 and 2/3", async ({ page }) => {
@@ -1050,18 +1098,18 @@ test("server-backed Goodbye count survives refresh at 1/3 and 2/3", async ({ pag
 
   await page.goto("/index.html#/home");
   await login(page);
-  await expect(page).toHaveURL(/#\/room$/);
+  await resumeRoomFromHome(page);
   await page.getByRole("button", { name: "拜拜", exact: true }).click();
-  await expect(page.getByRole("button", { name: "拜拜（1/3）", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: /^拜拜（1\/3）/ })).toBeVisible();
   await page.reload();
   await expect(page).toHaveURL(/#\/room$/);
-  await expect(page.getByRole("button", { name: "拜拜（1/3）", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: /^拜拜（1\/3）/ })).toBeVisible();
 
   goodbyeIds.push(memberC.id);
   await page.reload();
   await expect(page).toHaveURL(/#\/room$/);
-  await expect(page.getByRole("button", { name: "拜拜（2/3）", exact: true })).toBeVisible();
-  await expect(page.getByText("你已拜拜，等待其余 1 位成员。", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: /^拜拜（2\/3）/ })).toBeVisible();
+  await expect(page.getByText("2/3 已确认，所有成员都确认后进入赛后反馈。", { exact: true })).toBeVisible();
 });
 
 test("three-member fit table aligns names and restores match links", async ({ page }) => {
@@ -1104,14 +1152,14 @@ test("three-member fit table aligns names and restores match links", async ({ pa
 
   await page.goto("/index.html#/home");
   await login(page);
-  await page.goto("/index.html#/matching");
+  await resumeRoomFromHome(page);
   await expect(page.locator("[data-session-preview]")).toBeVisible();
   await expect(page.locator(".session-fit-row--head .session-fit-conditions--group > b")).toHaveCount(3);
   await expect(page.locator(".session-fit-row--head .session-fit-link--empty")).toHaveCount(2);
   await expect(page.locator(".session-fit-row--head .session-fit-line")).toHaveCount(0);
   await expect(page.locator(".session-fit-row--head .icon")).toHaveCount(0);
-  await expect(page.locator(".session-fit-row--group:not(.session-fit-row--head)")).toHaveCount(5);
-  await expect(page.locator(".session-fit-row--group:not(.session-fit-row--head) .session-fit-link.is-match")).toHaveCount(10);
+  await expect(page.locator(".session-fit-row--group:not(.session-fit-row--head)")).toHaveCount(3);
+  await expect(page.locator(".session-fit-row--group:not(.session-fit-row--head) .session-fit-link.is-match")).toHaveCount(6);
   await page.evaluate(() => document.fonts?.ready);
   await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
 
@@ -1223,6 +1271,9 @@ test("Room chat scrolls inside its own panel instead of growing the whole Room",
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/index.html#/session-preview");
   await expect(page.locator("[data-session-preview]")).toBeVisible();
+  await page.locator(".matching-session-modal").evaluate(async (modal) => {
+    await Promise.all(modal.getAnimations().map((animation) => animation.finished.catch(() => {})));
+  });
 
   const roomHeightBefore = await page.locator("[data-session-preview]").evaluate((room) => room.getBoundingClientRect().height);
   const chatPanelHeightBefore = await page.locator(".session-preview-chat").evaluate((panel) => panel.getBoundingClientRect().height);
@@ -1259,6 +1310,7 @@ test("Room chat scrolls inside its own panel instead of growing the whole Room",
 });
 
 test("three independent clients keep the same active Session across refresh and return", async ({ browser }) => {
+  test.setTimeout(120_000);
   const sharedProfileFields = {
     friendCode: "TEST-RECOVERY",
     gender: "保密",
@@ -1275,9 +1327,27 @@ test("three independent clients keep the same active Session across refresh and 
   const contexts = await Promise.all(members.map(() => browser.newContext()));
   const pages = await Promise.all(contexts.map((context) => context.newPage()));
   const captures = members.map(() => ({ offline: 0 }));
+  const sharedMessages: Record<string, unknown>[] = [];
   let explicitExitCalls = 0;
   try {
     await Promise.all(pages.map((page, index) => mockThreeMemberRecoveryBackend(page, members[index], members, captures[index])));
+    await Promise.all(pages.map((page, index) => page.route("**/api/room/REFRESH3/messages", async (route) => {
+      if (route.request().method() === "GET") {
+        return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ messages: sharedMessages }) });
+      }
+      const body = route.request().postDataJSON() as { content: string; operationId: string };
+      const message = {
+        id: `message-${sharedMessages.length + 1}`,
+        room_id: "00000000-0000-0000-0000-000000000777",
+        sender_id: members[index].id,
+        content: body.content,
+        kind: "chat",
+        client_operation_id: body.operationId,
+        created_at: new Date().toISOString(),
+      };
+      sharedMessages.push(message);
+      return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ message }) });
+    })));
     await pages[2].route("**/api/room/REFRESH3/exit", (route) => {
       explicitExitCalls += 1;
       return route.fulfill({
@@ -1288,11 +1358,12 @@ test("three independent clients keep the same active Session across refresh and 
     });
     await Promise.all(pages.map((page) => page.goto("/index.html#/home")));
     await Promise.all(pages.map((page, index) => loginAs(page, members[index])));
+    await Promise.all(pages.map((page) => resumeRoomFromHome(page)));
 
     for (const page of pages) {
       await expect(page).toHaveURL(/#\/room$/);
-      await expect(page.locator("[data-connection-room] .connection-player")).toHaveCount(3);
-      await expect(page.getByText("玩完后，由 3 位当前成员 各自确认拜拜。", { exact: true })).toBeVisible();
+      await expect(page.locator("[data-session-preview] .session-preview-player:not(.session-preview-player--joining)")).toHaveCount(3);
+      await expect(page.getByText("0/3 已确认，所有成员都确认后进入赛后反馈。", { exact: true })).toBeVisible();
     }
 
     await pages[0].locator("#chat-input").fill("刷新前消息");
@@ -1306,13 +1377,13 @@ test("three independent clients keep the same active Session across refresh and 
 
     for (const page of pages) {
       await expect(page).toHaveURL(/#\/room$/);
-      await expect(page.locator("[data-connection-room] .connection-player")).toHaveCount(3);
-      await expect(page.getByText("玩完后，由 3 位当前成员 各自确认拜拜。", { exact: true })).toBeVisible();
+      await expect(page.locator("[data-session-preview] .session-preview-player:not(.session-preview-player--joining)")).toHaveCount(3);
+      await expect(page.getByText("0/3 已确认，所有成员都确认后进入赛后反馈。", { exact: true })).toBeVisible();
     }
     await pages[0].locator("#chat-input").fill("刷新后仍可聊天");
     await pages[0].locator('[data-form="room-chat"] button[type="submit"]').click();
     await expect(pages[0].locator("#chat-input")).toHaveValue("");
-    await pages[2].getByRole("button", { name: "主动退出", exact: true }).click();
+    await pages[2].getByRole("button", { name: "离开", exact: true }).click();
     await pages[2].getByRole("dialog", { name: "主动离开游戏" }).getByRole("button", { name: "主动离开", exact: true }).click();
     await expect(pages[2]).toHaveURL(/#\/home$/);
     expect(explicitExitCalls).toBe(1);

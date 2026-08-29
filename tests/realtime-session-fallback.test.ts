@@ -31,12 +31,17 @@ describe("Realtime session hydration fallback", () => {
   it("falls back to authoritative state polling when browser auth hydration has not produced a session", async () => {
     const { openRealtime } = await import("../public/js/realtime.js");
     const hello = vi.fn();
+    const checkpoint = vi.fn().mockReturnValue(7);
 
-    const close = await openRealtime({ hello, connection: vi.fn() });
+    const close = await openRealtime({ hello, checkpoint, connection: vi.fn() });
     await vi.advanceTimersByTimeAsync(1);
 
     expect(getState).toHaveBeenCalledTimes(1);
-    expect(hello).toHaveBeenCalledWith({ room: { id: "room-1", code: "ROOM-1" } });
+    expect(checkpoint).toHaveBeenCalledTimes(1);
+    expect(hello).toHaveBeenCalledWith(
+      { room: { id: "room-1", code: "ROOM-1" } },
+      { observedGeneration: 7 },
+    );
     close();
   });
 });

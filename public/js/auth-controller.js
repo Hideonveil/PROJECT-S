@@ -9,11 +9,10 @@ export function createAuthController({
   navigate,
   showAuthError,
   applyServerSnapshot,
-  isRecruitmentExitRoom,
-  isActiveSessionRoom,
   getRouteName,
-  scheduleResumeRoomPrompt,
   connectEvents,
+  captureRoomAuthority,
+  resetRoomAuthority,
 }) {
   let authSubmitPending = false;
   let verificationPending = false;
@@ -58,19 +57,19 @@ export function createAuthController({
       return;
     }
 
-    let hasActiveRoom = false;
+    let snapshot = null;
+    let observedGeneration = null;
     update({ user: status.profile });
     try {
-      const snapshot = await api.getState();
+      observedGeneration = captureRoomAuthority();
+      snapshot = await api.getState();
       update({ user: snapshot.user });
-      applyServerSnapshot(snapshot);
-      hasActiveRoom = !isRecruitmentExitRoom(snapshot.room) && isActiveSessionRoom(snapshot.room);
     } catch {
       // Profile-only state is enough to enter home.
     }
     connectEvents();
     navigate("#/home");
-    if (hasActiveRoom) scheduleResumeRoomPrompt(state.room);
+    if (snapshot) applyServerSnapshot(snapshot, { source: "state", route: "home", observedGeneration });
     toast(`欢迎回来，${state.user.nickname}`);
   }
 
@@ -83,12 +82,14 @@ export function createAuthController({
         return;
       }
       if (!session?.access_token) {
+        resetRoomAuthority();
         resetState();
         return;
       }
       const status = await api.sessionStatus();
       if (!status.authenticated) {
         await api.signOut().catch(() => {});
+        resetRoomAuthority();
         resetState();
         return;
       }
@@ -107,16 +108,17 @@ export function createAuthController({
       }
       update({ user: status.profile });
       try {
+        const observedGeneration = captureRoomAuthority();
         const snapshot = await api.getState();
         update({ user: snapshot.user });
-        applyServerSnapshot(snapshot);
-        if (!isRecruitmentExitRoom(snapshot.room) && isActiveSessionRoom(snapshot.room) && ["home", "auth", "welcome", "matching"].includes(getRouteName())) {
-          scheduleResumeRoomPrompt(snapshot.room);
-        }
+        const routeName = getRouteName();
+        const authorityRoute = ["auth", "welcome"].includes(routeName) ? "home" : routeName;
+        applyServerSnapshot(snapshot, { source: "state", route: authorityRoute, observedGeneration });
       } catch {
         // Keep profile-only state.
       }
     } catch {
+      resetRoomAuthority();
       resetState();
       if (recoveryCallback) update({ authMode: "reset", authError: "重置链接无效或已过期，请重新发送。", authNotice: "" });
     }
@@ -209,6 +211,7 @@ export function createAuthController({
     try {
       await api.updatePassword(password);
       await api.signOut();
+      resetRoomAuthority();
       resetState();
       update({ authMode: "login", authNotice: "密码已更新，请使用新密码登录。" });
       navigate("#/auth");

@@ -23,9 +23,9 @@ describe("canonical Active Session route contract", () => {
     expect(matching).not.toContain("if (state.room) return");
     expect(matching).not.toContain("sessionPage(state)");
     expect(app).not.toContain("sessionHandoff");
-    expect(app).toContain('isActiveSessionRoom(state.room) && route.name === "matching"');
+    expect(app).toContain("createRoomAuthority({");
     expect(app).toContain('replaceCanonicalRoute("#/room")');
-    expect(app.indexOf('isActiveSessionRoom(state.room) && route.name === "matching"')).toBeLessThan(app.indexOf("startMatchingFlow();"));
+    expect(app).toContain('{ source: "start" }');
   });
 
   it("keeps the canonical Session renderer independent of the matching route", () => {
@@ -38,19 +38,23 @@ describe("canonical Active Session route contract", () => {
   });
 
   it("normalizes match success and realtime Room hydration without business writes", () => {
-    expect(app).toContain('if (patch.room && routeName === "matching" && isActiveSessionRoom(state.room))');
-    expect(app).toContain('if (isActiveSessionRoom(normalized) && routeName === "matching")');
+    const authority = read("public/js/room-authority.js");
+    expect(app).toContain('source: "realtime"');
+    expect(app).toContain('roomAuthority.dispatch({');
+    expect(authority).toContain('if (route === "matching") return "enter-room";');
     expect(app).toContain('history.replaceState(history.state, "", nextUrl)');
   });
 
   it("restores in-place refreshes but asks before reconnecting from Home or a new device", () => {
-    expect(authController).toContain("scheduleResumeRoomPrompt(state.room)");
+    const authority = read("public/js/room-authority.js");
+    expect(authController).toContain('applyServerSnapshot(snapshot, { source: "state", route: authorityRoute, observedGeneration });');
+    expect(authority).toContain('"prompt-resume"');
     expect(app).toContain('replaceCanonicalRoute("#/room")');
     expect(app).toContain("data-resume-countdown");
     expect(app).toContain("Date.now() + 40_000");
     expect(app).toContain('window.addEventListener("pageshow"');
     expect(app).toContain('document.addEventListener("visibilitychange"');
     expect(app).toContain('"open-room": () => replaceCanonicalRoute("#/room")');
-    expect(app).toContain('else if (routeName === "home") scheduleResumeRoomPrompt(snapshot.room)');
+    expect(app).toContain('roomResult.effect === "prompt-resume"');
   });
 });

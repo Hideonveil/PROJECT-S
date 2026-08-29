@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { gameoverPage } from "../public/js/pages/gameover.js";
 import { sessionPage } from "../public/js/pages/session-preview.js";
 import { mergeRoomMessages } from "../public/js/chat-merge.js";
+import { createRoomAuthority } from "../public/js/room-authority.js";
 
 const app = readFileSync("public/js/app.js", "utf8");
 const chatController = readFileSync("public/js/room-chat-controller.js", "utf8");
@@ -70,17 +71,32 @@ describe("reported Room lifecycle regressions", () => {
   });
 
   it("uses a versioned Room response for global state reconciliation", () => {
-    expect(app).toContain("data?.room?.realtimeVersion");
-    expect(app).toContain("function isRoomSnapshotOlder");
-    expect(app).toContain("if (isRoomSnapshotOlder(room, state.room)) return;");
+    const authority = createRoomAuthority({
+      normalizeRoom: (room: any) => room,
+      roomSignature: (room: any) => JSON.stringify(room),
+      isResumableRoom: () => true,
+    });
+    authority.dispatch({ type: "snapshot", room: { id: "room-1", realtimeVersion: 2 }, source: "start", route: "home" });
+    expect(authority.dispatch({
+      type: "snapshot",
+      room: { id: "room-1", realtimeVersion: 1 },
+      source: "realtime",
+      route: "room",
+    })).toMatchObject({ decision: "ignore", reason: "older-version" });
     expect(stateRoute).toContain("snapshotVersion: room?.realtimeVersion ?? null");
+  });
+
+  it("scopes terminal Sessions to the authority-approved Room, not a rejected snapshot", () => {
+    expect(app).toContain("const scopedRoom = roomResult.room || state.room;");
+    expect(app).not.toContain("const scopedRoom = data.room || state.room;");
   });
 
   it("reconciles the authoritative state when exit races with ticket cancellation", () => {
     const start = app.indexOf("async function cancelMatch()");
     const source = app.slice(start, app.indexOf("function showSheet", start));
 
-    expect(source).toContain("api.getState()");
+    expect(source).toContain("readServerState()");
+    expect(source).toContain("applyServerStateRead(read)");
     expect(source).toContain("!authoritativeSnapshot.room");
     expect(source).toContain('navigate("#/home")');
   });

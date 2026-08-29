@@ -31,11 +31,11 @@
 ## Phase 4 — Browser Room controller
 
 - [x] Extract pure matchmaking snapshot validation and partial-response merging from `app.js`.
-- [ ] Extract authoritative Room snapshot reconciliation from `app.js`.
+- [x] Extract authoritative Room snapshot reconciliation from `app.js`.
 - [ ] Extract Room-scoped subscriptions and refresh scheduling.
 - [x] Extract chat load/send/reconcile behavior.
-- [ ] Extract explicit leave and local tombstone behavior.
-- [ ] Verify no full-page render for member/chat/recruitment updates.
+- [x] Extract explicit leave and local tombstone behavior.
+- [x] Verify no full-page render for member/chat/recruitment updates.
 
 ## Phase 5 — Browser application shell
 
@@ -90,3 +90,16 @@
 - Remaining work is explicit: authoritative Room reconciliation/leave controller, route/action splitting, and OPS data hooks.
 - Final regression baseline for this checkpoint: 98 files / 422 tests; typecheck and Production build pass.
 - Multi-game expansion is now governed by DEC-015; implementation is intentionally deferred until a second game enters scope.
+
+## 2026-08-29 Room Authority completion
+
+- Browser Room identity, monotonic versions, source precedence, resume decisions and exit tombstones now have one owner: `public/js/room-authority.js`.
+- Start and explicit resume may switch the canonical Room; background state, hydration and Realtime may only update that same Room.
+- Every state read carries the Room generation captured when the request starts; a delayed null cannot clear a newer Room.
+- An authoritative null, terminal Session, or completed explicit exit can clear the Room; exit-pending nulls and delayed snapshots cannot reopen or erase the accepted Room.
+- Equal-version shell snapshots may supplement missing fields but cannot overwrite a fully hydrated roster.
+- Standard explicit Room exits share one `runRoomExit` transaction so success and failure always settle the same tombstone; matchmaking cancellation keeps its separate uncertain-result reconciliation path.
+- Member hydration, recruitment votes, Goodbye state and chat patch the mounted Room instead of replacing the full page.
+- The retired standalone Matching flow and old three-step Casual assumptions were removed from browser regression tests.
+- Decorative ticker layers no longer intercept Room/matching actions at short desktop viewports.
+- Regression baseline: 99 files / 434 tests, 31 browser lifecycle tests, typecheck and Production build pass.

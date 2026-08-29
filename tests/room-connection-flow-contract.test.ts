@@ -6,9 +6,11 @@ const read = (path: string) => readFileSync(path, "utf8");
 describe("room connection flow contract", () => {
   it("routes matching into Room while Home requires an explicit resume choice", () => {
     const app = read("public/js/app.js");
-    expect(app).toContain('if (isActiveSessionRoom(state.room) && route.name === "matching")');
+    const authority = read("public/js/room-authority.js");
+    expect(app).toContain("createRoomAuthority({");
+    expect(authority).toContain('if (route === "home") return ROOM_SWITCH_SOURCES.has(source) ? "enter-room" : "prompt-resume";');
+    expect(authority).toContain('if (route === "matching") return "enter-room";');
     expect(app).toContain('replaceCanonicalRoute("#/room")');
-    expect(app).toContain('else if (routeName === "home") scheduleResumeRoomPrompt(snapshot.room)');
     expect(app).toContain("html = sessionPage(state);");
     expect(app).not.toContain("function updateRoomView");
   });
