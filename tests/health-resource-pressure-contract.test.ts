@@ -64,8 +64,9 @@ describe("resource-pressure minimum safe fix", () => {
   it("deduplicates overlapping authenticated state requests in the browser", () => {
     const api = read("public/js/api.js");
     const realtime = read("public/js/realtime.js");
-    expect(api).toContain("let stateRequest = null");
-    expect(api).toContain('authedRequest("/api/state")');
-    expect(realtime).toContain("getState()");
+    expect(api).toContain("const stateRequests = new Map()");
+    expect(api).toContain("if (stateRequests.has(path)) return stateRequests.get(path)");
+    expect(api).toContain("stateRequests.set(path, stateRequest)");
+    expect(realtime).toContain("getState({ completedSessionId })");
   });
 });

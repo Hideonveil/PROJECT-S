@@ -12,6 +12,7 @@ export async function GET(request: Request) {
   try {
     const profile = await requireRequestProfile(request);
     const readContext = createStateReadContext();
+    const requestedCompletedSessionId = new URL(request.url).searchParams.get("completedSessionId");
 
     const [counts, friends, friendRequests, room, activeSession, recentConnections, matchmaking] = await Promise.all([
       poolSummary(),
@@ -29,10 +30,10 @@ export async function GET(request: Request) {
     // A completed Session is history, not part of a live pre-Session Room.
     // Fetch it only when no Room is currently resumable so one response can
     // never combine a new Room shell with the previous game's settlement.
-    const completedSession = !room && !activeSession
-      ? await completedSessionViewFor(profile.id, readContext)
+    const completedSession = !room && !activeSession && requestedCompletedSessionId
+      ? await completedSessionViewFor(profile.id, readContext, requestedCompletedSessionId)
       : null;
-    const session = selectSnapshotSession({ room, activeSession, completedSession });
+    const session = selectSnapshotSession({ room, activeSession, completedSession, requestedCompletedSessionId });
 
     return NextResponse.json({
       user: await profileWithGames(profile, readContext),

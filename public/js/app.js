@@ -6,7 +6,7 @@ import { button, esc, needSummary, setProductRailHeldOpen, toast } from "./ui.js
 import { state, update, resetState } from "./store.js";
 import { DEVICES, GAME_BY_ID, GAMES, GENRES } from "./data.js";
 import { FLOW } from "./flow.js";
-import * as api from "./api.js?v=20260828-peer-sync-01";
+import * as api from "./api.js?v=20260829-room-converge-03";
 import { authPage } from "./pages/auth.js";
 import { HERO_PREVIEW_DIRECTORY, heroDirectoryMarkup, heroDirectoryPersonMarkup, heroPreviewPage, landingPage } from "./pages/landing.js?v=20260822-directory-readonly-01";
 import { welcomePage } from "./pages/welcome.js";
@@ -22,8 +22,8 @@ import { memberDisplayName, sessionMembers } from "./session-members.js";
 import { rosterDelta } from "./room-roster.js";
 import { sessionBelongsToRoom } from "./session-scope.js";
 import { isLiveMatchmakingSnapshot, matchmakingShape, mergeMatchmakingSnapshot, mergePartialMatchmakingSnapshot } from "./matchmaking-snapshot.js";
-import { createRoomChatController } from "./room-chat-controller.js";
-import { createAuthController } from "./auth-controller.js";
+import { createRoomChatController } from "./room-chat-controller.js?v=20260829-room-converge-03";
+import { createAuthController } from "./auth-controller.js?v=20260829-room-converge-03";
 import { createRoomAuthority } from "./room-authority.js?v=20260829-shell-switch-02";
 import { createRoomOperationTracker } from "./room-operation-tracker.js";
 
@@ -148,14 +148,38 @@ let heroDirectoryRequestPending = false;
 let homeDirectoryRequestPending = false;
 let homeRangePointer = null;
 const trackedCandidatePairs = new Set();
+const PENDING_POSTGAME_SESSION_KEY = "jiyuan_pending_postgame_session_id";
+
+function pendingPostgameSessionId() {
+  try {
+    return window.sessionStorage.getItem(PENDING_POSTGAME_SESSION_KEY) || "";
+  } catch {
+    return "";
+  }
+}
+
+function rememberPendingPostgame(sessionId) {
+  if (!sessionId) return;
+  try { window.sessionStorage.setItem(PENDING_POSTGAME_SESSION_KEY, sessionId); } catch { /* optional browser context */ }
+}
+
+function clearPendingPostgame() {
+  try { window.sessionStorage.removeItem(PENDING_POSTGAME_SESSION_KEY); } catch { /* optional browser context */ }
+}
+
+function leavePostgame(destination) {
+  clearPendingPostgame();
+  update({ session: null });
+  navigate(destination);
+}
 
 function isRecruitmentExitRoom(room) {
   return Boolean(room?.id && roomAuthority.dispatch({ type: "inspect", roomId: room.id }).blocked);
 }
 
-async function readServerState() {
+async function readServerState({ completedSessionId = "" } = {}) {
   const observedGeneration = roomAuthority.dispatch({ type: "checkpoint" }).generation;
-  return { snapshot: await api.getState(), observedGeneration };
+  return { snapshot: await api.getState({ completedSessionId }), observedGeneration };
 }
 
 function applyServerStateRead(read, options = {}) {
@@ -238,7 +262,7 @@ function startGoodbyeReconciliation(roomCode) {
         return;
       }
       try {
-        const read = await readServerState();
+        const read = await readServerState({ completedSessionId: state.room?.sessionId || state.session?.id || "" });
         const snapshot = read.snapshot;
         if (snapshot?.session && ["completed", "cancelled"].includes(snapshot.session.status)
             && sessionBelongsToRoom(snapshot.session, snapshot.room || state.room || { code: goodbyeReconcileRoomCode })) {
@@ -2041,7 +2065,9 @@ function applyServerSnapshot(data, { source = "state", route = "", observedGener
     // it to the Room timeline accepted by Room Authority, never the rejected
     // raw payload, so an old Session cannot evict the user's current Room.
     const scopedRoom = roomResult.room || state.room;
-    if (scopedRoom && !sessionBelongsToRoom(session, scopedRoom)) {
+    const sameVisiblePostgame = routeName === "gameover" && state.session?.id === session.id;
+    const exactPendingPostgame = pendingPostgameSessionId() === session.id;
+    if ((!scopedRoom && !sameVisiblePostgame && !exactPendingPostgame) || (scopedRoom && !sessionBelongsToRoom(session, scopedRoom))) {
       data = { ...data, session: undefined };
     } else {
     if (!state.session || state.session.roomCode !== session.roomCode) {
@@ -2063,6 +2089,7 @@ function applyServerSnapshot(data, { source = "state", route = "", observedGener
     }
   }
   const roomChanged = patch.room ? roomShapeChanged(patch.room, state.room) : false;
+  const roomIdentityChanged = Boolean(previousRoom?.id && patch.room?.id && previousRoom.id !== patch.room.id);
   update(patch);
   if (routeName === "matching" && matchmakingHasTicketField && !matchmakingLiveTicket && !matchmakingPartial && !patch.room && !state.room) {
     navigate("#/home");
@@ -2086,6 +2113,12 @@ function applyServerSnapshot(data, { source = "state", route = "", observedGener
     // Recruiting joins/leaves update only the member rail and fit table, so the
     // chat composer stays mounted and the Room never flashes like a new page.
     if (!updateRecruitingRoomView(state.room, previousRoom)) render();
+    else if (roomIdentityChanged) {
+      // A singleton Room may be absorbed into another recruiting Room. Keep
+      // the page mounted, but move every Room-scoped listener to the new ID.
+      roomChat.reset();
+      void roomChat.init();
+    }
   } else if (patch.room && routeName === "room" && friendRequestsChanged) {
     updateSessionView(state.room);
   }
@@ -2276,6 +2309,7 @@ function handleServerGameOver(session, expectedRoom = state.room) {
     return;
   }
   if (session.status === "cancelled") {
+    clearPendingPostgame();
     update({
       room: null,
       session: null,
@@ -2284,6 +2318,7 @@ function handleServerGameOver(session, expectedRoom = state.room) {
     navigate("#/home");
     return;
   }
+  rememberPendingPostgame(session.id);
   const memberModel = sessionMemberSnapshot(session);
   const partner = memberModel.otherMembers[0] || sessionPartnerFor(session);
   const now = new Date();
@@ -2360,9 +2395,18 @@ function connectEvents() {
 
 async function refreshLiveRoomSnapshot() {
   if (parseRoute().name !== "room" || !state.room?.code || recruitmentExitPending || isRecruitmentExitRoom(state.room)) return;
-  // Reuse the single-flight hydration path. Bursts of membership, chat and
-  // lifecycle invalidations collapse into one authoritative projection read.
-  await hydrateRoomAfterShell(state.room.id);
+  const room = state.room;
+  const activeMembers = Number(room.activeMemberCount || room.currentMemberCount || (room.members || []).filter((member) => !["exited", "left"].includes(String(member.memberStatus || "active"))).length || 0);
+  if (room.shell === true || (room.recruiting === true && activeMembers <= 1)) {
+    // A singleton is the only Room shape that may be atomically absorbed into
+    // another Room. Resolve the user's actual active Room instead of polling
+    // an obsolete shell code forever after that handoff.
+    const read = await readServerState();
+    applyServerStateRead(read);
+    return;
+  }
+  // Anchored multi-member Rooms keep the cheaper room-scoped hydration path.
+  await hydrateRoomAfterShell(room.id);
 }
 
 function markPresenceOnline() {
@@ -2389,7 +2433,11 @@ function startPresenceHeartbeat() {
 async function refreshAuthenticatedState({ restoreRoute = false } = {}) {
   if (!ONLINE || !state.authenticated) return;
   try {
-    const read = await readServerState();
+    const routeName = parseRoute().name;
+    const completedSessionId = routeName === "room"
+      ? state.room?.sessionId || state.session?.id || ""
+      : pendingPostgameSessionId();
+    const read = await readServerState({ completedSessionId });
     const snapshot = read.snapshot;
     if (snapshot.user) update({ user: snapshot.user });
     applyServerStateRead(read);
@@ -3864,7 +3912,7 @@ document.addEventListener("click", (event) => {
   const actions = {
     "enter-match": enterMatchFromHero,
     "scroll-landing-more": () => document.getElementById("landing-more")?.scrollIntoView({ behavior: "smooth", block: "start" }),
-    "go-home": () => navigate("#/home"),
+    "go-home": () => parseRoute().name === "gameover" ? leavePostgame("#/home") : navigate("#/home"),
     "go-me": () => navigate("#/me"),
     "go-friends": () => navigate("#/me"),
     "toggle-account-menu": () => toggleProductAccountMenu(actionEl),
@@ -3914,7 +3962,7 @@ document.addEventListener("click", (event) => {
     "set-room-rating": (value) => setRoomRating(value),
     "rematch-recent": (id) => rematchRecent(id),
     "back-to-match": returnToMatchingSetup,
-    "go-recent": () => navigate("#/connections"),
+    "go-recent": () => leavePostgame("#/connections"),
     "say-goodbye": () => setGoodbyeRequest(true),
     "withdraw-goodbye": () => setGoodbyeRequest(false),
     "slip-room": () => slipCurrentRoom(),

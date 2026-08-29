@@ -840,9 +840,28 @@ test("a Room shell receives a new member through authoritative hydration without
   await mockProductBackend(page);
   let started = false;
   let joined = false;
+  let sharedRoomHistoryReads = 0;
   const sharedRoom = { ...mockRecruitingRoom, id: "shared-room", code: "SHAREDROOM" };
+  const sharedRoomMessages = [
+    { id: "message-chat", room_id: sharedRoom.id, sender_id: mockPartner.id, content: "队友消息", kind: "chat", created_at: "2026-08-29T01:00:00.000Z" },
+    { id: "message-stop", room_id: sharedRoom.id, sender_id: mockPartner.id, content: "停止招募", kind: "recruitment_vote", created_at: "2026-08-29T01:00:01.000Z" },
+    { id: "message-goodbye", room_id: sharedRoom.id, sender_id: mockPartner.id, content: "拜拜", kind: "goodbye", created_at: "2026-08-29T01:00:02.000Z" },
+  ];
   await page.unroute("**/api/matchmaking/start");
   await page.unroute("**/api/state");
+  await page.route("**/api/room/SHELL1/messages", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({ messages: [] }),
+  }));
+  await page.route("**/api/room/SHAREDROOM/messages", (route) => {
+    sharedRoomHistoryReads += 1;
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ messages: sharedRoomMessages }),
+    });
+  });
   await page.route("**/api/matchmaking/start", (route) => route.fulfill({
     status: 200,
     contentType: "application/json",
@@ -870,6 +889,71 @@ test("a Room shell receives a new member through authoritative hydration without
   await expect(page.getByText("连接玩家", { exact: true })).toBeVisible();
   await expect(roomRoot).toHaveAttribute("data-test-persisted", "yes");
   await expect(roomRoot.locator(".session-preview-player:not(.session-preview-player--joining)")).toHaveCount(2);
+  await expect.poll(() => sharedRoomHistoryReads).toBeGreaterThan(0);
+  const chatLog = page.getByRole("log", { name: "聊天记录" });
+  await expect(chatLog).toContainText("队友消息");
+  await expect(chatLog).toContainText("停止招募");
+  await expect(chatLog).toContainText("拜拜");
+});
+
+test("leaving a recruiting Room stays on Home when an old completed Session arrives late", async ({ page }) => {
+  await mockProductBackend(page);
+  let started = false;
+  let left = false;
+  const historicalSession = {
+    id: "historical-session",
+    roomId: "historical-room",
+    roomCode: "HISTORY1",
+    status: "completed",
+    players: [mockProfile.id, mockPartner.id],
+  };
+  await page.unroute("**/api/matchmaking/start");
+  await page.unroute("**/api/matchmaking/cancel");
+  await page.unroute("**/api/state");
+  await page.route("**/api/matchmaking/start", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify((started = true, {
+      ticket: { id: "ticket-exit", state: "searching", room_id: mockRecruitingRoom.id },
+      room: mockRecruitingRoom,
+      matching: 1,
+      matchable: 1,
+    })),
+  }));
+  await page.route("**/api/matchmaking/cancel", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify((left = true, { ticket: { id: "ticket-exit", state: "cancelled" } })),
+  }));
+  await page.route("**/api/state", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({
+      user: mockProfile,
+      room: started && !left ? mockRecruitingRoom : null,
+      session: left ? historicalSession : null,
+      matching: started && !left ? 1 : 0,
+      playing: 0,
+      matchmaking: {
+        ticket: started && !left ? { id: "ticket-exit", state: "searching", room_id: mockRecruitingRoom.id } : null,
+        pair: null,
+        group: null,
+        candidate: null,
+      },
+    }),
+  }));
+
+  await page.goto("/index.html#/home");
+  await login(page);
+  await reachDeadlockCasualFinal(page);
+  await page.getByRole("button", { name: "开始匹配", exact: true }).click();
+  await expect(page).toHaveURL(/#\/room$/);
+  await page.getByRole("button", { name: "退出招募", exact: true }).click();
+  await expect(page).toHaveURL(/#\/home$/);
+  await page.evaluate(() => window.dispatchEvent(new Event("pageshow")));
+  await page.waitForTimeout(700);
+  await expect(page).toHaveURL(/#\/home$/);
+  await expect(page.locator("[data-gameover-root]")).toHaveCount(0);
 });
 
 test("a late snapshot for another Room cannot replace the current Room", async ({ page }) => {
@@ -1458,6 +1542,8 @@ test("friend code search sends a request to the exact profile without a fullscre
 
 test("completed sessions restore friendship controls and feedback responds before saving", async ({ page }) => {
   await mockProductBackend(page);
+  await page.addInitScript(() => window.sessionStorage.setItem("jiyuan_pending_postgame_session_id", "session-completed"));
+  let partnerLiked = false;
   await page.unroute("**/api/state");
   await page.route("**/api/state", (route) => route.fulfill({
     status: 200,
@@ -1474,7 +1560,7 @@ test("completed sessions restore friendship controls and feedback responds befor
         players: [mockProfile.id, mockPartner.id],
         members: [
           { ...mockProfile, memberStatus: "active" },
-          { ...mockPartner, likedByMe: false },
+          { ...mockPartner, likedByMe: partnerLiked },
         ],
         targetTotalPlayers: 2,
         need: { game: "deadlock", mode: "娱乐" },
@@ -1486,7 +1572,9 @@ test("completed sessions restore friendship controls and feedback responds befor
     }),
   }));
   await page.route("**/api/room/DONE42/feedback", async (route) => {
+    const payload = route.request().postDataJSON() as { liked?: boolean };
     await new Promise((resolve) => setTimeout(resolve, 700));
+    if (typeof payload.liked === "boolean") partnerLiked = payload.liked;
     return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true }) });
   });
 
@@ -1504,10 +1592,18 @@ test("completed sessions restore friendship controls and feedback responds befor
   const rating = page.getByRole("button", { name: /01 很开心/ });
   await rating.click();
   await expect(rating).toHaveAttribute("aria-pressed", "true", { timeout: 250 });
+
+  await page.getByRole("button", { name: "返回首页", exact: true }).click();
+  await expect(page).toHaveURL(/#\/home$/);
+  expect(await page.evaluate(() => window.sessionStorage.getItem("jiyuan_pending_postgame_session_id"))).toBeNull();
+  await page.evaluate(() => window.dispatchEvent(new Event("pageshow")));
+  await page.waitForTimeout(700);
+  await expect(page).toHaveURL(/#\/home$/);
 });
 
 test("completed casual Sessions keep each teammate like independent across refresh", async ({ page }) => {
   await mockProductBackend(page);
+  await page.addInitScript(() => window.sessionStorage.setItem("jiyuan_pending_postgame_session_id", "session-completed-3"));
   const memberC = {
     id: "00000000-0000-0000-0000-000000000555",
     nickname: "第三位玩家",

@@ -1,4 +1,4 @@
-import { getSupabaseClient, getState } from "./api.js?v=20260828-peer-sync-01";
+import { getSupabaseClient, getState } from "./api.js?v=20260829-room-converge-03";
 import { classifyRoomVersionEvent } from "./room-version-cursor.js";
 
 // Realtime accelerates Room updates, but the server snapshot remains the
@@ -25,9 +25,9 @@ export async function openRealtime(handlers) {
   let pollTimer = 0;
   let roomReconcileTimer = 0;
   let pollDelay = 4000;
-  const readState = async () => {
+  const readState = async (completedSessionId = "") => {
     const observedGeneration = handlers.checkpoint?.();
-    return { data: await getState(), observedGeneration };
+    return { data: await getState({ completedSessionId }), observedGeneration };
   };
   const emitState = ({ data, observedGeneration }) => {
     handlers.hello?.(data, { observedGeneration });
@@ -185,14 +185,15 @@ export async function openRealtime(handlers) {
     .on("postgres_changes", { event: "UPDATE", schema: "public", table: "sessions" }, async (payload) => {
       if (closed) return;
       try {
-        const read = await readState();
+        const terminalFromChange = terminalSessionFromChange(payload);
+        const read = await readState(terminalFromChange?.id || "");
         const { data } = read;
         if (closed) return;
         emitState(read);
         // A normal mutual goodbye updates the Session row. Do not rely on a
         // rooms event arriving first; the player who initiated the goodbye
         // must also receive the post-game feedback screen.
-        const session = data.session ?? terminalSessionFromChange(payload);
+        const session = data.session ?? terminalFromChange;
         if (session && ["completed", "cancelled"].includes(session.status)) {
           handlers["game-over"]?.({ session });
         }

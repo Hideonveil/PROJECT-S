@@ -1,7 +1,7 @@
 let supabase = null;
 let configCache = null;
 let cachedAccessToken = "";
-let stateRequest = null;
+const stateRequests = new Map();
 let poolSummaryRequest = null;
 let publicDirectoryRequest = null;
 const clientInstanceId = (() => {
@@ -85,11 +85,14 @@ export const getConfig = async () => {
   configCache = await request("/api/config");
   return configCache;
 };
-export const getState = () => {
-  if (stateRequest) return stateRequest;
-  stateRequest = authedRequest("/api/state").finally(() => {
-    stateRequest = null;
+export const getState = ({ completedSessionId = "" } = {}) => {
+  const query = completedSessionId ? `?completedSessionId=${encodeURIComponent(completedSessionId)}` : "";
+  const path = `/api/state${query}`;
+  if (stateRequests.has(path)) return stateRequests.get(path);
+  const stateRequest = authedRequest(path).finally(() => {
+    stateRequests.delete(path);
   });
+  stateRequests.set(path, stateRequest);
   return stateRequest;
 };
 
@@ -250,7 +253,7 @@ export async function sendRoomMessage(roomCode, content, operationId) {
 export function openEvents(handlers) {
   let closeFn = null;
   let closed = false;
-  import("./realtime.js?v=20260828-peer-sync-01")
+  import("./realtime.js?v=20260829-room-converge-03")
     .then(({ openRealtime }) => {
       if (closed) return null;
       return openRealtime(handlers);

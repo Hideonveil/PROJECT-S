@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const getState = vi.fn();
 const getSupabaseClient = vi.fn();
 
-vi.mock("../public/js/api.js?v=20260828-peer-sync-01", () => ({
+vi.mock("../public/js/api.js?v=20260829-room-converge-03", () => ({
   getState,
   getSupabaseClient,
 }));

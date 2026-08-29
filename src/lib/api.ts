@@ -250,16 +250,18 @@ export async function activeSessionFor(profileId: string, context?: StateReadCon
  * Per-member likes are intentionally hydrated from the new directed table so
  * each teammate card can render its own state after refresh or re-entry.
  */
-export async function completedSessionViewFor(profileId: string, context?: ReadContext): Promise<Record<string, unknown> | null> {
+export async function completedSessionViewFor(profileId: string, context?: ReadContext, sessionId = ""): Promise<Record<string, unknown> | null> {
   const admin = supabaseAdmin();
-  const { data: session } = await admin
+  let query = admin
     .from("sessions")
     .select("*")
     .eq("status", "completed")
     // `players` is jsonb. postgrest-js serializes a JavaScript array as the
     // PostgreSQL array literal `cs.{...}`, which is invalid JSON for jsonb.
     // Passing serialized JSON produces the required `cs.["..."]` filter.
-    .contains("players", JSON.stringify([profileId]))
+    .contains("players", JSON.stringify([profileId]));
+  if (sessionId) query = query.eq("id", sessionId);
+  const { data: session } = await query
     .order("ended_at", { ascending: false })
     .order("created_at", { ascending: false })
     .limit(1)

@@ -1,4 +1,4 @@
-import * as api from "./api.js?v=20260828-peer-sync-01";
+import * as api from "./api.js?v=20260829-room-converge-03";
 import { sessionBelongsToRoom } from "./session-scope.js";
 import { resetState, state, update } from "./store.js";
 import { withProjectTransition } from "./transition.js";

@@ -1,4 +1,4 @@
-import * as api from "./api.js?v=20260828-peer-sync-01";
+import * as api from "./api.js?v=20260829-room-converge-03";
 import { mergeRoomMessages } from "./chat-merge.js";
 import { icon } from "./icons.js";
 import { memberDisplayName } from "./session-members.js";
@@ -7,6 +7,7 @@ import { esc, toast } from "./ui.js";
 
 export function createRoomChatController({ getRouteName, applyServerSnapshot, announceLive }) {
   let closeSubscription = null;
+  let listenerController = null;
   let generation = 0;
   let sendPending = false;
   let announcementRoomId = "";
@@ -15,6 +16,8 @@ export function createRoomChatController({ getRouteName, applyServerSnapshot, an
 
   function reset() {
     generation += 1;
+    listenerController?.abort();
+    listenerController = null;
     closeSubscription?.();
     closeSubscription = null;
   }
@@ -33,8 +36,15 @@ export function createRoomChatController({ getRouteName, applyServerSnapshot, an
     let roomSnapshotTimer = 0;
     let realtimeSubscribed = false;
     let browserSessionReady = false;
+    const currentListenerController = new AbortController();
+    listenerController?.abort();
+    listenerController = currentListenerController;
 
-    ensureRoomScope(room.id);
+    const roomChanged = ensureRoomScope(room.id);
+    if (roomChanged) {
+      const chat = document.getElementById("room-chat");
+      if (chat) chat.innerHTML = '<div class="chat-skeleton" role="status" aria-label="聊天记录加载中"><i></i><i></i><i></i></div>';
+    }
 
     const reconcileHistory = async () => {
       const history = await api.fetchRoomMessages(room.code);
@@ -59,6 +69,8 @@ export function createRoomChatController({ getRouteName, applyServerSnapshot, an
       if (historyTimer) window.clearTimeout(historyTimer);
       if (roomSnapshotTimer) window.clearTimeout(roomSnapshotTimer);
       if (channel && sb) sb.removeChannel(channel);
+      currentListenerController.abort();
+      if (listenerController === currentListenerController) listenerController = null;
       if (closeSubscription === close) closeSubscription = null;
     };
     const scheduleHistory = () => {
@@ -128,17 +140,18 @@ export function createRoomChatController({ getRouteName, applyServerSnapshot, an
     document.querySelector('[data-form="room-chat"]')?.addEventListener("submit", (event) => {
       event.preventDefault();
       send();
-    });
+    }, { signal: currentListenerController.signal });
     document.querySelectorAll("[data-chat-quick-reply]").forEach((reply) => {
-      reply.addEventListener("click", () => send(reply.dataset.chatQuickReply || ""));
+      reply.addEventListener("click", () => send(reply.dataset.chatQuickReply || ""), { signal: currentListenerController.signal });
     });
   }
 
   function ensureRoomScope(roomId) {
-    if (announcementRoomId === roomId) return;
+    if (announcementRoomId === roomId) return false;
     announcementRoomId = roomId;
     announcedMessages.clear();
     messages = [];
+    return true;
   }
 
   function setLoading(loading) {
