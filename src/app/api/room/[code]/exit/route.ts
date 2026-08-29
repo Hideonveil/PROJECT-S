@@ -41,9 +41,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ cod
     // Session-only RPC that cannot find a Session yet.
     if (!currentSession) {
       await exitPreSessionRoom(me.id, room.id, idempotencyKey(request));
-      const { data: remainingRoom } = await admin.from("rooms").select("*").eq("id", room.id).maybeSingle();
       return jsonOk({
-        room: remainingRoom ? await enrichRoom(remainingRoom, { resumeEligible: false }) : null,
+        // The actor has left. Remaining members receive their updated Room via
+        // Realtime/state; rehydrating that old Room for the departed actor can
+        // only create a false failure after the mutation already committed.
+        room: null,
         session: null,
         exited: true,
       }, rid);

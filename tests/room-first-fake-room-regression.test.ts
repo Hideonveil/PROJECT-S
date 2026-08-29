@@ -59,6 +59,8 @@ describe("Room-first fake Room regression contract", () => {
   it("supports pre-Session exit without requiring a Session row", () => {
     expect(exitRoute).toContain("exitPreSessionRoom");
     expect(exitRoute).toContain("if (!currentSession)");
+    expect(exitRoute).toContain("room: null");
+    expect(exitRoute).not.toContain("await enrichRoom(remainingRoom");
     expect(exitRoute).not.toContain("const current = await sessionForRoomCode(code);");
   });
 

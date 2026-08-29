@@ -39,8 +39,18 @@ async function call(actor, path, body = undefined) {
 }
 const ranked = { gameId: "deadlock", mode: "ranked", rankCode: "oracle", desiredRoles: [], ownRoles: [], teammateRoles: [], microphonePreference: "any" };
 const casual = { gameId: "deadlock", mode: "casual", desiredRoles: [], ownRoles: [], teammateRoles: [], microphonePreference: "any", desiredTeammates: 2, minTeammates: 2 };
-const report = { authenticated: 0, presence: 0, room_shells: 0, ranked_room_members: 0, casual_room_members: 0, errors: [] };
+const report = {
+  authenticated: 0,
+  presence: 0,
+  room_shells: 0,
+  ranked_room_members: 0,
+  casual_room_members: 0,
+  casual_member_counts: [],
+  cleanup_errors: [],
+  errors: [],
+};
 const actors = [];
+let latestStates = [];
 try {
   for (const identity of identities) { actors.push(await login(identity)); report.authenticated += 1; }
   for (const actor of actors) { await call(actor, "/api/online", {}); report.presence += 1; }
@@ -48,9 +58,13 @@ try {
     const started = await call(actor, "/api/matchmaking/start", { match: index < 2 ? ranked : casual });
     if (started.room?.code) report.room_shells += 1;
   }
-  for (let attempt = 0; attempt < 12; attempt += 1) {
+  // The persistent matcher has a 15s safety sweep. Allow two full sweeps so
+  // a coalesced event wake at the edge of a cooldown is not misreported as a
+  // product failure by this small smoke test.
+  for (let attempt = 0; attempt < 30; attempt += 1) {
     await new Promise((resolve) => setTimeout(resolve, 2000));
     const states = await Promise.all(actors.map((actor) => call(actor, "/api/state")));
+    latestStates = states;
     report.ranked_room_members = states.slice(0, 2).filter((state) => state.room?.members?.length >= 2).length;
     report.casual_room_members = states.slice(2).filter((state) => state.room?.members?.length >= 3).length;
     if (report.ranked_room_members === 2 && report.casual_room_members === 3) break;
@@ -58,12 +72,23 @@ try {
 } catch (error) {
   report.errors.push(String(error?.message || "UNKNOWN").replace(/Bearer\s+\S+/gi, "REDACTED"));
 } finally {
-  for (const actor of actors) {
+  report.casual_member_counts = latestStates.slice(2).map((state) => Number(state.room?.members?.length || 0));
+  for (const [index, actor] of actors.entries()) {
+    let stateBefore = null;
     try {
-      const state = await call(actor, "/api/state");
-      if (state.room?.code) await call(actor, `/api/room/${encodeURIComponent(state.room.code)}/exit`, {});
+      stateBefore = await call(actor, "/api/state");
+      if (stateBefore.room?.code) await call(actor, `/api/room/${encodeURIComponent(stateBefore.room.code)}/exit`, {});
       else await call(actor, "/api/matchmaking/cancel", { reason: "quick_five_smoke_cleanup" });
-    } catch { /* lifecycle cleanup is best-effort; separate audit follows */ }
+    } catch (error) {
+      const stateAfter = await call(actor, "/api/state").catch(() => null);
+      report.cleanup_errors.push({
+        slot: index + 1,
+        code: String(error?.message || "UNKNOWN").replace(/[^A-Z0-9_]/g, "_"),
+        hadRoom: Boolean(stateBefore?.room?.code),
+        roomAfter: Boolean(stateAfter?.room?.code),
+        ticketAfter: stateAfter?.matchmaking?.ticket?.state || null,
+      });
+    }
   }
 }
 console.log(JSON.stringify(report));

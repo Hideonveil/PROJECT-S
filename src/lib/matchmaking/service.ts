@@ -72,6 +72,14 @@ function startTicketSnapshot(data: MatchmakingTicketRow) {
   };
 }
 
+function inactiveTicketSnapshot(reason: string) {
+  return {
+    state: "cancelled" as const,
+    cancel_reason: reason,
+    alreadyInactive: true,
+  };
+}
+
 export function startTicket(userId: string, input: MatchmakingInput, requestId: string | null) {
   return withMatchmakingSerial(userId, () => startTicketInternal(userId, input, requestId));
 }
@@ -84,6 +92,7 @@ export function joinPublicTicket(userId: string, targetTicketId: string, request
 
 async function cancelTicketInternal(userId: string, reason: string, requestId: string | null) {
   const active = await activeTicketRow(userId);
+  if (!active) return inactiveTicketSnapshot(reason);
   if (active?.mode === "casual" && active.group_id) {
     const { data, error } = await supabaseAdmin().rpc("matchmaking_cancel_group", {
       p_user_id: userId,

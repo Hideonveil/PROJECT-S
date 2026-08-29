@@ -15,6 +15,10 @@ describe("matchmaking room exit recovery contract", () => {
     expect(orphanSql).toContain("sessions");
     expect(service).toContain("reconcileOrphanWaitingRooms");
   });
+  it("treats cancellation after lifecycle convergence as an idempotent success", () => {
+    expect(service).toContain("if (!active) return inactiveTicketSnapshot(reason);");
+    expect(service).toContain("alreadyInactive: true");
+  });
   it("closes a ready Session when either participant exits", () => {
     expect(sql).toContain("create or replace function public.phase1_exit_room");
     expect(sql).toContain("if v_session.status in ('ready', 'playing')");
