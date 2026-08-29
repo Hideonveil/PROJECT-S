@@ -72,7 +72,14 @@ export function createRoomAuthority({ normalizeRoom, roomSignature, isResumableR
     if (!incoming?.id) return result("ignore", "none", { reason: "room-missing-id" });
     if (exitPendingRoomId === incoming.id) return result("ignore", "none", { reason: "exit-pending" });
     if (exitedRoomIds.has(incoming.id)) return result("ignore", "none", { reason: "exited-room" });
-    if (canonicalRoom?.id && canonicalRoom.id !== incoming.id && !ROOM_SWITCH_SOURCES.has(event.source)) {
+    const switchesRooms = Boolean(canonicalRoom?.id && canonicalRoom.id !== incoming.id);
+    const confirmedShellSwitch = switchesRooms
+      && canonicalRoom.shell === true
+      && event.source === "state"
+      && !exitPendingRoomId
+      && event.observedGeneration === generation
+      && incoming.resumeEligible === true;
+    if (switchesRooms && !ROOM_SWITCH_SOURCES.has(event.source) && !confirmedShellSwitch) {
       return result("ignore", "none", { reason: "different-room" });
     }
 

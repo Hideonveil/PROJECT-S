@@ -24,7 +24,7 @@ import { sessionBelongsToRoom } from "./session-scope.js";
 import { isLiveMatchmakingSnapshot, matchmakingShape, mergeMatchmakingSnapshot, mergePartialMatchmakingSnapshot } from "./matchmaking-snapshot.js";
 import { createRoomChatController } from "./room-chat-controller.js";
 import { createAuthController } from "./auth-controller.js";
-import { createRoomAuthority } from "./room-authority.js?v=20260829-room-authority-01";
+import { createRoomAuthority } from "./room-authority.js?v=20260829-shell-switch-01";
 
 const app = document.getElementById("app");
 const roomAuthority = createRoomAuthority({

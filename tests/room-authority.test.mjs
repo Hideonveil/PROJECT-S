@@ -58,6 +58,41 @@ describe("browser Room authority", () => {
     })).toMatchObject({ decision: "accept", effect: "enter-room" });
   });
 
+  it("lets the current authoritative state move a waiting shell into the shared Room", () => {
+    const subject = authority();
+    subject.dispatch({
+      type: "snapshot",
+      room: room({ id: "waiting-b", code: "WAITING-B", shell: true, resumeEligible: true }),
+      source: "start",
+      route: "home",
+    });
+    const observedGeneration = subject.dispatch({ type: "checkpoint" }).generation;
+
+    const result = subject.dispatch({
+      type: "snapshot",
+      room: room({
+        id: "shared-a",
+        code: "SHARED-A",
+        shell: false,
+        resumeEligible: true,
+        members: [
+          { id: "me", name: "我", memberStatus: "active" },
+          { id: "player-a", name: "队友", memberStatus: "active" },
+        ],
+      }),
+      source: "state",
+      route: "room",
+      observedGeneration,
+    });
+
+    expect(result).toMatchObject({
+      decision: "accept",
+      effect: "patch-room",
+      room: { id: "shared-a", shell: false, resumeEligible: true },
+    });
+    expect(result.room.members).toHaveLength(2);
+  });
+
   it("lets an unversioned snapshot supplement but never downgrade a versioned Room", () => {
     const subject = authority();
     subject.dispatch({ type: "snapshot", room: room(), source: "start", route: "home" });
