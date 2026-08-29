@@ -840,6 +840,7 @@ test("a Room shell receives a new member through authoritative hydration without
   await mockProductBackend(page);
   let started = false;
   let joined = false;
+  const sharedRoom = { ...mockRecruitingRoom, id: "shared-room", code: "SHAREDROOM" };
   await page.unroute("**/api/matchmaking/start");
   await page.unroute("**/api/state");
   await page.route("**/api/matchmaking/start", (route) => route.fulfill({
@@ -849,12 +850,12 @@ test("a Room shell receives a new member through authoritative hydration without
   }));
   await page.route("**/api/state", (route) => {
     const room = !started ? null : joined
-      ? { ...mockRecruitingRoom, realtimeVersion: 2, shell: false, members: [mockRecruitingRoom.members[0], mockPartner] }
+      ? { ...sharedRoom, realtimeVersion: 2, shell: false, members: [mockRecruitingRoom.members[0], mockPartner] }
       : mockRecruitingRoom;
     return route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ user: mockProfile, room, session: null, matching: 1, playing: 0, matchmaking: { ticket: started ? { id: "ticket-1", state: "searching", room_id: mockRecruitingRoom.id } : null, pair: null, group: null, candidate: null } }),
+      body: JSON.stringify({ user: mockProfile, room, session: null, matching: 1, playing: 0, matchmaking: { ticket: started ? { id: "ticket-1", state: "searching", room_id: joined ? sharedRoom.id : mockRecruitingRoom.id } : null, pair: null, group: null, candidate: null } }),
     });
   });
   await page.goto("/index.html#/home");

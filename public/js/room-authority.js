@@ -76,6 +76,7 @@ export function createRoomAuthority({ normalizeRoom, roomSignature, isResumableR
     const confirmedShellSwitch = switchesRooms
       && canonicalRoom.shell === true
       && event.source === "state"
+      && event.confirmedHandoff === true
       && !exitPendingRoomId
       && event.observedGeneration === generation
       && incoming.resumeEligible === true;

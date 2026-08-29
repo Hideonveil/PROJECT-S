@@ -83,6 +83,7 @@ describe("browser Room authority", () => {
       source: "state",
       route: "room",
       observedGeneration,
+      confirmedHandoff: true,
     });
 
     expect(result).toMatchObject({

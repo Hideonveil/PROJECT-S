@@ -24,7 +24,7 @@ import { sessionBelongsToRoom } from "./session-scope.js";
 import { isLiveMatchmakingSnapshot, matchmakingShape, mergeMatchmakingSnapshot, mergePartialMatchmakingSnapshot } from "./matchmaking-snapshot.js";
 import { createRoomChatController } from "./room-chat-controller.js";
 import { createAuthController } from "./auth-controller.js";
-import { createRoomAuthority } from "./room-authority.js?v=20260829-shell-switch-01";
+import { createRoomAuthority } from "./room-authority.js?v=20260829-shell-switch-02";
 
 const app = document.getElementById("app");
 const roomAuthority = createRoomAuthority({
@@ -1968,6 +1968,13 @@ function applyMatchmakingSnapshot(snapshot, options = {}) {
 function applyServerSnapshot(data, { source = "state", route = "", observedGeneration } = {}) {
   const routeName = route || parseRoute().name;
   const previousRoom = state.room;
+  const incomingTicket = data?.matchmaking?.ticket;
+  const currentTicketId = state.match.lifecycle?.id;
+  const incomingTicketRoomId = incomingTicket?.room_id || incomingTicket?.roomId || "";
+  const confirmedHandoff = source === "state"
+    && Boolean(currentTicketId)
+    && incomingTicket?.id === currentTicketId
+    && incomingTicketRoomId === data?.room?.id;
   const hasRoomFact = Object.prototype.hasOwnProperty.call(data || {}, "room");
   const roomResult = hasRoomFact
     ? roomAuthority.dispatch({
@@ -1975,6 +1982,7 @@ function applyServerSnapshot(data, { source = "state", route = "", observedGener
         room: data.room,
         snapshotVersion: data?.snapshotVersion,
         observedGeneration,
+        confirmedHandoff,
         source,
         route: routeName,
       })
