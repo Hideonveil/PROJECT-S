@@ -19,13 +19,18 @@
 
 ## 2. 实施顺序
 
-### Phase 0 — 当前线上事实审计
+### Phase 0 — 当前线上事实审计（`AUDIT COMPLETE`）
+
+审计报告：`PHASE_0_CURRENT_PRODUCT_AUDIT_20260829.md`。
 
 - 以最新 Production 与 canonical `origin/main` 为起点。
 - 识别仍在执行的 Deadlock hardcode、旧 Casual 规则、废弃 Prototype / UI / API 路径和手机端缺口。
 - 输出可追踪的改造清单；不把历史聊天或旧计划当作运行事实。
 
-### Phase 1 — 共享游戏扩展边界 + 手机端基础
+### Phase 1 — 共享游戏扩展边界 + 手机端基础（`DESIGN READY / IMPLEMENTATION NOT STARTED`）
+
+设计计划：`PHASE_1_MOBILE_DESIGN_PLAN_20260829.md`。平台研究：
+`research/MOBILE_WEB_PLATFORM_RESEARCH_20260829.md`。
 
 - 继续使用 `GameDefinition` registry 和游戏规则 adapter；共享编排中不得新增散落的游戏名分支。
 - Auth → Ticket → Room → Session → terminal lifecycle、恢复资格、幂等、防重复、聊天和退出一致性保持一套共享实现。

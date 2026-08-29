@@ -11,6 +11,13 @@
 > 正式开放最低容量线。当前活动计划见 `PRELAUNCH_FOUR_GAME_MOBILE_PLAN.md` 和 `DEC-016`；
 > 只有正式开放 Gate 完整 PASS 后才允许删除临时计划，并必须先写回最终事实和验证证据。
 
+> 2026-08-29 Phase 0/1 事实：当前 Production 与 canonical 源码只读审计已完成，报告为
+> `PHASE_0_CURRENT_PRODUCT_AUDIT_20260829.md`。当前产品确认是 `Deadlock-only / PC-only`；
+> 共享 `GameDefinition` 与通用 Room 生命周期可复用，但浏览器目录、状态统计、Profile、规则数据和
+> capacity runner 尚未完整游戏化。手机访问当前被 `pc-only-gate` 主动阻断。手机端设计与实施计划已
+> 固化为 `PHASE_1_MOBILE_DESIGN_PLAN_20260829.md`，状态为 `DESIGN READY / IMPLEMENTATION
+> NOT STARTED`；本轮未修改产品代码、数据库或 Production。
+
 > 2026-08-29 Production fact：新游戏 `GameDefinition` registry + Deadlock adapter、权威
 > RoomProjection、Room operation receipts、版本化 Realtime invalidation、事件唤醒 + 15 秒
 > safety sweep、旧接口调用观测、事务 Room shell fast path 与 Casual singleton bounded
