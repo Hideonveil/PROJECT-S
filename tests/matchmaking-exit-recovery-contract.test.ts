@@ -14,6 +14,11 @@ describe("matchmaking room exit recovery contract", () => {
     expect(orphanSql).toContain("matchmaking_tickets");
     expect(orphanSql).toContain("sessions");
     expect(service).toContain("reconcileOrphanWaitingRooms");
+    const casualCancel = service.slice(
+      service.indexOf('if (active?.mode === "casual"'),
+      service.indexOf('rpc("matchmaking_cancel_ticket"'),
+    );
+    expect(casualCancel).not.toContain("reconcileOrphanWaitingRooms");
   });
   it("treats cancellation after lifecycle convergence as an idempotent success", () => {
     expect(service).toContain("if (!active) return inactiveTicketSnapshot(reason);");

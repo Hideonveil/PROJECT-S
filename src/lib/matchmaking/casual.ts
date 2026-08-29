@@ -20,6 +20,118 @@ import { evaluateCompatibility, rankCandidates } from "./rules";
 import { increment as incrementRuntimeMetric, observeLatency } from "./runtime-telemetry";
 import { activeTicketRow } from "./ticket-store";
 
+type CasualConsolidationTarget = {
+  id: string;
+  memberCount: number;
+  hardMaxPlayers?: number;
+  created_at?: string;
+  [key: string]: any;
+};
+
+/**
+ * Converge concurrent singleton groups in one direction. A singleton may
+ * join a larger Room, or the lexicographically smaller singleton when both
+ * sides contain one member. Multi-member groups never move as a unit.
+ */
+export function rankCasualConsolidationTargets<T extends CasualConsolidationTarget>(
+  ownGroupId: string,
+  ownMemberCount: number,
+  groups: T[],
+): T[] {
+  if (ownMemberCount !== 1) return [];
+  return groups
+    .filter((group) => group.id !== ownGroupId && group.memberCount > 0)
+    .filter((group) => group.memberCount > 1 || String(group.id) < String(ownGroupId))
+    .sort((left, right) => (
+      right.memberCount - left.memberCount
+      || String(left.created_at || "").localeCompare(String(right.created_at || ""))
+      || String(left.id).localeCompare(String(right.id))
+    ));
+}
+
+async function tryConsolidateSingletonGroup(
+  sourceRow: Record<string, any>,
+  source: ReturnType<typeof ticketFromRow>,
+  ownGroup: MatchmakingGroupRow,
+  rules: ReturnType<typeof rulesFromRow>,
+  context?: MatcherAttemptContext,
+) {
+  const admin = supabaseAdmin();
+  const { count: ownMemberCount, error: ownCountError } = await admin
+    .from("matchmaking_group_members")
+    .select("id", { count: "exact", head: true })
+    .eq("group_id", ownGroup.id)
+    .neq("decision", "rejected");
+  if (ownCountError) throw ownCountError;
+  if (Number(ownMemberCount || 0) !== 1) return { attempted: false, ticket: null };
+
+  const { data: openGroups, error: openGroupError } = await admin
+    .from("matchmaking_groups")
+    .select("*")
+    .eq("game_id", source.gameId)
+    .in("state", ["searching", "partial_ready", "forming", "backfilling"])
+    .neq("id", ownGroup.id)
+    .limit(12);
+  if (openGroupError) throw openGroupError;
+  if (!openGroups?.length) return { attempted: false, ticket: null };
+
+  const groupIds = openGroups.map((group) => group.id);
+  const { data: memberRows, error: memberError } = await admin
+    .from("matchmaking_group_members")
+    .select("group_id")
+    .in("group_id", groupIds)
+    .neq("decision", "rejected");
+  if (memberError) throw memberError;
+  const counts = new Map<string, number>();
+  for (const member of memberRows || []) counts.set(member.group_id, (counts.get(member.group_id) || 0) + 1);
+  const targets = rankCasualConsolidationTargets(
+    ownGroup.id,
+    1,
+    (openGroups as MatchmakingGroupRow[]).map((group) => ({
+      ...group,
+      memberCount: counts.get(group.id) || 0,
+      hardMaxPlayers: Number(group.hard_max_players || 6),
+    })),
+  );
+
+  for (const target of targets) {
+    if (target.memberCount >= Number(target.hardMaxPlayers || 6)) continue;
+    if (context?.targetId === target.id) {
+      incrementRuntimeMetric("same_target_suppressed");
+      continue;
+    }
+    const { data: ownerRow, error: ownerError } = await admin
+      .from("matchmaking_tickets")
+      .select("*")
+      .eq("group_id", target.id)
+      .eq("user_id", target.owner_user_id)
+      .maybeSingle();
+    if (ownerError) throw ownerError;
+    const rankedCandidate = ownerRow ? rankCandidates(ticketFromRow(ownerRow), [source], rules)[0] : null;
+    if (!rankedCandidate) continue;
+
+    recordReservationAttempt("group");
+    incrementRuntimeMetric("backfill_attempts");
+    const { data: reservation, error } = await admin.rpc("matchmaking_reserve_group_member", {
+      p_group_id: target.id,
+      p_ticket_id: sourceRow.id,
+      p_hard_snapshot: { passed: true, ruleSetVersion: rules.version, source: "singleton_consolidation" },
+      p_soft_snapshot: { ...rankedCandidate.compatibility.softSignals, source: "singleton_consolidation" },
+    });
+    if (!error && !isGroupReservationConflict(null, reservation)) {
+      incrementRuntimeMetric("group_success");
+      incrementRuntimeMetric("backfill_success");
+      context?.markSuccess(target.id);
+      return { attempted: true, ticket: await activeTicketRow(sourceRow.user_id) };
+    }
+    if (!isGroupReservationConflict(error, reservation)) throw error;
+    context?.recordBusinessConflict(String(reservation?.reason || "GROUP_RESERVATION_CONFLICT"), target.id);
+    recordReservationConflict("group");
+    return { attempted: true, ticket: await activeTicketRow(sourceRow.user_id) };
+  }
+  return { attempted: false, ticket: null };
+}
+
 export async function previewOpsCasualAttach(userId: string, groupId: string) {
   const admin = supabaseAdmin();
   const [ticket, groupResult] = await Promise.all([
@@ -207,6 +319,14 @@ export async function attemptCasualGroup(userId: string, context?: MatcherAttemp
 
   if (!ownGroup || ownGroup.owner_user_id !== userId || !["searching", "partial_ready", "forming", "backfilling"].includes(ownGroup.state)) {
     return activeTicketRow(userId);
+  }
+
+  // Concurrent starts can briefly create several one-person forming Rooms.
+  // Move only a singleton owner into one better target per tick; the database
+  // RPC atomically closes the old singleton Room and preserves uniqueness.
+  if (sourceRow.state === "searching") {
+    const consolidation = await tryConsolidateSingletonGroup(sourceRow, source, ownGroup, rules, context);
+    if (consolidation.attempted) return consolidation.ticket;
   }
 
   const { data: candidates, error: candidatesError } = await admin

@@ -100,7 +100,9 @@ async function cancelTicketInternal(userId: string, reason: string, requestId: s
       p_request_id: requestId,
     });
     if (error) throw error;
-    await reconcileOrphanWaitingRooms(userId, requestId);
+    // matchmaking_cancel_group owns the complete forming-Room lifecycle.
+    // A second orphan scan is redundant and must not turn a committed exit
+    // into a false HTTP 500 if the defensive reconciler is unavailable.
     wakeMatcherScheduler("ticket-cancelled");
     return data;
   }
